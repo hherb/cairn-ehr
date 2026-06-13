@@ -1,8 +1,15 @@
 # Cairn — Offline-Resilient Health Record System — Macroscopic Architecture Spec
 
-**Status:** Draft v0.5 — replaces language fixation with a language-selection principle (was v0.4)
+**Status:** Draft v0.6 — resolves the "Postgres-intelligence" cluster (§11.1/§11.2/§11.11) into one architecture: fat Postgres, thin Rust daemon (was v0.5)
 **License target:** AGPL-3.0 (all components must be AGPL-3.0-compatible)
 **Core constraint:** Full clinical functionality must survive loss of internet *and* intranet, degrading gracefully down to a single workstation.
+
+**Changelog v0.5 → v0.6**
+- **Resolved the three entangled open questions §11.1 / §11.2 / §11.11** as one decision — *"Fat Postgres, thin Rust daemon."* They all turned on a single axis: how much clinical intelligence is enforced by Postgres itself vs. an orchestrating Rust core. Resolution distributed across §2, §3.5 (new), §6.1, §9.4 (new); §11 entries marked **resolved**.
+- **§2 edge tier revised:** tablets are **thin clients**, not autonomous edge nodes. The smallest *autonomous* node (one that must survive a full partition alone) is a **Pi-class full PostgreSQL ≥18**. Consequence: PL/pgSQL, constraints, projection tables, and logical decoding are available on *every* computing node — the "must also run on PGlite/SQLite" portability constraint is removed, and in-database merge/projection logic becomes viable everywhere. PGlite/SQLite remain a *thin-client* surface only.
+- **§3.5 (new) Storage model (§11.2 resolved):** **hybrid event envelope** — typed/normalized envelope columns where invariants, identity, sync, and matching bind; **Cairn-native JSONB** for clinical bodies; FHIR is a façade view/export, never the storage model.
+- **§6.1 (§11.1 resolved):** **build** a thin custom Rust sync service on Postgres logical decoding; **borrow patterns from pgactive/SymmetricDS, do not depend on them** — their row-conflict machinery solves a problem Cairn designed away and can violate §4 anti-data-loss policies.
+- **§9.4 (new) Merge boundary (§11.11 resolved):** structural invariants + the identity event algebra + all projections live **in Postgres** (unbypassable, next to the data, run on every node); the Rust daemon does transport/scope/priority/apply and **carries no merge logic**; the probabilistic matcher stays **Python and advisory**. Per-projection Rust escape hatch on measured Pi-performance need.
 
 **Changelog v0.4 → v0.5**
 - Added **§9 Language & Substrate Selection Principle**: choose implementation language by defect blast radius, not team habit; security/safety-sensitive logic → Rust or in-database; everything else → fit-for-purpose. Auditability/reviewer-legibility elevated to the primary quality metric (rationale: AI-assisted development shifts the binding constraint from authorship fluency to specification + review)
@@ -72,7 +79,8 @@ Existing instances of the principle already in this spec: offline-first operatio
 
 - Hub-and-spoke per tier, hierarchical overall. Peer sync between siblings is a later extension; the event-log design keeps the door open.
 - **Every node is write-capable** (multi-master, not read replicas).
-- Edge nodes run full PostgreSQL (workstation/mini-PC) or an embedded store (PGlite/SQLite on tablets) — same sync protocol.
+- **The smallest *autonomous* node is a Pi-class full PostgreSQL ≥18** node (workstation / mini-PC / solar Pi). "Autonomous" = able to survive a full partition alone: read locally-relevant charts and write new clinical data with no upstream reachable.
+- **Tablets / carts / phones are thin clients**, not autonomous edge stores: they attach to a nearby autonomous node (department server, workstation, or clinic Pi) which holds the database and computes projections. An embedded store (PGlite/SQLite) may back a thin client for transient buffering, but a thin client is **not** expected to survive a partition by itself. *(Rationale and consequences: changelog v0.5→v0.6 and §9.4 — every computing node being full Postgres is what makes the in-database merge/projection design viable everywhere, Pi included.)*
 
 ---
 
@@ -99,7 +107,16 @@ Existing instances of the principle already in this spec: offline-first operatio
 (Demographics moved to §4 — they are no longer modeled as a mutable record.)
 
 ### 3.4 Interoperability
-- Internal schema is event-sourced relational; a **FHIR R4/R5 façade** provides import/export and interop. FHIR is the interface, not necessarily the storage model (open question §11).
+- Internal schema is event-sourced relational; a **FHIR R4/R5 façade** provides import/export and interop. **FHIR is a façade — a boundary skin, never the storage model** (resolved, §3.5; was open question §11.2). Cairn's internal model is canonical (a national-scale system is the thing others integrate *against*); FHIR is generated on demand for exchange with external/legacy systems and is not allowed to dictate the schema.
+
+### 3.5 Event storage model — hybrid envelope (resolves §11.2)
+The clinical event log (§3.1) is stored as **append-only event tables with a hybrid shape**, splitting columns by *what must be machine-enforced or matched* vs. *what is opaque clinical content*:
+
+- **Typed/normalized envelope columns** — everything the safety machinery, identity subsystem, sync layer, and matcher must read or constrain: `uuidv7` primary key (§3.2), `patient_uuid` (FK), the **HLC** as typed fields (physical timestamp, logical counter, node id; §3.2), author / device, signature, `event_type` (a **closed enum**), scope keys (facility / department / encounter), `created_at`. Invariants live here because constraints can reach these columns; JSONB they cannot reach unbypassably.
+- **Cairn-native JSONB clinical body** — the actual clinical payload (note/observation/order/result/etc.). JSONB avoids re-modeling the sprawling clinical content as relational tables and keeps the FHIR façade cheap, **without** adopting FHIR's resource graph as the schema. The body's integrity is its **signature**, not a SQL constraint — appropriate, since clinical content is immutable and signed.
+- **Demographic-assertion events are the exception: their fields are typed columns, not JSONB**, because the matcher (§5.2) and the coherence checks (§4.2, §5.2) read them and the identity algebra enforces invariants on them.
+
+Rule of thumb: *normalized/typed where invariants, identity, sync, or matching bind; JSONB for clinical bodies; FHIR only at the façade.*
 
 ---
 
@@ -213,7 +230,9 @@ The **reattribution event** — "event set E belongs to UUID-B, not UUID-A" — 
 
 ### 6.1 Mechanism
 - Transport-agnostic, resumable, delta-based protocol over HTTPS; optional store-and-forward via removable media ("sneakernet sync") for fully disconnected sites.
-- Built on **PostgreSQL logical replication / logical decoding** as the change-capture primitive, with an application-level sync service implementing scoping, filtering, conflict policy, and event-log semantics. Per §9, this safety-critical core is implemented in Rust and/or in-database, not a dynamic language. No hard dependency on third-party multi-master extensions (candidates to borrow from in §10).
+- **Build, don't adopt (resolves §11.1).** Built on **PostgreSQL logical decoding** as the change-capture primitive, with a **thin custom Rust sync service** implementing scoping, filtering, priority, and idempotent apply. The service **ships and applies events; it does not merge or resolve conflicts** — because the clinical log is append-only and immutable, syncing the source of truth is INSERT-only, idempotent (UUIDv7 PK), scoped **set-union**; there are no row-level clinical conflicts to resolve. The DB guarantees that "apply" is safe (§9.4); the daemon stays thin.
+  - **pgactive / SymmetricDS are references, not dependencies.** They exist to resolve *row-level* conflicts (last-writer-wins and similar) — a problem Cairn designed away — and their default policies can *violate* invariants (LWW on a demographic = silent data loss, forbidden by §4). Borrow their patterns (logical-decoding plumbing, store-and-forward / sneakernet) without a hard runtime dependency, honoring the vendor-independence mission.
+  - Per §9, this safety-critical service is Rust and/or in-database, never a dynamic language.
 - **Sync scopes** are declarative subscription predicates, evaluated at the parent, versioned, auditable.
 - Bandwidth discipline: compression, binary diffs, attachments synced lazily by reference with priority queues.
 - **Upstream priority order:** new clinical events and audit events first; identity events (link/repudiate/reattribute) high priority; attachments last.
@@ -278,6 +297,22 @@ With AI-assisted development, the binding constraint shifts from *authorship flu
 ### 9.3 Integration boundary
 Polyglot is expected ("horses for courses"). To avoid fragile coupling, **the language boundary is the database boundary**: each component talks to its node's PostgreSQL; Postgres is the integration substrate. (E.g. the Python matcher writes link-candidate events; the Rust/in-database core consumes them — loose coupling, no FFI.)
 
+### 9.4 Merge / projection boundary — fat Postgres, thin Rust daemon (resolves §11.11)
+The §9.1 safety bucket is divided concretely. Because every autonomous node runs full PostgreSQL (§2), in-database logic runs *everywhere* — so safety-critical merge/projection logic is placed where it is **unbypassable and reviewer-legible**: next to the data.
+
+**In Postgres** (constraints / PL-pgSQL / triggers — unbypassable, on every node incl. Pi):
+- **Append-only enforcement:** the application role is granted INSERT/SELECT only on event tables; a trigger raises on any UPDATE/DELETE as defense-in-depth.
+- **Idempotent apply:** `INSERT … ON CONFLICT (uuid) DO NOTHING` makes sync a clean set-union; a PK collision whose content hash differs is routed to the repair/quarantine queue, never silently merged (§3.2 backstop).
+- **Structural invariants:** HLC monotonicity / causal-ordering checks, the closed `event_type` enum, FK integrity.
+- **The identity event algebra** (deterministic application of link / unlink / reattribute / identify / repudiate / dispute, §5.7) and **all projections**: the chart projection (union of member-UUID event streams), the §3.3 mutable-list unions, the §4.2 demographic projection, the golden-identity connected-component (§5.1), the coherence check (§5.2, demotes to *under-review* on a §4.2 conflict), the chart trust states (§5.7), and the reattribution overlay (§5.5).
+- **Projections are trigger-maintained incremental tables** (`AFTER INSERT` only — the INSERT-only log means no update/delete maintenance path), **not** periodic `REFRESH MATERIALIZED VIEW`; this keeps per-write cost low on Pi-class hardware.
+
+**In Rust** (the thin sync daemon, §6.1 — *ships and applies, never decides*): logical-decoding consumer, scope-predicate evaluation, the §6.1 priority queue, resumable mTLS/HTTPS transport and store-and-forward, idempotent apply. **No merge logic.**
+
+**In Python** (advisory only, §5.2 / §10): the probabilistic matcher *proposes* link candidates by writing candidate events; it never decides. Authoritative application and projection are in-DB. The Python↔in-DB seam is exactly the §9.3 database boundary.
+
+**Per-projection Rust escape hatch:** default every projection to in-DB; relocate a *specific* projection to the Rust core **only on measured need** — the identity connected-component over a large link graph is the likeliest candidate if a recursive CTE proves too slow on Pi. The decision is criteria-gated (Pi performance, reviewer-legibility, bypassability), recorded per projection, not taken as an upfront blanket split. *(This bet — that in-DB projections stay cheap enough on Pi-class hardware to keep chart reads local and fast, the §1.2 paper-parity floor — is the load-bearing assumption; the first implementation spike is a Pi benchmark that validates or falsifies it.)*
+
 ---
 
 ## 10. Technology Candidates (all AGPL-3.0-compatible)
@@ -288,11 +323,11 @@ Selection governed by §9. "Substrate" reflects the §9.1 bucket; specific frame
 |---|---|---|---|---|
 | Database | PostgreSQL ≥ 18 | — (foundation) | PostgreSQL (permissive) | uuidv7(), async I/O, logical replication |
 | Change capture | Logical decoding (`pgoutput` / wal2json) | safety / in-database | PostgreSQL / BSD | Core primitive |
-| Sync / merge engine | (custom) | **safety → Rust or in-database** | — | Unattended, concurrent, safety-critical, constrained |
-| Identity algebra & projections | (custom) | **safety → Rust or in-database** | — | §5.7; exhaustive matching / DB constraints |
-| Multi-master reference | pgactive | safety | Apache-2.0 | Borrow patterns; evaluate vs. custom |
-| Heterogeneous sync reference | SymmetricDS | safety | GPL-3.0 | GPLv3↔AGPLv3 compatible |
-| Edge/in-browser store | PGlite | — | Apache-2.0 | Postgres-in-WASM for tablets/web |
+| Sync daemon (transport/scope/apply) | (custom) | **safety → Rust** | — | Thin; ships & applies, no merge logic (§6.1, §9.4) |
+| Identity algebra & projections | (custom) | **safety → in-database** (Rust escape hatch) | — | §5.7, §9.4; trigger-maintained projections; recursive-CTE component |
+| Multi-master reference | pgactive | reference only | Apache-2.0 | Borrow decoding patterns; **not** a dependency (§6.1) |
+| Heterogeneous sync reference | SymmetricDS | reference only | GPL-3.0 | Borrow store-and-forward/sneakernet patterns; not a dependency (§6.1) |
+| Thin-client store (optional) | PGlite | — | Apache-2.0 | Postgres-in-WASM for tablet/web *thin clients* only — transient buffering, **not** an autonomous edge node (§2) |
 | Read-path sync reference | ElectricSQL | — | Apache-2.0 | Shape-based partial replication patterns |
 | Record linkage / matcher | Splink + custom | **fit-for-purpose → Python** | MIT | Advisory; Fellegi–Sunter; ML ecosystem |
 | FHIR façade / interop | HAPI FHIR / fhir.resources | fit-for-purpose | Apache-2.0 / BSD | Interface, not merge core |
@@ -302,8 +337,10 @@ Selection governed by §9. "Substrate" reflects the §9.1 bucket; specific frame
 
 ## 11. Open Questions (next brainstorming targets)
 
-1. **Build vs. adapt the sync backbone:** custom logical-decoding service vs. pgactive/SymmetricDS core. Interacts with §11.11 (how much merge logic lives in-database thins the orchestrating daemon).
-2. **Storage model:** FHIR-native JSONB vs. normalized relational with FHIR façade (Pi-class performance vs. interop friction).
+*Resolved items are retained (struck-through label) for traceability; the resolution lives in the cited section.*
+
+1. ~~**Build vs. adapt the sync backbone.**~~ **RESOLVED (v0.6, §6.1):** build a thin custom Rust service on logical decoding; borrow pgactive/SymmetricDS patterns, do not depend on them.
+2. ~~**Storage model.**~~ **RESOLVED (v0.6, §3.5):** hybrid event envelope — typed envelope columns where invariants/identity/sync/matching bind; Cairn-native JSONB clinical bodies; FHIR is a façade only.
 3. **Dynamic sync scopes:** patient transferred ED→ICU mid-partition; who owns scope reassignment during a partition?
 4. **Schema migrations across a fleet of offline nodes:** version-skew tolerance window; forward-compatible event formats.
 5. **Tombstones & retention:** legal deletion (GDPR erasure) in an append-only, multi-copy system — interacts with repudiation/reattribution overlays.
@@ -312,7 +349,7 @@ Selection governed by §9. "Substrate" reflects the §9.1 bucket; specific frame
 8. **Visibility-scope semantics on links:** how scoped links interact with sync scopes (does a sequestered episode replicate to a node at all?).
 9. **Armed write-context interaction model:** concrete possession-semantics design (§5.8.4) that passes the paper-parity benchmark at ED pace — "picking up a chart" must cost ≤ its paper equivalent (~seconds, zero cognitive overhead) without degrading into reflexive click-through.
 10. **Notification economy:** contamination-cascade and history-arrival alerts (§5.4, §5.5) are safety-critical but additive; define a priority taxonomy so they don't drown in routine noise.
-11. **In-database vs. application-layer merge boundary:** which parts of merge/projection logic belong in PostgreSQL (constraints/PL-pgSQL, unbypassable) vs. an orchestrating Rust core (§9.1). Governs how thin the daemon can be.
+11. ~~**In-database vs. application-layer merge boundary.**~~ **RESOLVED (v0.6, §9.4):** structural invariants + identity event algebra + all projections in Postgres (trigger-maintained incremental tables); thin Rust daemon ships/applies but carries no merge logic; matcher stays Python-advisory; per-projection Rust escape hatch on measured Pi-performance need.
 12. **Authentication vs. paper-parity tension:** shared-workstation login is the largest parity violation in deployed EHRs (§1.2 vs. §7); adjudicate explicitly — fast/proximity sessions enabled by local-first state vs. security posture.
 
 ---

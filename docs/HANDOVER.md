@@ -13,9 +13,9 @@ The real project state lives in three documents. This handover points at them; i
 restate them. Intended repository layout:
 
 - **`docs/planning/`** — all planning / architecture documents.
-  - `ehr-sync-architecture-spec-v0.5.md` — current macroscopic architecture spec. The
-    **changelogs inside it record *why* each decision was made** — read them before
-    reopening any settled question.
+  - **`ehr-sync-architecture-spec-v0.6.md`** — current macroscopic architecture spec (was v0.5).
+    The **changelogs inside it record *why* each decision was made** — read them before
+    reopening any settled question. Each version supersedes the previous; work from the highest.
 - **`docs/principles/`** — all statements of project principle / governance.
   - `README.md` — mission, founding principles, eventual goal, project identity.
     *(README itself typically lives at repo root; a copy or canonical source may sit here.)*
@@ -25,21 +25,50 @@ Everything below is the stuff that lives *between* those documents and would oth
 
 ---
 
+## Resolved this session (now written into spec v0.6 — here for the trail)
+
+The **"Postgres-intelligence" cluster** (old §11.1 / §11.2 / §11.11) — the one entangled decision
+flagged in prior handovers — is **resolved** as a single architecture: **"Fat Postgres, thin Rust
+daemon."** Full detail is in spec v0.6 (changelog v0.5→v0.6, plus §2, §3.5, §6.1, §9.4). In brief:
+
+- **§11.2 storage (→ §3.5):** hybrid event envelope — typed/normalized columns where invariants,
+  identity, sync, and matching bind; **Cairn-native JSONB** for clinical bodies; **FHIR is a façade
+  only**, never the storage model.
+- **§11.11 merge boundary (→ §9.4):** structural invariants + the identity event algebra + **all
+  projections live in Postgres** (trigger-maintained incremental tables, `AFTER INSERT` only); the
+  Rust daemon ships/applies but **carries no merge logic**; the probabilistic matcher stays
+  **Python and advisory**. Per-projection Rust **escape hatch** on measured Pi-performance need.
+- **§11.1 sync backbone (→ §6.1):** **build** a thin custom Rust service on Postgres logical
+  decoding; **borrow** pgactive/SymmetricDS patterns, **do not depend** on them (their row-conflict
+  machinery solves a problem Cairn designed away and can violate §4 anti-data-loss policies).
+
+**Two enabling facts established in the session (also written into the spec):**
+1. **Tablets are thin clients**, not autonomous edge nodes → the smallest autonomous node is a
+   **Pi-class full Postgres ≥18**; in-database logic runs on every computing node. (Revised §2.)
+2. **FHIR is a skin, not a skeleton** — useful at the boundary, never the internal model; Cairn's
+   internal model is canonical (national-scale ambition). (Reflected in §3.4 / §3.5.)
+
+**The load-bearing bet to validate first when implementation begins:** that trigger-maintained
+in-DB projections + the identity algebra stay cheap enough on **Pi-class hardware** to keep chart
+reads local and fast (the §1.2 paper-parity floor). The designed first spike is a **Raspberry-Pi-5
+benchmark harness** (solo-practice and busy-ED event volumes; measure per-INSERT projection latency
+and chart-read latency; threshold = beat "grab the paper chart"). If it fails, the per-projection
+Rust escape hatch (§9.4) is the mitigation. *This spike is the go/no-go on the whole approach.*
+
+---
+
 ## Decided in conversation, NOT yet written into the documents
 
 These are real decisions that still need to be reflected in the canonical files:
 
-1. ~~**Project name is "Cairn."** The spec (v0.5) title block and headers still use a generic
-   name — update them to Cairn for consistency with the README and stewardship doc.~~
-   **DONE (2026-06-13):** Spec v0.5 H1 title block now reads "Cairn — Offline-Resilient Health
-   Record System — Macroscopic Architecture Spec." The name is **Cairn** (project), **cairn-ehr**
-   (repo / domains / namespaces). No other name collisions remain in the spec body.
-2. **Domains registered (Cloudflare):** `cairn-ehr.org` (canonical) and `cairn-ehr.com`
-   (defensive, redirect → `.org`). Reflected in STEWARDSHIP-OF-THE-NAME.md.
-3. **Status line:** README and spec both say "specification / architecture phase." Still
-   accurate today — flip when implementation begins.
-4. **Governance / CONTRIBUTING document** is identified as the next principles document to
+1. **Governance / CONTRIBUTING document** is identified as the next principles document to
    write, but does not exist yet. STEWARDSHIP-OF-THE-NAME.md is intended for inclusion in it.
+2. **Status line:** README and spec both say "specification / architecture phase." Still
+   accurate today — flip when implementation begins.
+
+*(Reference for context — already written: name is **Cairn** / repo **cairn-ehr**; domains
+`cairn-ehr.org` canonical + `cairn-ehr.com` defensive redirect, both registered, reflected in
+STEWARDSHIP-OF-THE-NAME.md.)*
 
 ---
 
@@ -53,26 +82,28 @@ These are real decisions that still need to be reflected in the canonical files:
 
 ## Open questions / where we'd pick up
 
-The spec's §11 lists twelve open questions. Two synthesis points from discussion that are
-**not** captured in the spec body and should guide what to tackle next:
+Spec §11 still lists the remaining open questions (1, 2 and 11 are now struck-through/resolved).
+The standing synthesis point not captured in the spec body:
 
-1. **The "how much intelligence lives inside Postgres" cluster.** Spec §11.1 (build vs. adapt
-   the sync backbone), §11.2 (storage model: FHIR-native JSONB vs. normalized relational), and
-   §11.11 (in-database vs. application-layer merge boundary) are **one entangled decision**, not
-   three independent ones — they all turn on the same axis. Best attacked as a single session.
-2. **Dynamic sync-scope handoff (§11.3)** — the patient transferred ED→ICU mid-partition; who
-   owns scope reassignment during a partition. This is the last genuinely unsolved
-   distributed-systems problem in the design, and it stands largely independent of the cluster
-   above — so it's a clean standalone session.
+- **Dynamic sync-scope handoff (§11.3)** — the patient transferred ED→ICU mid-partition; who
+  owns scope reassignment during a partition. This is the last genuinely unsolved
+  distributed-systems problem in the design, and it stands largely independent of the now-resolved
+  Postgres-intelligence cluster — so it's a clean standalone session.
 
 **The recurring menu** when resuming (pick one):
-- The Postgres-intelligence cluster (§11.1 / §11.2 / §11.11 together).
-- The dynamic sync-scope handoff (§11.3).
-- More clinical case-mining — the most productive mode so far: the user (an EM physician) brings
-  real failure modes from practice, and we test whether the existing primitives absorb them.
-  The event-overlay primitives (link / unlink / repudiate / reattribute / identify / dispute)
-  have absorbed every case raised so far without new architecture; continuing to stress-test
-  this is high-value.
+- The **dynamic sync-scope handoff (§11.3)** — the cleanest remaining hard problem.
+- **Write the GOVERNANCE / CONTRIBUTING document** (folding in STEWARDSHIP-OF-THE-NAME.md).
+- **Define the Pi-benchmark spike** in enough detail to be the first implementation task (it
+  validates the v0.6 architecture; see "Resolved this session" above).
+- More clinical **case-mining** — the most productive mode so far: the user (an EM physician)
+  brings real failure modes from practice, and we test whether the existing primitives absorb them.
+  The event-overlay primitives (link / unlink / repudiate / reattribute / identify / dispute) have
+  absorbed every case raised so far without new architecture; continuing to stress-test this is
+  high-value. *(Now also testable against the v0.6 in-DB algebra concretely.)*
+- Other still-open §11 items: schema migrations across offline nodes (§11.4), tombstones/GDPR
+  erasure in an append-only system (§11.5), attachment strategy (§11.6), locale-pluggable matcher
+  comparators (§11.7), visibility-scope ↔ sync-scope interaction (§11.8), armed write-context
+  model (§11.9), notification economy (§11.10), authentication vs. paper-parity (§11.12).
 
 ---
 
