@@ -9,6 +9,10 @@ copyright: >-
 
 docs_dir: docs
 
+# Local preview address. 8000/8080 are almost always taken (proxies, MLX servers, etc.),
+# so use a high, quiet port. Affects `mkdocs serve` only — not the built site.
+dev_addr: 127.0.0.1:8765
+
 # Disposable working scaffolding and AI tooling are not part of the published site.
 exclude_docs: |
   HANDOVER.md
