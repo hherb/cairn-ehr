@@ -1,0 +1,13 @@
+# MkDocs build output (generated HTML — never committed; CI/hosting builds it)
+/site/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# OS / editor cruft
+.DS_Store
+*.swp

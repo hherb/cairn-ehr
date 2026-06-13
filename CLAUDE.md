@@ -15,9 +15,19 @@ Do not invent build/test/run instructions; they don't exist until implementation
 1. **`docs/principles/`** — canonical statements of mission and governance. Highest authority.
    - `STEWARDSHIP-OF-THE-NAME.md` — the "name belongs to the mission" commitment.
    - The mission and founding principles also live in the root `README.md`.
-2. **`docs/planning/ehr-sync-architecture-spec-v0.5.md`** — the canonical architecture spec.
-   **Read its changelogs (top of file) before reopening any settled question** — they record
-   *why* each decision was made. Each version supersedes the previous; work from the highest.
+2. **`docs/spec/`** — the canonical architecture spec, **one file per aspect**, entry point
+   `docs/spec/index.md` (carries the mission prose + document map). Each aspect file keeps its
+   section numbering, so cross-references like *§5.7* stay valid inside `identity.md`.
+   - **`docs/spec/decisions/`** — the **ADR log**: the home of *why*. ADRs are numbered, dated, and
+     **immutable** (a reversal is a new superseding ADR, never an edit — the project's own "never
+     erase, always overlay"). **Read the relevant ADR before reopening any settled question.**
+   - The spec carries **no in-file changelogs and no filename version suffixes**; git is the line
+     history and the spec version is stated in `index.md`. Pre-ADR history (v0.1→v0.6 changelogs) is
+     preserved in `docs/spec/decisions/0000-pre-adr-changelog-v0.1-v0.6.md`.
+   - **HTML is generated, not hand-edited.** Source is Markdown; the site builds with
+     `uv run --with mkdocs-material --with mkdocs-callouts -- mkdocs build` (config: `mkdocs.yml`).
+     Author callouts in GitHub/Obsidian syntax (`> [!NOTE]`) so they render on GitHub *and* as
+     Material admonitions. Never commit the generated `site/` (gitignored).
 3. **`docs/HANDOVER.md`** — disposable working scaffolding, NOT a source of truth. It points at
    the canonical docs and captures decisions made in conversation but not yet written into them.
    **Regenerate it at the end of a working session.** If it disagrees with canonical docs, the
@@ -80,5 +90,7 @@ All components must be **AGPL-3.0-compatible**. The whole project is AGPL-3.0 �
   mandatory cloud, data sovereignty), the mission wins.
 - **Don't re-litigate parked decisions** (e.g. legal entity/jurisdiction, formal trademark
   registration) without new reason — see HANDOVER.md "Parked" section.
-- Spec §11 lists the open architecture questions; §11.1/§11.2/§11.11 are one entangled decision
-  ("how much intelligence lives inside Postgres"), best attacked together.
+- `docs/spec/open-questions.md` (§11) lists the open architecture questions. The
+  "how much intelligence lives inside Postgres" cluster (§11.1/§11.2/§11.11) is **resolved** —
+  *fat Postgres, thin Rust daemon* — see [ADR-0001](docs/spec/decisions/0001-fat-postgres-thin-daemon.md).
+  §11.3 (dynamic sync-scope handoff) is the cleanest remaining standalone problem.

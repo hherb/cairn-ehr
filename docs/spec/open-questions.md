@@ -1,0 +1,17 @@
+# 11. Open Questions (next brainstorming targets)
+
+*Numbering is stable (used as a reference identity elsewhere). Resolved items are kept
+struck-through; their resolution lives in the cited document and the linked ADR.*
+
+1. ~~**Build vs. adapt the sync backbone.**~~ **RESOLVED** ([ADR-0001](decisions/0001-fat-postgres-thin-daemon.md), [sync §6.1](sync.md#61-mechanism)): build a thin custom Rust service on logical decoding; borrow pgactive/SymmetricDS patterns, do not depend on them.
+2. ~~**Storage model.**~~ **RESOLVED** ([ADR-0001](decisions/0001-fat-postgres-thin-daemon.md), [data-model §3.5](data-model.md#35-event-storage-model-hybrid-envelope)): hybrid event envelope — typed envelope columns where invariants/identity/sync/matching bind; Cairn-native JSONB clinical bodies; FHIR is a façade only.
+3. **Dynamic sync scopes:** patient transferred ED→ICU mid-partition; who owns scope reassignment during a partition?
+4. **Schema migrations across a fleet of offline nodes:** version-skew tolerance window; forward-compatible event formats.
+5. **Tombstones & retention:** legal deletion (GDPR erasure) in an append-only, multi-copy system — interacts with repudiation/reattribution overlays.
+6. **Attachment strategy:** inline vs. content-addressed blob store with lazy sync.
+7. **Locale-pluggable matcher comparators:** define the extension point (comparator API, weight configuration, evaluation harness per deployment).
+8. **Visibility-scope semantics on links:** how scoped links interact with sync scopes (does a sequestered episode replicate to a node at all?).
+9. **Armed write-context interaction model:** concrete possession-semantics design ([§5.8](identity.md#58-registration-documentation-workflow-normative)) that passes the paper-parity benchmark at ED pace — "picking up a chart" must cost ≤ its paper equivalent (~seconds, zero cognitive overhead) without degrading into reflexive click-through.
+10. **Notification economy:** contamination-cascade and history-arrival alerts ([§5.4](identity.md#54-unidentified-registration-john-doe-baked-into-the-root), [§5.5](identity.md#55-reattribution-one-primitive-tiered-workflows)) are safety-critical but additive; define a priority taxonomy so they don't drown in routine noise.
+11. ~~**In-database vs. application-layer merge boundary.**~~ **RESOLVED** ([ADR-0001](decisions/0001-fat-postgres-thin-daemon.md), [language-substrate §9.4](language-substrate.md#94-merge-projection-boundary-fat-postgres-thin-rust-daemon)): structural invariants + identity event algebra + all projections in Postgres (trigger-maintained incremental tables); thin Rust daemon ships/applies but carries no merge logic; matcher stays Python-advisory; per-projection Rust escape hatch on measured Pi-performance need.
+12. **Authentication vs. paper-parity tension:** shared-workstation login is the largest parity violation in deployed EHRs ([§1.2](vision.md#12-the-paper-parity-test-normative) vs. [§7](security.md)); adjudicate explicitly — fast/proximity sessions enabled by local-first state vs. security posture.

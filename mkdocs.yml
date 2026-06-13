@@ -1,0 +1,76 @@
+site_name: Cairn
+site_description: >-
+  Cairn — an offline-first, vendor-independent electronic health record.
+  The grid goes down. The chart stays up.
+site_url: https://cairn-ehr.org
+copyright: >-
+  Cairn is free software under the AGPL-3.0. The name is stewarded for the mission —
+  see Stewardship of the Name.
+
+docs_dir: docs
+
+# Disposable working scaffolding and AI tooling are not part of the published site.
+exclude_docs: |
+  HANDOVER.md
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - toc.follow
+    - search.suggest
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+  # Renders GitHub/Obsidian-style "> [!NOTE]" callouts as Material admonitions,
+  # so the same source renders on GitHub *and* in this site.
+  - callouts
+
+nav:
+  - Home: spec/index.md
+  - Architecture:
+      - Vision & goals: spec/vision.md
+      - Topology: spec/topology.md
+      - Data model: spec/data-model.md
+      - Demographics: spec/demographics.md
+      - Identity subsystem: spec/identity.md
+      - Synchronisation: spec/sync.md
+      - Security & compliance: spec/security.md
+      - Deployment profiles: spec/deployment.md
+      - Language & substrate: spec/language-substrate.md
+      - Technology candidates: spec/technology.md
+      - Open questions: spec/open-questions.md
+  - Decisions (ADRs):
+      - spec/decisions/README.md
+      - ADR-0000 · Pre-ADR changelog: spec/decisions/0000-pre-adr-changelog-v0.1-v0.6.md
+      - ADR-0001 · Fat Postgres, thin daemon: spec/decisions/0001-fat-postgres-thin-daemon.md
+  - Principles:
+      - Stewardship of the name: principles/STEWARDSHIP-OF-THE-NAME.md

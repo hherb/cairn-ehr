@@ -1,0 +1,8 @@
+# Documentation site build dependencies (MkDocs → HTML).
+# Build:   pip install -r docs/requirements.txt && mkdocs build
+# Preview: mkdocs serve
+#
+# These are build tooling only — not runtime dependencies of Cairn — and are
+# permissively licensed (MkDocs: BSD, Material: MIT), so no AGPL/mission friction.
+mkdocs-material
+mkdocs-callouts

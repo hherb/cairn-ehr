@@ -9,17 +9,22 @@ the canonical documents win.
 
 ## Read these first (the durable state)
 
-The real project state lives in three documents. This handover points at them; it does not
-restate them. Intended repository layout:
+The real project state lives in these documents. This handover points at them; it does not
+restate them. Repository layout (restructured this session — see "Docs restructure" below):
 
-- **`docs/planning/`** — all planning / architecture documents.
-  - **`ehr-sync-architecture-spec-v0.6.md`** — current macroscopic architecture spec (was v0.5).
-    The **changelogs inside it record *why* each decision was made** — read them before
-    reopening any settled question. Each version supersedes the previous; work from the highest.
-- **`docs/principles/`** — all statements of project principle / governance.
-  - `README.md` — mission, founding principles, eventual goal, project identity.
-    *(README itself typically lives at repo root; a copy or canonical source may sit here.)*
+- **`docs/spec/`** — the canonical architecture spec, **one file per aspect**. Start at
+  **`docs/spec/index.md`** (mission prose + document map), then read aspect files / jump via the map.
+  - **`docs/spec/decisions/`** — the **ADR log**: the *why* behind settled decisions. Numbered,
+    dated, **immutable** (reversal = a new superseding ADR). **Read the relevant ADR before
+    reopening a settled question.** Pre-ADR history (v0.1→v0.6 changelogs) preserved in
+    `decisions/0000-pre-adr-changelog-v0.1-v0.6.md`.
+  - No filename version suffixes / in-file changelogs; git is the line history; spec version in
+    `index.md`. HTML is generated, not committed:
+    `uv run --with mkdocs-material --with mkdocs-callouts -- mkdocs build` (config `mkdocs.yml`).
+- **`docs/principles/`** — statements of project principle / governance.
   - `STEWARDSHIP-OF-THE-NAME.md` — the "name belongs to the mission" governance commitment.
+- Root **`README.md`** — mission, founding principles, eventual goal, project identity (GitHub
+  shopfront; the same mission prose also lives canonically in `docs/spec/index.md`).
 
 Everything below is the stuff that lives *between* those documents and would otherwise be lost.
 
@@ -27,9 +32,11 @@ Everything below is the stuff that lives *between* those documents and would oth
 
 ## Resolved this session (now written into spec v0.6 — here for the trail)
 
-The **"Postgres-intelligence" cluster** (old §11.1 / §11.2 / §11.11) — the one entangled decision
+The **"Postgres-intelligence" cluster** (§11.1 / §11.2 / §11.11) — the one entangled decision
 flagged in prior handovers — is **resolved** as a single architecture: **"Fat Postgres, thin Rust
-daemon."** Full detail is in spec v0.6 (changelog v0.5→v0.6, plus §2, §3.5, §6.1, §9.4). In brief:
+daemon."** Full rationale in **[ADR-0001](spec/decisions/0001-fat-postgres-thin-daemon.md)**;
+written into `spec/topology.md` (§2), `spec/data-model.md` (§3.5), `spec/sync.md` (§6.1),
+`spec/language-substrate.md` (§9.4). In brief:
 
 - **§11.2 storage (→ §3.5):** hybrid event envelope — typed/normalized columns where invariants,
   identity, sync, and matching bind; **Cairn-native JSONB** for clinical bodies; **FHIR is a façade
@@ -54,6 +61,18 @@ reads local and fast (the §1.2 paper-parity floor). The designed first spike is
 benchmark harness** (solo-practice and busy-ED event volumes; measure per-INSERT projection latency
 and chart-read latency; threshold = beat "grab the paper chart"). If it fails, the per-projection
 Rust escape hatch (§9.4) is the mitigation. *This spike is the go/no-go on the whole approach.*
+
+---
+
+## Docs restructure (this session)
+
+The spec was split from a single versioned file into **`docs/spec/`** (one file per aspect) + an
+**ADR log** (`docs/spec/decisions/`), with a Markdown→HTML pipeline (MkDocs Material; callouts
+authored in GitHub/Obsidian syntax). Conventions changed: **no filename versioning, no in-file
+changelogs** — git is the history, ADRs are the *why* (see updated `CLAUDE.md` and the new
+[layout](#read-these-first-the-durable-state) above). Build verified with `mkdocs build --strict`.
+**Still deferred (on the menu):** a polished non-developer landing page (frontend-design work), and
+optionally single-sourcing the mission prose between root `README.md` and `spec/index.md`.
 
 ---
 
@@ -94,7 +113,10 @@ The standing synthesis point not captured in the spec body:
 - The **dynamic sync-scope handoff (§11.3)** — the cleanest remaining hard problem.
 - **Write the GOVERNANCE / CONTRIBUTING document** (folding in STEWARDSHIP-OF-THE-NAME.md).
 - **Define the Pi-benchmark spike** in enough detail to be the first implementation task (it
-  validates the v0.6 architecture; see "Resolved this session" above).
+  validates the [ADR-0001](spec/decisions/0001-fat-postgres-thin-daemon.md) architecture; see
+  "Resolved this session" above).
+- **Polish a non-developer landing page** for the generated site (frontend-design work; the current
+  Home is the spec index).
 - More clinical **case-mining** — the most productive mode so far: the user (an EM physician)
   brings real failure modes from practice, and we test whether the existing primitives absorb them.
   The event-overlay primitives (link / unlink / repudiate / reattribute / identify / dispute) have
