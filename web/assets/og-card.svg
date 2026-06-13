@@ -1,0 +1,11 @@
+<svg viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="630" fill="#F4F1E9"/>
+  <g transform="translate(540,120)">
+    <ellipse cx="60" cy="116" rx="52" ry="20" fill="#1E3A52"/>
+    <ellipse cx="60" cy="80" rx="42" ry="17" fill="#8B9398"/>
+    <path d="M20 52 C20 24 100 24 100 52 C100 70 80 78 60 78 C40 78 20 70 20 52 Z" fill="#2F6E62"/>
+  </g>
+  <text x="600" y="430" text-anchor="middle" font-family="Inter, Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#262A2C">The grid goes down. The chart stays up.</text>
+  <text x="600" y="492" text-anchor="middle" font-family="Inter, Helvetica, Arial, sans-serif" font-size="26" fill="#434B4E">Offline-first, vendor-independent electronic health record</text>
+  <text x="600" y="556" text-anchor="middle" font-family="Inter, Helvetica, Arial, sans-serif" font-size="20" letter-spacing="2" fill="#5E6663">CAIRN-EHR.ORG · AGPL-3.0</text>
+</svg>

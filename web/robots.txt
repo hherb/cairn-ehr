@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://cairn-ehr.org/sitemap.xml

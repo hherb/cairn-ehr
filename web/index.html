@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cairn — offline-first, vendor-independent electronic health record</title>
+  <meta name="description" content="Cairn — an offline-first, vendor-independent electronic health record. The grid goes down. The chart stays up.">
+  <meta name="theme-color" content="#F4F1E9">
+  <link rel="canonical" href="https://cairn-ehr.org/">
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Cairn — the grid goes down, the chart stays up">
+  <meta property="og:description" content="An offline-first, vendor-independent electronic health record.">
+  <meta property="og:url" content="https://cairn-ehr.org/">
+  <meta property="og:image" content="https://cairn-ehr.org/assets/og-card.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Cairn — the grid goes down, the chart stays up">
+  <meta name="twitter:description" content="An offline-first, vendor-independent electronic health record.">
+  <meta name="twitter:image" content="https://cairn-ehr.org/assets/og-card.png">
+  <link rel="stylesheet" href="/styles.css">
+  <noscript><style>@media (max-width: 720px) { .site-nav { display: flex !important; position: static; flex-direction: row; flex-wrap: wrap; gap: 16px; padding: 0 0 12px; border: 0; } .nav-toggle { display: none; } }</style></noscript>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="/" aria-label="Cairn home">
+        <img class="brand-mark" src="/assets/logo.svg" alt="" width="28" height="33">
+        <span class="brand-word">CAIRN</span>
+      </a>
+      <button class="nav-toggle" aria-expanded="false" aria-controls="nav" aria-label="Menu">&#9776;</button>
+      <nav id="nav" class="site-nav" aria-label="Primary">
+        <a href="#mission">Mission</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#principles">Principles</a>
+        <a href="https://docs.cairn-ehr.org">Docs</a>
+        <a class="nav-cta" href="https://github.com/hherb/cairn-ehr">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+
+    <section class="hero">
+      <div class="wrap hero-inner">
+        <img class="hero-mark" src="/assets/logo.svg" alt="" width="96" height="112">
+        <h1>The grid goes down.<br>The chart stays up.</h1>
+        <p class="lede">An offline-first, vendor-independent electronic health record. It keeps working through any outage, runs anywhere from a Raspberry&nbsp;Pi to a hospital cluster, and belongs to no vendor.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="https://docs.cairn-ehr.org">Read the specification</a>
+          <a class="btn btn-secondary" href="https://github.com/hherb/cairn-ehr">View on GitHub</a>
+        </div>
+        <p class="status-line">Architecture &amp; specification phase &nbsp;·&nbsp; AGPL-3.0 &nbsp;·&nbsp; PostgreSQL&nbsp;≥&nbsp;18</p>
+      </div>
+    </section>
+
+    <section class="band-why" aria-labelledby="why-h">
+      <div class="wrap">
+        <h2 class="eyebrow eyebrow-light" id="why-h">Why this exists</h2>
+        <p class="why-statement">There is no vendor in the room. Nothing here is incentivised to keep the hard problems hard — so one thing drives every decision: <em>what actually happens at the point of care, including at 3&nbsp;a.m. when the network is down.</em></p>
+      </div>
+    </section>
+
+    <section class="section" id="mission" aria-labelledby="mission-h">
+      <div class="wrap">
+        <h2 class="eyebrow center" id="mission-h">The mission</h2>
+        <div class="card-grid">
+          <article class="card">
+            <svg class="card-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>
+            <h3>Keeps working through any outage</h3>
+            <p>Read and write continues during a network partition; synchronisation catches up when connectivity returns.</p>
+          </article>
+          <article class="card">
+            <svg class="card-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+            <h3>Runs anywhere, for anyone</h3>
+            <p>One codebase from a solar-powered clinic to a national network — scaled by configuration, not forks.</p>
+          </article>
+          <article class="card">
+            <svg class="card-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 7.5-2"/></svg>
+            <h3>Belongs to no one but its users</h3>
+            <p>AGPL-3.0 throughout, commodity hardware, open standards. No proprietary dependency and no lock-in at any layer.</p>
+          </article>
+          <article class="card">
+            <svg class="card-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            <h3>Respects the clinician's time</h3>
+            <p>No workflow may be slower, harder, or more error-prone than its paper-record equivalent.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-tint" id="principles" aria-labelledby="principles-h">
+      <div class="wrap">
+        <h2 class="eyebrow center" id="principles-h">Founding principles</h2>
+        <ol class="principles">
+          <li><strong>Availability over consistency.</strong> A clinician can always read locally-relevant records and write new data during a partition.</li>
+          <li><strong>Paper-parity is the governing law.</strong> No workflow may lose to its paper equivalent in time, steps, or cognitive load.</li>
+          <li><strong>The clinical record is append-only.</strong> Immutable signed events; corrections reference originals; sync becomes a safe set-union.</li>
+          <li><strong>Identity is a claim, never a fact.</strong> Never merge — always link; never erase — always overlay. Every error is repairable with a full audit trail.</li>
+          <li><strong>One system, every scale.</strong> The same software runs from workstation to nation; a node's role is configuration, not a different product.</li>
+          <li><strong>Vendor independence is non-negotiable.</strong> AGPL-3.0, open standards, commodity hardware. No mandatory cloud, no license keys.</li>
+          <li><strong>Safety-critical logic is unbreakable and auditable.</strong> Built where whole classes of error are unrepresentable, optimised for reviewer-legibility.</li>
+        </ol>
+        <p class="center"><a href="https://docs.cairn-ehr.org/principles/STEWARDSHIP-OF-THE-NAME/">Read the principles in full →</a></p>
+      </div>
+    </section>
+
+    <section class="section" id="architecture" aria-labelledby="arch-h">
+      <div class="wrap">
+        <h2 class="eyebrow center" id="arch-h">Design at a glance</h2>
+        <dl class="glance">
+          <div><dt>Resilience</dt><dd>Offline-first; every node is write-capable; syncs to its parent when able; degrades to a single standalone workstation.</dd></div>
+          <div><dt>Synchronisation</dt><dd>Append-only event log + causal ordering (hybrid logical clocks); merge becomes set-union plus a small set of clinically-reasoned policies.</dd></div>
+          <div><dt>Identity</dt><dd>A linkage layer over immortal patient IDs; deterministic + probabilistic matching; link / unlink / reattribute / repudiate as auditable events.</dd></div>
+          <div><dt>Topology</dt><dd>Fractal: workstation → department → facility → region → nation, one codebase.</dd></div>
+          <div><dt>Foundation</dt><dd>PostgreSQL ≥ 18; commodity hardware down to Raspberry-Pi class; standard Linux.</dd></div>
+          <div><dt>Interoperability</dt><dd>FHIR as the interface, not a lock-in.</dd></div>
+          <div><dt>Licensing</dt><dd>AGPL-3.0 end to end.</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="section section-tint" aria-labelledby="name-h">
+      <div class="wrap name-block">
+        <h2 class="eyebrow center" id="name-h">The name</h2>
+        <p class="name-prose">A cairn is a hand-built stack of stones that marks the safe path — needing no power, no network, no infrastructure, standing alone in the wilderness and still doing its job. Cairns are built by accretion, each traveller adding a permanent stone; they are decentralised, raised by many hands across a landscape; and they are found in nearly every culture on earth. So is this system meant to be.</p>
+      </div>
+    </section>
+
+    <section class="band-contribute" aria-labelledby="contribute-h">
+      <div class="wrap">
+        <h2 id="contribute-h">Built by accretion. Raised by many hands.</h2>
+        <p>For the people who have to use these systems and the people who have to keep them running. Clinical realism is valued as highly as code — a well-described failure mode from the front line is a genuine contribution.</p>
+        <a class="btn btn-teal" href="https://github.com/hherb/cairn-ehr">Get involved</a>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <span>© Cairn · AGPL-3.0</span>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="https://docs.cairn-ehr.org">Specification</a>
+        <a href="https://github.com/hherb/cairn-ehr">GitHub</a>
+        <a href="https://docs.cairn-ehr.org/principles/STEWARDSHIP-OF-THE-NAME/">The name is stewarded for the mission</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script>
+    const t = document.querySelector('.nav-toggle');
+    const n = document.getElementById('nav');
+    t.addEventListener('click', () => {
+      const open = n.classList.toggle('open');
+      t.setAttribute('aria-expanded', String(open));
+    });
+  </script>
+</body>
+</html>
