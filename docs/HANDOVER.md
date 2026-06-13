@@ -29,8 +29,11 @@ Everything below is the stuff that lives *between* those documents and would oth
 
 These are real decisions that still need to be reflected in the canonical files:
 
-1. **Project name is "Cairn."** The spec (v0.5) title block and headers still use a generic
-   name — update them to Cairn for consistency with the README and stewardship doc.
+1. ~~**Project name is "Cairn."** The spec (v0.5) title block and headers still use a generic
+   name — update them to Cairn for consistency with the README and stewardship doc.~~
+   **DONE (2026-06-13):** Spec v0.5 H1 title block now reads "Cairn — Offline-Resilient Health
+   Record System — Macroscopic Architecture Spec." The name is **Cairn** (project), **cairn-ehr**
+   (repo / domains / namespaces). No other name collisions remain in the spec body.
 2. **Domains registered (Cloudflare):** `cairn-ehr.org` (canonical) and `cairn-ehr.com`
    (defensive, redirect → `.org`). Reflected in STEWARDSHIP-OF-THE-NAME.md.
 3. **Status line:** README and spec both say "specification / architecture phase." Still

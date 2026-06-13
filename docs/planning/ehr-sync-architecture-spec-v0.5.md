@@ -1,4 +1,4 @@
-# Offline-Resilient Health Record System — Macroscopic Architecture Spec
+# Cairn — Offline-Resilient Health Record System — Macroscopic Architecture Spec
 
 **Status:** Draft v0.5 — replaces language fixation with a language-selection principle (was v0.4)
 **License target:** AGPL-3.0 (all components must be AGPL-3.0-compatible)
