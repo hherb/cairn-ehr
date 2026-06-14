@@ -1,0 +1,13 @@
+# Per-machine two-machine config (holds a shared secret + this host's identity).
+# The committed template is demo.env.example.
+demo.env
+
+# The throwaway clusters live in ~/.cairn-replication-demo by default, outside
+# the repo. But if CAIRN_DEMO_HOME is pointed in here, never commit runtime state.
+.local/
+*.log
+# Python / uv
+.venv/
+__pycache__/
+*.pyc
+uv.lock

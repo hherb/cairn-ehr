@@ -1,0 +1,28 @@
+[project]
+name = "cairn-demo"
+version = "0.1.0"
+description = "Cairn EHR — offline-first replication & failover proof-of-concept"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "psycopg[binary]>=3.2",
+    "rich>=13.7",
+    "typer>=0.12",
+]
+
+[project.scripts]
+cairn-demo = "cairn_demo.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cairn_demo"]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
