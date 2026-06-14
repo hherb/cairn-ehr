@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v8
+      - uses: astral-sh/setup-uv@v8.2.0
       - name: Build site
         run: uv run --with-requirements docs/requirements.txt -- mkdocs build
       - uses: actions/upload-pages-artifact@v5
