@@ -7,5 +7,5 @@ vendor-independent electronic health record. The project is currently in its
 architecture / specification phase — **there is no release yet.**
 
 - Homepage: <https://cairn-ehr.org>
-- Source: <https://github.com/hherb/cairn-ehr>
+- Source: <https://github.com/cairn-ehr/cairn-ehr>
 - License: AGPL-3.0-only

@@ -4,7 +4,7 @@ This is a reserved-name placeholder. The project is in its architecture /
 specification phase and has no release yet.
 
     Homepage:   https://cairn-ehr.org
-    Repository: https://github.com/hherb/cairn-ehr
+    Repository: https://github.com/cairn-ehr/cairn-ehr
 """
 
 __version__ = "0.0.0"

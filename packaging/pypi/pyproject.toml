@@ -15,7 +15,7 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://cairn-ehr.org"
-Repository = "https://github.com/hherb/cairn-ehr"
+Repository = "https://github.com/cairn-ehr/cairn-ehr"
 
 [build-system]
 requires = ["hatchling"]

@@ -4,6 +4,6 @@
 // architecture / specification phase and has no release yet.
 //
 //   Homepage:   https://cairn-ehr.org
-//   Repository: https://github.com/hherb/cairn-ehr
+//   Repository: https://github.com/cairn-ehr/cairn-ehr
 
 module.exports = { version: "0.0.0" };

@@ -4,7 +4,7 @@
 //! architecture / specification phase and has no release yet.
 //!
 //! - Homepage:   <https://cairn-ehr.org>
-//! - Repository: <https://github.com/hherb/cairn-ehr>
+//! - Repository: <https://github.com/cairn-ehr/cairn-ehr>
 
 /// Crate version, mirroring `Cargo.toml`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

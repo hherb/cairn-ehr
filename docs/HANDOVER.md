@@ -134,9 +134,11 @@ STEWARDSHIP-OF-THE-NAME.md.)*
   (v0.0.0, AGPL-3.0-only) **published** to PyPI, crates.io, and npm (`@cairn-ehr` scope). The bare
   name `cairn` was already taken on all three, so `cairn-ehr` is the canonical package name across
   the board. Stub sources live in `packaging/` (publish steps in `packaging/README.md`). Domains
-  (`cairn-ehr.org`/`.com`) and GitHub (`hherb/cairn`, `hherb/cairn-ehr`) already held.
-  *Still open:* a GitHub **organization** (vs. the personal `hherb/` namespace) if/when governance
-  moves the repos under an org.
+  (`cairn-ehr.org`/`.com`) held. **GitHub `cairn-ehr` organization created and both repos
+  transferred into it** (`cairn-ehr/cairn-ehr`, `cairn-ehr/cairn`) — the personal `hherb/…` URLs
+  now redirect. Package manifests + landing page point at the org path. The org belongs to a
+  personal account for now; moving it under a stewarding legal entity is the parked governance
+  question.
 
 ---
 

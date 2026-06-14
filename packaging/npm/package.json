@@ -6,7 +6,7 @@
   "homepage": "https://cairn-ehr.org",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/hherb/cairn-ehr.git"
+    "url": "git+https://github.com/cairn-ehr/cairn-ehr.git"
   },
   "keywords": ["ehr", "healthcare", "offline-first", "postgres"],
   "main": "index.js",
