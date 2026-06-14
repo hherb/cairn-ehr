@@ -1,0 +1,67 @@
+/* Cairn docs theme — paper + stone, matching the landing page (cairn-ehr.org).
+   Self-hosted fonts (no Google Fonts), warm paper canvas, navy + teal accents. */
+
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 400; font-display: swap; src: url("../assets/fonts/inter-400.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 500; font-display: swap; src: url("../assets/fonts/inter-500.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 700; font-display: swap; src: url("../assets/fonts/inter-700.woff2") format("woff2"); }
+@font-face { font-family: "Source Serif 4"; font-style: normal; font-weight: 400; font-display: swap; src: url("../assets/fonts/source-serif-4-400.woff2") format("woff2"); }
+@font-face { font-family: "Source Serif 4"; font-style: italic; font-weight: 400; font-display: swap; src: url("../assets/fonts/source-serif-4-400-italic.woff2") format("woff2"); }
+
+:root {
+  --md-text-font: "Inter";
+  --md-code-font: "SFMono-Regular", "Consolas", "Liberation Mono", monospace;
+}
+
+/* ---- Light scheme: warm paper + stone ---- */
+[data-md-color-scheme="default"] {
+  --md-default-bg-color: #F4F1E9;
+  --md-default-fg-color: #262A2C;
+  --md-default-fg-color--light: #4A5358;
+  --md-default-fg-color--lighter: rgba(38, 42, 44, 0.42);
+  --md-default-fg-color--lightest: rgba(38, 42, 44, 0.10);
+
+  --md-typeset-color: #262A2C;
+  --md-typeset-a-color: #2F6E62;            /* teal links */
+
+  /* Header + footer: paper header with ink text (like the landing nav) */
+  --md-primary-fg-color: #F4F1E9;
+  --md-primary-fg-color--light: #F4F1E9;
+  --md-primary-fg-color--dark: #EFEBE1;
+  --md-primary-bg-color: #262A2C;
+  --md-primary-bg-color--light: #4A5358;
+
+  --md-accent-fg-color: #1E3A52;            /* navy on hover */
+
+  --md-code-bg-color: #EBE7DD;
+  --md-code-fg-color: #2A2E30;
+
+  --md-footer-bg-color: #1E3A52;            /* navy footer */
+  --md-footer-bg-color--dark: #16314a;
+  --md-footer-fg-color: #EAF0F4;
+}
+
+/* Hairline under the paper header instead of the default heavy shadow */
+[data-md-color-scheme="default"] .md-header {
+  border-bottom: 1px solid rgba(30, 58, 82, 0.12);
+  box-shadow: none;
+}
+[data-md-color-scheme="default"] .md-tabs { border-bottom: 1px solid rgba(30, 58, 82, 0.12); }
+
+/* Headings: navy h1/h2 for a touch of the stone palette */
+.md-typeset h1 { color: #1E3A52; font-weight: 700; letter-spacing: -0.3px; }
+.md-typeset h2 { color: #1E3A52; font-weight: 600; }
+
+/* Blockquotes / admonition prose read nicely in the serif accent */
+.md-typeset blockquote { font-family: "Source Serif 4", Georgia, serif; }
+
+/* Keep the stone mark crisp and a sensible size in the header */
+.md-header__button.md-logo img { height: 1.7rem; width: auto; }
+
+/* ---- Dark scheme: keep Material slate, recolour accents to teal ---- */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #16314a;
+  --md-primary-bg-color: #DCE4EA;
+  --md-accent-fg-color: #5DCAA5;
+  --md-typeset-a-color: #7FD1BC;
+  --md-footer-bg-color: #14222f;
+}
