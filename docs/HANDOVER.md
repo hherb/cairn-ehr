@@ -130,9 +130,13 @@ STEWARDSHIP-OF-THE-NAME.md.)*
 
 ## Time-sensitive (do soon, before squatters do)
 
-- **Reserve the project namespaces defensively** while the name is fresh: GitHub organization,
-  and package registries (PyPI / crates / npm). Same logic as the domains — parking them now
-  is trivial; reclaiming them later is painful.
+- **Package-registry namespaces — DONE (2026-06-14).** `cairn-ehr` reserved-name placeholders
+  (v0.0.0, AGPL-3.0-only) **published** to PyPI, crates.io, and npm (`@cairn-ehr` scope). The bare
+  name `cairn` was already taken on all three, so `cairn-ehr` is the canonical package name across
+  the board. Stub sources live in `packaging/` (publish steps in `packaging/README.md`). Domains
+  (`cairn-ehr.org`/`.com`) and GitHub (`hherb/cairn`, `hherb/cairn-ehr`) already held.
+  *Still open:* a GitHub **organization** (vs. the personal `hherb/` namespace) if/when governance
+  moves the repos under an org.
 
 ---
 
