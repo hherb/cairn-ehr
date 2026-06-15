@@ -1,6 +1,6 @@
 # HANDOVER — Cairn
 
-**Session date:** 2026-06-15 (spec bumped to **v0.13**)
+**Session date:** 2026-06-15 (spec bumped to **v0.14**)
 **Status of this file:** Working scaffolding, not a source of truth. Disposable — regenerate
 at the end of each working session. If this file ever disagrees with the canonical documents,
 the canonical documents win.
@@ -27,6 +27,49 @@ restate them. Repository layout:
   shopfront; the same mission prose also lives canonically in `docs/spec/index.md`).
 
 Everything below is the stuff that lives *between* those documents and would otherwise be lost.
+
+---
+
+## Resolved 2026-06-15 — actor registry / AI-agent identity (now spec v0.14)
+
+Closed the next ADR-0007 follow-on: the **AI-agent identity registry** (registration, keying,
+version-pinning, key custody). → [ADR-0011](spec/decisions/0011-actor-registry-version-pinning-and-key-custody.md)
+(refines 0007), canonical home **[security §7.5](spec/security.md)**, invariants [data-model §3.12](spec/data-model.md),
+with a recall-marker note in [identity §5.10](spec/identity.md).
+
+- **General actor registry** (human/device/AI, AI the forcing case) — the user's call, with the foresight
+  that "the boundaries will increasingly blur and the type of actor will matter less," so `kind` is a
+  **de-emphasizable discriminator**, not a separate subsystem.
+- **Immutable, version-pinned identity over a closed actor-event algebra** (`enroll/supersede/revoke/
+  suspend/rotate-key`) — the §5.7 patient-identity-algebra shape applied to actors. A version bump = a new
+  UUID + `supersede` link; compromise = `revoke` overlay (with compromise-time). *Never merge/erase, always
+  link/overlay*, now for non-human actors. Forced by recall-traceability (mutating v2.3→v2.4 in place
+  destroys "which events did the defective v2.3 author?").
+- **The user's sharp refinement — identity granularity tracks objectively-recordable behavioral
+  determinants.** The AI tuple expands beyond model+version+vendor+node to the **declared inference/decoding
+  config** (temperature, top-p/k, sampling, system-prompt/template, tool/RAG config) — because under current
+  tech these *distinguishably* shape output and consistency. The deep principle (the user's): humans vary too
+  (mood, fatigue) but there is **no objective criterion** to split "happy Dr X" from "sleep-deprived Dr X,"
+  so they stay one identity — **granularity is bounded by what's objectively recordable** (the same
+  epistemics as t_recorded vs t_effective; fabricating a split violates principle 4). Identity-explosion
+  avoided by pinning the *standing* config to the identity and stamping *per-invocation* variance on the
+  event (objective-vs-asserted split again); both queryable for recall.
+- **Enrolment: binding mandatory, output-responsibility policy** (the user's call). An audited, signed
+  ceremony (mirrors node provisioning/mTLS) that **must record a named responsible human** — the
+  introduction-accountability backstop that **completes ADR-0010's conservation chain** (even a fully
+  un-owned AI output traces to a human who decided the agent may write here); ongoing per-output
+  responsibility stays separable/policy (ADR-0007).
+- **Key custody un-conflated — opposite lifecycles:** **signing publics are immortal** (verify history
+  forever; `revoke` = distrust-new-after-T, never can't-verify-old), **DEKs are destroyable** (ADR-0005
+  keystore). Private AI signing key node-bound trusted-base; a stolen key forges *origin* not
+  *responsibility* (signature ≠ attestation), bounded by un-vouched-by-default + revocation + recall.
+- **A model recall reuses the contamination-cascade primitive** (§5.5/§5.12): select by agent-UUID (+ the
+  queryable per-event config), re-surface for review, overlay a §5.10 recall trust marker — **never erase.**
+  Structurally identical to a misfiled-note cascade.
+- **Blast-radius (§9):** registry projection + actor-event algebra + signature verification are
+  safety-critical (in-DB, beside the §5.7 identity algebra); the **agent runtime** is fit-for-purpose (output
+  additive/advisory by default, ADR-0010); the runtime→signing/registry **seam** is the one safety-critical
+  path (the recurring seam motif). **No new founding principle.**
 
 ---
 
@@ -331,27 +374,23 @@ keystore cost / key granularity for crypto-shredding — see ADR-0005.)**
 ## Open questions / where we'd pick up
 
 Spec §11: items 1, 2, 3, **5**, **8**, **9**, **10**, 11, and **12** now struck-through/resolved, and the
-ADR-0007 deferred **additive-vs-suppressing** follow-on is now closed too ([ADR-0010](spec/decisions/0010-additive-vs-suppressing-classification.md)).
-Remaining architecture open questions are **§11.4** (schema migration across offline nodes), **§11.6**
-(attachment strategy), and **§11.7** (locale-pluggable matcher comparators) — none as sharp as the clusters
-already closed. The remaining ADR-0007 follow-ons are smaller (closed role-enum membership; the AI-agent
-identity registry + key custody — a trusted-base/blast-radius concern; proxy/liability semantics, out of
-scope). The most *generative* mode is now continued **clinical case-mining**, or one of the build-prep
-threads below.
+ADR-0007 deferred **additive-vs-suppressing** ([ADR-0010](spec/decisions/0010-additive-vs-suppressing-classification.md))
+and **AI-agent identity registry** ([ADR-0011](spec/decisions/0011-actor-registry-version-pinning-and-key-custody.md))
+follow-ons are closed too. Remaining architecture open questions are **§11.4** (schema migration across
+offline nodes), **§11.6** (attachment strategy), and **§11.7** (locale-pluggable matcher comparators) —
+none as sharp as the clusters already closed. The only ADR-0007 follow-ons still open are small (closed
+role-enum membership finalisation; proxy/liability semantics, out of scope — Cairn records the chain). The
+most *generative* mode is now continued **clinical case-mining**, or one of the build-prep threads below.
 
 **The recurring menu** when resuming (pick one):
-- **AI-agent identity registry** (the next-sharpest ADR-0007 follow-on) — registration, keying,
-  version-pinning, key custody for non-human actors; relation to the §9 trusted base and the keystore. A
-  safety-critical / blast-radius concern, now more pointed after ADR-0010 gave AI triage a first-class
-  authored-event role (`{AI, triaged}`).
+- More clinical **case-mining** — the most productive mode so far (the event-overlay + key-custody + actor
+  primitives have absorbed every case raised without new architecture). The AI-authorship arc (ADR-0007 →
+  0009 → 0010 → 0011) is now complete, so fresh clinical cases are the highest-signal next input.
 - **Write the GOVERNANCE / CONTRIBUTING document** (folding in STEWARDSHIP-OF-THE-NAME.md).
 - **Define the Pi-benchmark spike** in enough detail to be the first implementation task (now validates
   both the ADR-0001 projection cost *and* the ADR-0005 keystore/crypto-shred cost).
 - **Polish a non-developer landing page** for the generated site (frontend-design work; draft plans
   already exist under `docs/superpowers/`).
-- More clinical **case-mining** — the most productive mode so far: the event-overlay + key-custody
-  primitives have absorbed every case raised without new architecture; continuing to stress-test is
-  high-value.
 - Other still-open §11 items: schema migrations across offline nodes (§11.4), attachment strategy
   (§11.6), locale-pluggable matcher comparators (§11.7).
 
@@ -389,3 +428,6 @@ threads below.
   paper-parity, acknowledged uncertainty, append-only, accountability, and policy-neutral infrastructure.
   ADR-0010 (additive-vs-suppressing) is a *refinement* of principle 10, not a new principle — its core
   identity (additive ≡ overlay, suppressing ≡ foreclosure) is principle 1 applied to the attention layer.
+  ADR-0011 (actor registry) likewise adds none — version-pinned immutable actor identity is principle 2
+  (never merge/erase, always link/overlay) applied to non-human actors, and identity-granularity-tracks-
+  what's-objectively-recordable is principle 4 applied to the actor model.

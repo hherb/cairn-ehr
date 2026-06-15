@@ -127,7 +127,9 @@ The **reattribution event** — "event set E belongs to UUID-B, not UUID-A" — 
    (*confirmed / unconfirmed / under-review*, the projection-side contract above). Un-vouched AI content
    can render visually distinct, or be held out of certain auto-derived projections until vouched — still
    never a hard block. *"No human vouches for this yet"* is **acknowledged uncertainty** (principle 4):
-   distinct from *wrong*, from *not-yet-reviewed*, and from *refused*.
+   distinct from *wrong*, from *not-yet-reviewed*, and from *refused*. The same projection carries a
+   **recall marker** when an event's authoring agent was later superseded or revoked (*"authored by a model
+   version since found defective"*, [security §7.5](security.md#75-the-actor-registry-enrollment-version-pinning-and-key-custody)) — overlaid, never erased.
 
 3. **Expressible policy rung.** *"Un-vouched suppressing AI output must be attested before it takes
    effect"* is an *available* policy, never mandatory — tied to the additive-vs-suppressing distinction
