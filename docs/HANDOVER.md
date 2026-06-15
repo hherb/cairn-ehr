@@ -1,6 +1,6 @@
 # HANDOVER — Cairn
 
-**Session date:** 2026-06-15 (spec bumped to **v0.11**)
+**Session date:** 2026-06-15 (spec bumped to **v0.12**)
 **Status of this file:** Working scaffolding, not a source of truth. Disposable — regenerate
 at the end of each working session. If this file ever disagrees with the canonical documents,
 the canonical documents win.
@@ -27,6 +27,50 @@ restate them. Repository layout:
   shopfront; the same mission prose also lives canonically in `docs/spec/index.md`).
 
 Everything below is the stuff that lives *between* those documents and would otherwise be lost.
+
+---
+
+## Resolved 2026-06-15 — §11.10 notification economy (now spec v0.12)
+
+Case-mined **§11.10** (notification priority taxonomy). It dissolved into existing primitives with
+**no new founding principle and no new event stream** — same trajectory as §5.11. → [ADR-0009](spec/decisions/0009-notification-economy-salience-routing-and-the-acknowledgment-floor.md),
+canonical home **[identity §5.12](spec/identity.md)**, invariants [data-model §3.11](spec/data-model.md),
+with [security §7.4](spec/security.md), [sync §6.2](spec/sync.md), [vision §1.2](spec/vision.md).
+
+- **"Priority" is one word hiding orthogonal dials** (the recurring *scope/signature/authentication*
+  motif a 4th time). Dials: **salience × ack-requirement × addressing × modality × escalation.** The
+  load-bearing split is **salience ≠ interruptiveness** — a standing fact (allergy) is *ambient*, only an
+  urgent *transition* is interruptive (once). Alert fatigue **is** confirmation-dialog click-through
+  (§5.11) generalised; the mechanism of fatigue is collapsing the dials into one popup-defaulted scale.
+- **A notification is a projection, not a mailbox** — a *delta* over the log against the clinician's own
+  audit history (view/act, already recorded). The inbox is a query; **acknowledgment is an append-only
+  audit event** (single explicit human confirm; the user's call), **never auto-satisfied** for the
+  hard-ack class (auto-ack = silent falsification). No new stream.
+- **Noise reduction IS suppression IS accountable** (ties §11.10 straight into ADR-0007 — the bridge to
+  the still-open *additive-vs-suppressing* follow-on). **Demotion/coalescing/digest = additive** (free);
+  **filtering-out / auto-ack / below-threshold-hiding = suppressing** (owned, audited, policy-gated).
+- **The user's routing ruling (load-bearing):** the locum reality is that the orderer has usually *left*
+  before the result lands; many sites have no follow-up policy, remote sites run informally. So the
+  **co-equal inbox is infrastructure; policy does prioritisation.** Responsibility-to-follow-up is a
+  **graded, multi-source, append-only tag overlay** (orderer intrinsic + always telephone-prioritised;
+  policy adds fallbacks; **timeout-reassignment** when the present responsible doctor is busy; *multiple*
+  holders at once) → effective responsible set is a projection (same shape as §5.9 sensitivity / §5.1
+  link graph). **Single co-equal inbox, not a single exclusive owner.**
+- **Safety floor — routing is NEVER a visibility gate (the user's clincher case):** the *"orderer must
+  release before anyone sees it"* policy has caused missed critical results. It is expressible as **ambient
+  state only**; the architecture **refuses to enforce withholding** from a present clinician. Consumer-side
+  mirror of ADR-0006's *"replication is never the confidentiality boundary"*: routing decides who *owns
+  acting/acknowledging*, never who may *see*. New incoming results are **always** visible to whoever opened
+  the patient.
+- **Other floors:** escalation ladder never dead-ends (severity-ladder motif a 4th time → bottoms in the
+  §5.11 current care-context holder); filtering changes modality, **never extinguishes** a hard-ack class
+  (mirror of §5.9 *"blurs, never extinguishes"*); partition-honest inbox (no false *"all caught up"* —
+  §6.2 honest-assembly for alerts); **mostly-pull, selectively-push** is the paper-parity default (paper
+  = pull + critical-value callback + allergy sticker; everything-push is a parity *regression*).
+- **Blast-radius (§9):** floor enforcement (hard-ack un-filterable; present-clinician never blind;
+  escalation fires) is safety-critical (in-DB/Rust); advisory salience-ranking + digest UI are
+  fit-for-purpose; the filter→floor **seam** is the one safety-critical path (like the §5.9 seal-time and
+  §5.11 proximity→stamp seams).
 
 ---
 
@@ -250,16 +294,19 @@ keystore cost / key granularity for crypto-shredding — see ADR-0005.)**
 
 ## Open questions / where we'd pick up
 
-Spec §11: items 1, 2, 3, **5**, **8**, **9**, 11, and **12** now struck-through/resolved. Remaining
-architecture open questions are **§11.4** (schema migration across offline nodes), **§11.6** (attachment
-strategy), **§11.7** (locale-pluggable matcher comparators), and **§11.10** (notification economy). No
-single one is as sharp as the possession/identity cluster just closed; the most *generative* threads are
-now the ADR-0007 deferred follow-on (**additive-vs-suppressing classification** — "the sharpest of the
-follow-ons," may warrant its own session) and continued **clinical case-mining**.
+Spec §11: items 1, 2, 3, **5**, **8**, **9**, **10**, 11, and **12** now struck-through/resolved.
+Remaining architecture open questions are **§11.4** (schema migration across offline nodes), **§11.6**
+(attachment strategy), and **§11.7** (locale-pluggable matcher comparators). None is as sharp as the
+clusters already closed; the most *generative* thread is now the ADR-0007 (and now ADR-0009) deferred
+follow-on **additive-vs-suppressing classification** — §11.10 just made it operationally load-bearing
+(noise reduction *is* suppression), so it is riper than ever and may warrant its own session — alongside
+continued **clinical case-mining**.
 
 **The recurring menu** when resuming (pick one):
-- **Additive-vs-suppressing classification** (ADR-0007 follow-on) — author-declared vs. output-type-derived,
-  and how it's validated/enforced where policy demands. The sharpest of the AI-authorship follow-ons.
+- **Additive-vs-suppressing classification** (ADR-0007 + now ADR-0009 follow-on) — author-declared vs.
+  output-type-derived, and how it's validated/enforced where policy demands. The sharpest of the
+  follow-ons, now *operationally* load-bearing: §11.10 established that noise-reduction is a suppressing
+  output, so the demotion-vs-suppression boundary needs the same classification as AI output.
 - **Write the GOVERNANCE / CONTRIBUTING document** (folding in STEWARDSHIP-OF-THE-NAME.md).
 - **Define the Pi-benchmark spike** in enough detail to be the first implementation task (now validates
   both the ADR-0001 projection cost *and* the ADR-0005 keystore/crypto-shred cost).
@@ -269,7 +316,7 @@ follow-ons," may warrant its own session) and continued **clinical case-mining**
   primitives have absorbed every case raised without new architecture; continuing to stress-test is
   high-value.
 - Other still-open §11 items: schema migrations across offline nodes (§11.4), attachment strategy
-  (§11.6), locale-pluggable matcher comparators (§11.7), notification economy (§11.10).
+  (§11.6), locale-pluggable matcher comparators (§11.7).
 
 ---
 
@@ -299,4 +346,7 @@ follow-ons," may warrant its own session) and continued **clinical case-mining**
   Rust/DB, **(9) policy-neutral infrastructure** (mechanism, never policy), and **(10) authorship is
   compositional, accountability is separable**. Note: the §5.11 point-of-care work added **no** new
   founding principle — its three operational principles (never-wait / always-a-fallback / never-redo-work)
-  are corollaries of paper-parity, availability, append-only, and identity-repair.
+  are corollaries of paper-parity, availability, append-only, and identity-repair. The §5.12 notification
+  economy likewise added none — its rulings (salience ≠ interruptiveness; notification-as-projection;
+  noise-reduction-is-accountable-suppression; routing-is-never-a-visibility-gate) are corollaries of
+  paper-parity, acknowledged uncertainty, append-only, accountability, and policy-neutral infrastructure.

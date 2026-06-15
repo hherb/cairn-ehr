@@ -29,6 +29,7 @@ was made — the context, the choice, and its consequences. Aspect documents in
 | [0006](0006-visibility-scope-replication-and-the-safety-projection.md) | Visibility-scope vs. sync-scope: replication is not the confidentiality boundary; the safety projection and graded sensitivity | Accepted | 2026-06-14 |
 | [0007](0007-authorship-and-accountability.md) | Authorship is compositional; accountability is separable | Accepted | 2026-06-15 |
 | [0008](0008-point-of-care-identity-possession-and-salvage.md) | Point-of-care identity: possession binding, fast authentication, and work-salvage | Accepted | 2026-06-15 |
+| [0009](0009-notification-economy-salience-routing-and-the-acknowledgment-floor.md) | The notification economy: unbundling priority, responsibility-routing, and the acknowledgment floor | Accepted | 2026-06-15 |
 
 ## Template
 
