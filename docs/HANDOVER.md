@@ -1,6 +1,6 @@
 # HANDOVER — Cairn
 
-**Session date:** 2026-06-15 (spec bumped to **v0.15**)
+**Session date:** 2026-06-15 (spec bumped to **v0.16**)
 **Status of this file:** Working scaffolding, not a source of truth. Disposable — regenerate
 at the end of each working session. If this file ever disagrees with the canonical documents,
 the canonical documents win.
@@ -27,6 +27,53 @@ restate them. Repository layout:
   shopfront; the same mission prose also lives canonically in `docs/spec/index.md`).
 
 Everything below is the stuff that lives *between* those documents and would otherwise be lost.
+
+---
+
+## Resolved 2026-06-15 — §11.6 attachment strategy (now spec v0.16)
+
+Case-mined **§11.6** (inline vs. content-addressed blob store with lazy sync). It dissolved into existing
+primitives with **no new founding principle** — same trajectory as §11.8/§11.9/§11.10 — forcing only one
+day-one envelope reserve and one ladder-axis generalization. → [ADR-0013](spec/decisions/0013-attachments-content-addressed-lazy-blob-tier.md),
+canonical homes **[data-model §3.14](spec/data-model.md)** (attachment-reference shape + rendition set) and
+**[sync §6.6](spec/sync.md)** (the lazy byte tier), with back-pointers from [§3.8](spec/data-model.md)/[§3.13](spec/data-model.md)
+and the §6.1 priority bullets.
+
+- **Content-addressed by reference, never inlined — principle 1 applied to large binaries.** The content digest
+  is to a blob what the signature is to an event body (same bytes → same address → idempotent set-union, zero
+  merge). The event body names each attachment *by digest* and the **event signature covers that digest**, so a
+  blob carries no separate signature and **self-verifies against any source**. Tiny blobs may inline below a
+  node-tuned threshold; both forms expressible day one.
+- **Reference-eager, byte-lazy + the availability floor (the user's load-bearing case).** The reference rides the
+  eager event plane; bytes follow on a **separate, resource-isolated byte tier**. The user's Kimberley/*Communicare*
+  case — a nightly bulk-imaging sync that ground the whole system to a halt so emergencies could retrieve **no**
+  record at all (and recurred even in the degenerate single-server/thin-client topology) — sharpened the ruling:
+  **priority ordering is insufficient**; an in-flight gigabyte head-of-line-blocks. So byte transfer is
+  **chunked, preemptible, separately budgeted** (the user's "better async"), and the floor is an *availability*
+  one: **blob transfer must never reduce clinical-data availability** (availability + paper-parity applied to the
+  transport).
+- **Byte-replication is opt-in and separately scoped (the user's second requirement).** §6.4's prefetch-hint
+  applied to bytes, but the **blob predicate is a separate, much narrower thing** than event-scope: references
+  everywhere, **bytes by election**; a resource-starved node is **references-only, fetch-on-demand** (it need not
+  store every PACS blob). Content-addressing → **multi-source, self-verifying, resumable swarm fetch** (LAN
+  sibling / parent / patient-carried device, zero trust in source — sneakernet generalized to binaries).
+- **The rendition set is the binary's legibility twin** (resolves the §3.13 "how do you twin a CT's pixels?"
+  tension — *you don't*; the twin is the coded/descriptor fields, the lightweight rendition is the blob's twin).
+  Adds a **retrievability** axis to the §3.13 ladder: **effective rendering = `min(retrievable, parseable,
+  cleared)`** (present / pending / shredded). *Coarseness varies; existence never disappears* — the floor invariant
+  generalized once more.
+- **Erasure + lossless passthrough inherit unchanged:** per-blob DEK → crypto-shreddable like the §3.5 body slot
+  (GC ≠ erasure; **no convergent encryption** for sealed blobs — confirmation-attack leak); bytes are **never
+  transcoded in place** (would break embedded signatures + change the hash) — a preview is a *new* rendition added.
+  DICOM/WADO/XDS is a **façade**, never the store (§3.4 FHIR posture).
+- **The four forks the user ruled on (all agreed):** (1) no convergent encryption for sealed blobs; (2) yes, a
+  small-blob inline path; (3) blob store is the **sync plane's lazy tier, not a third plane** (it's content — no
+  code, no RCE); (4) the day-one reference fields locked (self-describing digest w/ algorithm agility · seal/DEK-wrap
+  indicator · clear-text descriptor · rendition set · inline distinction).
+- **Blast-radius (§9):** digest-binding-in-signed-event + seal/DEK-wrap + crypto-shred + **content-verification on
+  fetch** (a wrong-hash blob must never be served as the named one) are safety-critical; store/transfer/dedup/GC +
+  all viewers are fit-for-purpose; the **fetch-verify seam** (bytes-in → hash-check → serve) is the one
+  safety-critical path (the content-addressing analogue of the §3.13 write-time twin seam).
 
 ---
 
@@ -429,8 +476,9 @@ keystore cost / key granularity for crypto-shredding — see ADR-0005.)**
 Spec §11: items 1, 2, 3, **4**, **5**, **8**, **9**, **10**, 11, and **12** now struck-through/resolved, and the
 ADR-0007 deferred **additive-vs-suppressing** ([ADR-0010](spec/decisions/0010-additive-vs-suppressing-classification.md))
 and **AI-agent identity registry** ([ADR-0011](spec/decisions/0011-actor-registry-version-pinning-and-key-custody.md))
-follow-ons are closed too. Remaining architecture open questions are just **§11.6** (attachment strategy) and
-**§11.7** (locale-pluggable matcher comparators) — neither as sharp as the clusters already closed. The only
+follow-ons are closed too. With **§11.6** (attachment strategy) now closed ([ADR-0013](spec/decisions/0013-attachments-content-addressed-lazy-blob-tier.md)),
+the **only** remaining architecture open question is **§11.7** (locale-pluggable matcher comparators) — less
+sharp than the clusters already closed. The only
 ADR-0007 follow-ons still open are small (closed role-enum membership finalisation; proxy/liability semantics,
 out of scope — Cairn records the chain). The most *generative* mode is now continued **clinical case-mining**,
 or one of the build-prep threads below.
@@ -444,7 +492,7 @@ or one of the build-prep threads below.
   both the ADR-0001 projection cost *and* the ADR-0005 keystore/crypto-shred cost).
 - **Polish a non-developer landing page** for the generated site (frontend-design work; draft plans
   already exist under `docs/superpowers/`).
-- Other still-open §11 items: attachment strategy (§11.6), locale-pluggable matcher comparators (§11.7).
+- The last still-open §11 item: locale-pluggable matcher comparators (§11.7).
 
 ---
 

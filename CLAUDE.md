@@ -82,8 +82,20 @@ fleet): evolution is routed through **two planes** — clinical events sync forw
 executable code), while code/DDL/pgrx extensions travel a **separate signed, per-architecture,
 sneakernet-capable distribution plane**; the schema/extension version is a *local node property*, so there
 is no lockstep fleet upgrade ([ADR-0012](docs/spec/decisions/0012-schema-evolution-event-format-and-legibility-across-time.md),
-spec §3.13 / §6.5 / §7.6). Remaining open §11 items: **§11.6** (attachment strategy) and **§11.7**
-(locale-pluggable matcher comparators).
+spec §3.13 / §6.5 / §7.6).
+
+**§11.6 (attachment strategy) is resolved** — attachments are **content-addressed blobs referenced by the signed
+event, never inlined** (append-only applied to large binaries; the digest is to a blob what the signature is to a
+body). The **reference is eager, the bytes are lazy** on a **resource-isolated byte tier** that can never starve
+clinical sync (the availability floor, *chunked/preemptible/separately-budgeted, not merely priority-ordered* —
+motivated by a real nightly-imaging-sync-grinds-everything-to-a-halt failure); **byte-replication is opt-in and
+separately scoped** (references everywhere, bytes by election; starved node = references-only, fetch-on-demand);
+content-addressing gives **self-verifying multi-source swarm fetch**. The **rendition set** is the binary's
+legibility twin, adding a **retrievability** axis to the §3.13 ladder (`min(retrievable, parseable, cleared)`);
+erasure (per-blob DEK crypto-shred) and lossless passthrough inherit. The one can't-retrofit piece is the
+**day-one attachment-reference shape**. No new founding principle
+([ADR-0013](docs/spec/decisions/0013-attachments-content-addressed-lazy-blob-tier.md), spec §3.14 / §6.6). The
+**only** remaining open §11 item is **§11.7** (locale-pluggable matcher comparators).
 
 ## When implementation begins: language/substrate selection rule
 
