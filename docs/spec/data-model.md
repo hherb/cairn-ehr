@@ -146,6 +146,29 @@ The full ladder, the deniable-deletion design (the institution holds nothing; th
   property**; whether an *un-owned suppressing* output is permitted is **policy** (principle 9), and an
   override toward permitting it is itself an explicit, audited, owned configuration act.
 
+- **Classifying additive vs suppressing — derived, not declared** ([ADR-0010](decisions/0010-additive-vs-suppressing-classification.md),
+  refining the property above). The classification is **structural**, never a producer-set flag (a
+  self-declared *"I am additive"* is exactly the flag this model rejects). **Additive ≡ overlay**
+  (adds a layer the human still sees and can act on; source-preserving, always-overridable, monotone) —
+  the append-only principle ([§3.1](#31-append-only-clinical-event-log-source-of-truth)) applied to the
+  attention/decision layer. **Suppressing ≡ foreclosure** (removes, hides, defers, auto-acknowledges,
+  auto-files, auto-resolves). The falsifiable test: *could a human still independently see and act on
+  everything they would have without this output?* — yes → additive, no → suppressing.
+- **Demotion is additive; only hiding or auto-deciding is suppressing.** Lowering the priority of a signal
+  (the flood of objectively-normal results) is additive — it still reaches the human ([identity §5.12](identity.md#512-the-notification-economy-salience-responsibility-routing-and-the-acknowledgment-floor)); the line is crossed only at hide-to-nothing or auto-action. The **suppressing operations are a closed,
+  enumerated set** (the merge-policy discipline of principle 1 — auto-acknowledge, auto-resolve, auto-file,
+  filter-hide, below-threshold-suppress, auto-substitute, auto-decline); additive is the open complement
+  and the default, curated with a **suppressing-until-proven-additive** review discipline. **Enforcement is
+  structural:** the trusted apply layer refuses a suppressing-class operation lacking a responsible owner —
+  an un-owned producer is confined to the additive vocabulary by construction, the same shape as the
+  [§5.5](identity.md#55-reattribution-one-primitive-tiered-workflows) Tier-1 bar and the [identity §5.12](identity.md#512-the-notification-economy-salience-responsibility-routing-and-the-acknowledgment-floor) never-withhold floor.
+- **Conservation of responsibility; declaration is a one-way caution ratchet.** Suppression is never truly
+  un-owned — accountability sits at the event, or (where policy permits an un-owned suppression class) at the
+  explicit audited configuration act that permitted it; policy *relocates* the owner, never abolishes it.
+  Author/deployer declaration may only ratchet an output **toward** needing an owner (a formally-additive but
+  practically-relied-upon triage marked "treat as suppressing"), **never away** — the handle for *de-facto*
+  suppression (automation complacency), whose consumer-side detection is [identity §5.10](identity.md#510-authorship-and-responsibility-state-the-consumer-side).
+
 - **Lifecycle rides existing lineage.** Responsibility that attaches *over time* — an AI fires a draft
   now (`{AI, drafted}`, un-vouched); a human vouches later — is a **new event referencing the draft**
   (`{human, attested, responsibility: human}`), exactly how signatures, addenda, and corrections already

@@ -30,8 +30,6 @@ is unaffected — it concerns priority/noise, not authorship.
   is to be finalised in `data-model.md` (`dictated`, `reviewed`, `co-signed` are candidates).
 - **AI-agent identity registry** — registration, keying, version-pinning, and key custody for non-human
   actors; relation to the §9 trusted base and the keystore (a safety-critical / blast-radius concern).
-- **Additive-vs-suppressing classification** — author-declared, output-type-derived, or both; and how it
-  is validated/enforced where policy demands. The sharpest of the follow-ons; may warrant its own
-  case-mining session.
+- ~~**Additive-vs-suppressing classification**~~ — **RESOLVED** ([ADR-0010](decisions/0010-additive-vs-suppressing-classification.md), [data-model §3.9](data-model.md#39-authorship-and-accountability), [identity §5.10](identity.md#510-authorship-and-responsibility-state-the-consumer-side)/[§5.12](identity.md#512-the-notification-economy-salience-responsibility-routing-and-the-acknowledgment-floor)): **structurally derived, not declared** — additive ≡ overlay, suppressing ≡ foreclosure (the append-only principle applied to the attention layer); the test is *"could a human still independently see and act on everything?"*. **Demotion is additive, only hiding/auto-deciding is suppressing** (a closed enumerated set); enforcement is a structural in-DB owner-gate; **responsibility is conserved** (relocated to the audited config act, never abolished); **declaration is a one-way caution ratchet** (the de-facto-suppression handle). Triage is a salience-scoring extension point (trend rules + AI oversight; mechanism, not policy), and **automation-complacency atrophy is detected** as an additive governance signal.
 - **Proxy/liability semantics** — what `on_behalf_of` legally binds is out of scope; Cairn records the
   chain, jurisdictions interpret it.

@@ -1,6 +1,6 @@
 # HANDOVER — Cairn
 
-**Session date:** 2026-06-15 (spec bumped to **v0.12**)
+**Session date:** 2026-06-15 (spec bumped to **v0.13**)
 **Status of this file:** Working scaffolding, not a source of truth. Disposable — regenerate
 at the end of each working session. If this file ever disagrees with the canonical documents,
 the canonical documents win.
@@ -27,6 +27,42 @@ restate them. Repository layout:
   shopfront; the same mission prose also lives canonically in `docs/spec/index.md`).
 
 Everything below is the stuff that lives *between* those documents and would otherwise be lost.
+
+---
+
+## Resolved 2026-06-15 — additive-vs-suppressing classification (now spec v0.13)
+
+Closed the **sharpest ADR-0007/0009 deferred follow-on**: *how* an output's additive-vs-suppressing
+nature is classified, validated, and enforced. → [ADR-0010](spec/decisions/0010-additive-vs-suppressing-classification.md)
+(refines 0007), canonical home **[data-model §3.9](spec/data-model.md)**, with [identity §5.10](spec/identity.md)
+(atrophy detection) and [§5.12](spec/identity.md) (the triage seam).
+
+- **Derived, not declared — additive ≡ overlay, suppressing ≡ foreclosure.** The **append-only principle
+  (1) applied to the attention/decision layer.** A self-declared "I'm additive" is the banned flag. Test:
+  *could a human still independently see and act on everything they would have without this output?*
+- **The user's reframe (load-bearing): suppression is often *desirable*** (drowning in thousands of
+  objectively-normal results). Resolved by the §5.12 line: **demotion (priority-lowering) is additive**
+  (still reaches the human) and is the primary, safe, un-owned noise tool; **only hide-to-nothing /
+  auto-decide is suppressing.** The dangerous tail is a **closed enumerated set** (merge-policy discipline)
+  behind a **structural in-DB owner-gate**; additive is the default, curated suppressing-until-proven-additive.
+- **Conservation of responsibility:** un-owned suppression is a contradiction — accountability sits at the
+  event, or (policy-permitted class) at the explicit audited config act that permitted it. Policy relocates
+  the owner, never abolishes it (same shape as ADR-0005 deniable-rung, ADR-0008 sign-as).
+- **Declaration is a one-way caution ratchet** (answer to "declared vs derived vs both"): derived sets the
+  floor; a responsible human may declare a formally-additive output *more* suppressing, never less — the
+  handle for **de-facto suppression** (automation complacency).
+- **Triage = a salience-scoring extension point (mechanism, not policy — the user's recurring insistence):**
+  trend-aware rule classifier (eGFR 90→70→30 = ALERT; 30→35→38 = TREND IMPROVING — trend beats instantaneous
+  value) + optional AI oversight (meds/history/consults for context), wired to the §5.12 salience dial. Its
+  output is an additive `{rule-classifier | AI, graded | triaged}` event — the §3.9 contributory roles built
+  for exactly this; safe un-owned because additive.
+- **Automation-complacency atrophy detection — BUILT NOW (user's call):** an **additive governance meta-signal**
+  computed from the audit/ack streams when independent human review of a class collapses to ~0 (humans only
+  ack the AI, never assess first) → *"the automated layer for X is now a single point of failure."* Additive
+  (safe un-owned, self-consistent), population/governance-facing (mostly-pull), honest only at volume.
+- **Blast-radius (§9):** the closed suppressing set + owner-gate + demotion-can't-silently-become-hide floor
+  are safety-critical (in-DB/Rust); the salience classifier and atrophy detector are fit-for-purpose; the
+  classifier→floor **seam** is the one safety-critical path (the recurring seam motif).
 
 ---
 
@@ -294,19 +330,20 @@ keystore cost / key granularity for crypto-shredding — see ADR-0005.)**
 
 ## Open questions / where we'd pick up
 
-Spec §11: items 1, 2, 3, **5**, **8**, **9**, **10**, 11, and **12** now struck-through/resolved.
+Spec §11: items 1, 2, 3, **5**, **8**, **9**, **10**, 11, and **12** now struck-through/resolved, and the
+ADR-0007 deferred **additive-vs-suppressing** follow-on is now closed too ([ADR-0010](spec/decisions/0010-additive-vs-suppressing-classification.md)).
 Remaining architecture open questions are **§11.4** (schema migration across offline nodes), **§11.6**
-(attachment strategy), and **§11.7** (locale-pluggable matcher comparators). None is as sharp as the
-clusters already closed; the most *generative* thread is now the ADR-0007 (and now ADR-0009) deferred
-follow-on **additive-vs-suppressing classification** — §11.10 just made it operationally load-bearing
-(noise reduction *is* suppression), so it is riper than ever and may warrant its own session — alongside
-continued **clinical case-mining**.
+(attachment strategy), and **§11.7** (locale-pluggable matcher comparators) — none as sharp as the clusters
+already closed. The remaining ADR-0007 follow-ons are smaller (closed role-enum membership; the AI-agent
+identity registry + key custody — a trusted-base/blast-radius concern; proxy/liability semantics, out of
+scope). The most *generative* mode is now continued **clinical case-mining**, or one of the build-prep
+threads below.
 
 **The recurring menu** when resuming (pick one):
-- **Additive-vs-suppressing classification** (ADR-0007 + now ADR-0009 follow-on) — author-declared vs.
-  output-type-derived, and how it's validated/enforced where policy demands. The sharpest of the
-  follow-ons, now *operationally* load-bearing: §11.10 established that noise-reduction is a suppressing
-  output, so the demotion-vs-suppression boundary needs the same classification as AI output.
+- **AI-agent identity registry** (the next-sharpest ADR-0007 follow-on) — registration, keying,
+  version-pinning, key custody for non-human actors; relation to the §9 trusted base and the keystore. A
+  safety-critical / blast-radius concern, now more pointed after ADR-0010 gave AI triage a first-class
+  authored-event role (`{AI, triaged}`).
 - **Write the GOVERNANCE / CONTRIBUTING document** (folding in STEWARDSHIP-OF-THE-NAME.md).
 - **Define the Pi-benchmark spike** in enough detail to be the first implementation task (now validates
   both the ADR-0001 projection cost *and* the ADR-0005 keystore/crypto-shred cost).
@@ -350,3 +387,5 @@ continued **clinical case-mining**.
   economy likewise added none — its rulings (salience ≠ interruptiveness; notification-as-projection;
   noise-reduction-is-accountable-suppression; routing-is-never-a-visibility-gate) are corollaries of
   paper-parity, acknowledged uncertainty, append-only, accountability, and policy-neutral infrastructure.
+  ADR-0010 (additive-vs-suppressing) is a *refinement* of principle 10, not a new principle — its core
+  identity (additive ≡ overlay, suppressing ≡ foreclosure) is principle 1 applied to the attention layer.

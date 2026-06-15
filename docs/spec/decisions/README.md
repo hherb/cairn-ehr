@@ -30,6 +30,7 @@ was made — the context, the choice, and its consequences. Aspect documents in
 | [0007](0007-authorship-and-accountability.md) | Authorship is compositional; accountability is separable | Accepted | 2026-06-15 |
 | [0008](0008-point-of-care-identity-possession-and-salvage.md) | Point-of-care identity: possession binding, fast authentication, and work-salvage | Accepted | 2026-06-15 |
 | [0009](0009-notification-economy-salience-routing-and-the-acknowledgment-floor.md) | The notification economy: unbundling priority, responsibility-routing, and the acknowledgment floor | Accepted | 2026-06-15 |
+| [0010](0010-additive-vs-suppressing-classification.md) | Additive-vs-suppressing classification: structural derivation, the demotion boundary, and automation-complacency detection | Accepted (refines 0007) | 2026-06-15 |
 
 ## Template
 
