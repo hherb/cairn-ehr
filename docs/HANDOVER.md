@@ -116,11 +116,24 @@ field-readiness session's predicted fix was right: **bind `--listen` to the Wire
   (`/usr/lib/postgresql/18/bin/pg_ctl -D ~/cairn-pg -o "-p 5444 ..." start`). All user-local, nothing
   system-wide.
 
-- **Next:** **ratify the §4 primitives into the serialization/signature/digest ADR** (Spike 0001 §7.1 — Bet A
-  passing is the trigger; optionally wait for Bet B's ARM Ed25519/BLAKE3 throughput before fixing the §4.4
-  blob-digest default). **Bet B on a Pi-5-class node next week** (§6): `patient_chart` trigger path,
-  chart-read latency, keystore cost, ARM crypto throughput. Also worth doing for the byte tier: §8.2's
-  pipelined/resumable fetch.
+- **§4 primitives ratified 2026-06-16 → [ADR-0015](spec/decisions/0015-event-serialization-signatures-and-content-addressing.md)**
+  (spec v0.18). Fixes the three structural moves (sign-the-stored-bytes / algorithm-tagged digests+sigs /
+  re-attestation-as-overlay) + the day-one defaults: **deterministic-CBOR COSE_Sign1 + Ed25519 + SHA-256**
+  events, **BLAKE3 blobs (held *provisional* pending Bet B's ARM throughput number)**, FROST earmarked for
+  steward keys. Cites the Bet A evidence (A2 zero verify-fails, A5 ~494 B/event, A1 content-address
+  convergence). Back-pointers added from data-model §3.5/§3.14; no new founding principle.
+- **Bet B harness — BUILT + green 2026-06-16** (`poc/walking-skeleton/harness/bench_b.py`, stdlib-only,
+  release-binary required). Daemon grew `bench-insert` (B1 maintained-write latency), `chart` (B2 full chart
+  assembly from projection + plaintext twins), `bench` (B3/B4 pure-CPU crypto: Ed25519, SHA-256-vs-BLAKE3,
+  DEK-wrap/body-seal — `chacha20poly1305` added). Validated on the container (x86, *not* a Pi): **B1 stays
+  flat — p95 ~4 ms, growth ×1.15 across an 8× log-size jump** (the ADR-0001 bet); B2 chart read ~4 ms p95
+  over 342 notes; B4 **BLAKE3 6279 vs SHA-256 1489 MB/s → BLAKE3 faster, ADR-0015 provisional blob-digest
+  default holds** (x86 with SHA-NI; the *real* check is the Pi/ARM number). Prints the ADR-0002 mitigation
+  ladder on a miss. `cargo test`/`clippy` green.
+- **Next:** run `bench_b.py selftest` **on a Pi-5-class node** (the only place the numbers are real) — that
+  ARM SHA-256-vs-BLAKE3 number is the one input that could revisit ADR-0015's provisional blob-digest line.
+  Then the byte-tier **throughput** work (§8.2: pipelined/windowed + resumable/swarm fetch — the availability
+  fix shipped in #9; this is the throughput fix).
 
 ### Field-readiness 2026-06-16 (PR #7 merged to main; this work is post-merge on the branch)
 

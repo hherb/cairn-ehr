@@ -1,7 +1,9 @@
 # Spike 0001 — Walking Skeleton, WAN-Sync Validation, and Pi Cost
 
 - **Status:** Bet A **PASS** (run 2026-06-16 over the Cape York ↔ Dorrigo WireGuard link — see §8; the run also
-  surfaced and fixed a real availability-floor bug in the field `run` loop, §8.1); Bet B (Pi) pending
+  surfaced and fixed a real availability-floor bug in the field `run` loop, §8.1) → **§4 primitives ratified as
+  [ADR-0015](../spec/decisions/0015-event-serialization-signatures-and-content-addressing.md)** (blob-digest
+  line provisional pending Bet B); Bet B (Pi) pending
 - **Date:** 2026-06-16
 - **Validates:** [ADR-0001](../spec/decisions/0001-fat-postgres-thin-daemon.md) (projection cost on weak
   hardware), the [§6.2](../spec/sync.md#62-consistency-model) set-union convergence claim under a *real*

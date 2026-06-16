@@ -201,6 +201,51 @@ pub fn plaintext_twin(body: &EventBody) -> String {
     )
 }
 
+/// Bet B (B4) — Ed25519 sign/verify throughput, ops/s. Pure CPU; the number that
+/// matters on ARM (a Pi), where the safety-critical verify gate must keep up with
+/// sync + chart reads.
+pub fn bench_sign_verify(iters: u32) -> (f64, f64) {
+    use ed25519_dalek::{Signer, Verifier};
+    let sk = SigningKey::from_bytes(&[7u8; 32]);
+    let vk = sk.verifying_key();
+    let msg = vec![0xABu8; 512]; // a representative signed-event size (~A5: ~500 B)
+
+    let t = std::time::Instant::now();
+    for _ in 0..iters {
+        std::hint::black_box(sk.sign(&msg));
+    }
+    let sign_per_s = iters as f64 / t.elapsed().as_secs_f64();
+
+    let sig = sk.sign(&msg);
+    let t = std::time::Instant::now();
+    for _ in 0..iters {
+        vk.verify(&msg, &sig).unwrap();
+    }
+    let verify_per_s = iters as f64 / t.elapsed().as_secs_f64();
+    (sign_per_s, verify_per_s)
+}
+
+/// Bet B (B4) — SHA-256 vs BLAKE3 hashing throughput, MB/s each. This is the one
+/// input that could revisit ADR-0015's *provisional* blob-digest default: if BLAKE3
+/// is not faster than SHA-256 on ARM and offers no offsetting benefit, revisit.
+pub fn bench_hash_mbps(total_mb: usize) -> (f64, f64) {
+    use sha2::{Digest, Sha256};
+    let buf = vec![0x5Au8; 1 << 20]; // 1 MiB
+
+    let t = std::time::Instant::now();
+    for _ in 0..total_mb {
+        std::hint::black_box(Sha256::digest(&buf));
+    }
+    let sha = total_mb as f64 / t.elapsed().as_secs_f64();
+
+    let t = std::time::Instant::now();
+    for _ in 0..total_mb {
+        std::hint::black_box(blake3::hash(&buf));
+    }
+    let blake = total_mb as f64 / t.elapsed().as_secs_f64();
+    (sha, blake)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -257,5 +302,22 @@ mod tests {
         assert_eq!(a[0..2], BLAKE3_MULTIHASH_PREFIX);
         assert_eq!(a.len(), 34);
         assert_eq!(&a[2..], blake3::hash(b"DICOM bytes here").as_bytes());
+    }
+
+    // Smoke tests for the Bet B microbenchmarks: a tiny iteration count proves the
+    // crypto path runs end-to-end (sign/verify succeeds, both hashes produce a rate),
+    // independent of the production numbers a release build on a Pi would yield.
+    #[test]
+    fn bench_sign_verify_runs() {
+        let (sign_per_s, verify_per_s) = bench_sign_verify(4);
+        assert!(sign_per_s > 0.0, "sign throughput should be positive");
+        assert!(verify_per_s > 0.0, "verify throughput should be positive");
+    }
+
+    #[test]
+    fn bench_hash_mbps_runs() {
+        let (sha, blake) = bench_hash_mbps(2);
+        assert!(sha > 0.0, "SHA-256 throughput should be positive");
+        assert!(blake > 0.0, "BLAKE3 throughput should be positive");
     }
 }
