@@ -32,7 +32,7 @@
 - Internal schema is event-sourced relational; a **FHIR R4/R5 façade** provides import/export and interop. **FHIR is a façade — a boundary skin, never the storage model** (see [§3.5](#35-event-storage-model-hybrid-envelope)). Cairn's internal model is canonical (a national-scale system is the thing others integrate *against*); FHIR is generated on demand for exchange with external/legacy systems and is not allowed to dictate the schema.
 
 ## 3.5 Event storage model — hybrid envelope
-> Resolves former open question §11.2 — see [ADR-0001](decisions/0001-fat-postgres-thin-daemon.md).
+> Resolves former open question §11.2 — see [ADR-0001](decisions/0001-fat-postgres-thin-daemon.md). The concrete signature/serialization primitives (Ed25519 over deterministic-CBOR/COSE_Sign1, signing the stored bytes) are ratified in [ADR-0015](decisions/0015-event-serialization-signatures-and-content-addressing.md).
 
 The clinical event log ([§3.1](#31-append-only-clinical-event-log-source-of-truth)) is stored as **append-only event tables with a hybrid shape**, splitting columns by *what must be machine-enforced or matched* vs. *what is opaque clinical content*:
 
@@ -218,7 +218,7 @@ The append-only log ([§3.1](#31-append-only-clinical-event-log-source-of-truth)
 > **Attachments add a third axis to this `min()` — retrievability** ([§3.14](#314-attachments-content-addressed-blobs-and-the-rendition-set)). A large binary body may be present, *pending* (referenced but not yet synced), or *shredded*, so its effective rendering is `min(retrievable, parseable, cleared)`. The three axes degrade down one ladder to one honest floor; coarseness varies, existence never disappears.
 
 ## 3.14 Attachments: content-addressed blobs and the rendition set
-> Resolves former open question §11.6 — see [ADR-0013](decisions/0013-attachments-content-addressed-lazy-blob-tier.md). The lazy byte tier and reference-eager replication are [sync §6.6](sync.md#66-attachments-the-lazy-byte-tier); erasure inherits [§3.8](#38-erasure-and-key-custody)/[§7.1](security.md#71-erasure-the-severity-ladder).
+> Resolves former open question §11.6 — see [ADR-0013](decisions/0013-attachments-content-addressed-lazy-blob-tier.md). The lazy byte tier and reference-eager replication are [sync §6.6](sync.md#66-attachments-the-lazy-byte-tier); erasure inherits [§3.8](#38-erasure-and-key-custody)/[§7.1](security.md#71-erasure-the-severity-ladder). The concrete digest algorithms (event SHA-256; blob **BLAKE3**, provisional pending the Pi/ARM throughput number) are ratified in [ADR-0015](decisions/0015-event-serialization-signatures-and-content-addressing.md).
 
 **Attachments** — the binary clinical artifacts that are not naturally Cairn-native JSONB bodies (DICOM imaging, scanned legacy paper, clinical photography, ECG/EEG/CTG waveforms, dictation audio, endoscopy/ultrasound video, externally-signed referral PDFs, genomic data) — are **content-addressed blobs referenced by the signed event, never inlined**. This is *the append-only principle applied to large binary content*: the content digest is to a blob what the signature is to an event body. Same bytes → same address → idempotent set-union with zero merge.
 
