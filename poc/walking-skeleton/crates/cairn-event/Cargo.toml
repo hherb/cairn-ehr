@@ -15,6 +15,7 @@ coset = "0.3"              # COSE_Sign1 (RFC 9052) signature envelope
 ed25519-dalek = "2"        # Ed25519 (RFC 8032)
 sha2 = "0.10"              # event content address (sha2-256, multihash 0x12)
 blake3 = "1"               # blob content address (multihash 0x1e)
+bao = "0.13"              # BLAKE3 verified streaming: per-slice content verification (§4.4)
 uuid = { version = "1", features = ["v7"] }
 getrandom = "0.2"          # key generation entropy
 hex = "0.4"
