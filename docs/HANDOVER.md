@@ -178,6 +178,27 @@ merge). The PR's unchecked box. Field path is the same canonical `cairn-sync run
      ADR-0013 floor — re-confirm at the *production* `--budget-ms`, not just the selftest's aggressive 2 ms).
   5. **Record the chosen `SLICE_BYTES` / `--window`** from the run and mark §8.2 *delivered* in the spike doc.
 
+### Run 2026-06-16 — §8.2 byte tier DELIVERED on the real Cape York ↔ Dorrigo link — **T1/T2/T5 PASS**
+
+Ran the byte-tier throughput spike over the live ~680–860 ms-RTT WireGuard satellite link (MacBook 10.0.0.2
+fetcher ↔ DGX Spark 10.0.0.3 source, user PG18 :5444). New driver **`harness/wan_spike.py`** (runs on the
+MacBook, drives the DGX over ssh for *setup only*; all fetch/pull timing crosses the real link). Full results
+table written into **[Spike 0001 §8.2](spikes/0001-walking-skeleton-wan-sync-and-pi-cost.md)**; headline:
+
+- **T1 windowing** — 4 MB in **21.4 s (w8) vs 101 s (w1) = 4.7×**, ~64 sequential RTTs → ~2 windowed waves.
+- **T2 resume** — killed mid-fetch → **14/16 verified slices persisted**, resumed from `blob_chunk`, completed.
+- **T5 floor** — clinical pull p95 **+28 %** during a concurrent fetch (budget-ms 20); **clinical sync never
+  stalled** (ADR-0013 availability preserved).
+- **Tuning:** throughput is RTT-bound (~0.2 MB/s/link) — the cost is a **fresh TCP connection + slow-start
+  per slice**, so **parallel flows beat bigger slices** (window sweep peaks at **w8**: 0.12/0.19/0.17 MB/s
+  for w4/8/16; a *larger* slice was *worse*: 256 KiB 0.19 → 1 MiB 0.16 → 4 MiB 0.11). **Keep
+  `SLICE_BYTES = 256 KiB`, default `--window` 4–8.** On a shared-bandwidth link the floor knob is window
+  width, not `--budget-ms`. **Next throughput lever (future, not this spike): connection reuse / persistent
+  streaming** instead of one TCP connection per slice — the production object-store tier.
+- **Cleanup:** SLICE_BYTES sweep edits reverted (const back to 256 KiB); no lingering DGX serve processes.
+  `SLICE_BYTES` is only used by the *fetcher* (`do_blobd`); the server serves arbitrary offset/len, so a
+  slice-size change rebuilds only the fetcher — handy for future tuning.
+
 ### Field-readiness 2026-06-16 (PR #7 merged to main; this work is post-merge on the branch)
 
 User merged PR #7, then **started the real Cape York ↔ Dorrigo run over Starlink/WireGuard at lunch** —
