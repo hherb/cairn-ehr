@@ -1,6 +1,6 @@
 # HANDOVER — Cairn
 
-**Session date:** 2026-06-15 (spec bumped to **v0.15**)
+**Session date:** 2026-06-16 (spec bumped to **v0.17**)
 **Status of this file:** Working scaffolding, not a source of truth. Disposable — regenerate
 at the end of each working session. If this file ever disagrees with the canonical documents,
 the canonical documents win.
@@ -27,6 +27,108 @@ restate them. Repository layout:
   shopfront; the same mission prose also lives canonically in `docs/spec/index.md`).
 
 Everything below is the stuff that lives *between* those documents and would otherwise be lost.
+
+---
+
+## Resolved 2026-06-16 — §11.7 locale-pluggable comparators (now spec v0.17) — **§11 is now fully closed**
+
+Case-mined **§11.7** (the matcher comparator extension point). It dissolved — **no new founding principle, no
+envelope reserve, one small *additive* data-model field** — and with it **every original §11 open question is
+closed.** → [ADR-0014](spec/decisions/0014-locale-pluggable-matcher-comparators.md), canonical home
+**[identity §5.13](spec/identity.md)**, with the assertion-level profile tag in **[demographics §4.1](spec/demographics.md)**
+and the §5.2 comparator bullet expanded to point at it.
+
+- **Structurally low-stakes because the matcher is advisory** ([§5.2](spec/identity.md)/[§9.4](spec/language-substrate.md)):
+  it only *proposes*; proposals become ordinary `assert`/`link` events through the algebra. Blast radius doubly
+  contained — additive advisory evidence into a conservative human-backstopped decision, **and** §5.1 clean
+  unmerge makes even a wrong auto-link reversible. So unlike §11.6/§11.4 there's nothing irreversible to commit.
+- **Principled framing (resonated): hardcoding one culture's name/date/address model is *cultural capture*** —
+  anti-capture/vendor-independence (principle 7) applied to the demographic model. Pluggable comparators are
+  *paper-parity for the registrar in any culture* (the user works the Australian Top End/Kimberley — Indigenous
+  naming + birthdate-uncertainty are the rule there, utterly different from the east/south coasts).
+- **The hard problem the user flagged — "comparators must travel with the data" (people relocate; forcing Cape
+  York comparators onto Melbourne records on a merge is catastrophic) — without syncing code or a central
+  registry.** Resolution (the session's sharpest new design): **split comparator *identity* (data, travels) from
+  *code* (distribution plane, resolved locally).** A **content-addressed comparator-profile tag** (`namespace@hash`)
+  rides each demographic assertion as declarative provenance — globally meaningful with **no central registry**
+  (the ADR-0013 content-addressing payoff), **silently defaulting from the registering node's locale with a
+  registrar-visible override** (the user's call — the *tourist injured in Cape York* case: low-risk friction
+  reduction). The code travels the §7.6 distribution plane; a node lacking a record's comparator (or matching
+  *across* two profiles) **degrades honestly to human review, never forcing the wrong comparator** — the §3.13
+  legibility-ladder pattern applied to matching. **Safety-preserving by construction:** uncertainty about *which*
+  comparator can only ever *withhold* an auto-link, never manufacture one (the safe side of false-merge ≫ false-split).
+- **The miss-rate problem the user explicitly asked me to crack** (confident-rejects are silent false splits the
+  live matcher can never measure). Solution: a **periodic, low-priority, *preemptible*, aggressive (low-threshold)
+  background re-match sweep at the hub tier** that **never auto-acts** → emits a ranked advisory possible-duplicate
+  worklist, can never starve clinical work (the ADR-0013 byte-tier discipline), and whose **yield IS the
+  miss-rate/drift metric** (the ADR-0010 atrophy-signal pattern). Completed by two existing legs: **opportunistic
+  re-match on every new assertion** (a reject flips as a shared phone/ID/refined-DOB lands — monotonic refinement)
+  and a **point-of-care "this might be a duplicate — search & link" affordance** (paper-parity *gain* — the patient
+  saying *"I have another file here"* is evidence the matcher never had). The user accepted generous surfacing as
+  paper-parity-passing; this closes the one gap it left.
+- **Comparator API contract:** field-typed, **agreement-leveled** (exact / nickname- or transliteration-equivalent
+  / phonetic / edit-distance / none — Fellegi–Sunter), **uncertainty-aware** (*no-data is never disagreement*,
+  principle 4), **provenance-aware**, and **operates over the multi-valued name *history set*** (not the display
+  value) with role-tagged, order-tolerant tokens — directly answering the user's daily failure cases (first-name
+  order, nicknames, indigenous names, DOB mismatches, hyphenated/maiden/married family-name switches).
+- **Safety floor pluggability can't relax:** conservative threshold + wide-middle-band-to-humans + coherence-check
+  vetoes hold regardless of plugged comparators; a small closed **hard-veto set** (same-system-ID mismatch;
+  *verified* DOB/sex-at-birth clash; deceased-status conflict) **forces a human decision — never auto-link, never
+  auto-reject** (user's "err on caution, prompt the user").
+- **Reuse:** matcher = **registered actor** (ADR-0011; comparator config = version-pinned standing config; recall
+  via §5.5 contamination cascade). **GitHub doubles as a federated, signed, content-addressed registry** (user's
+  call — "as long as GitHub exists … primary-developer-vetted comparators"), convenience never a dependency
+  (mirrorable, sneakernet-cloneable; trust in signature/hash, not host).
+- **Blast-radius (§9):** all comparators + weight-learning + harness + sweep are fit-for-purpose (Python,
+  advisory); the conservative threshold + hard-veto set + coherence check + proposal→algebra apply **seam** are
+  safety-critical in-DB (the recurring seam motif).
+
+---
+
+## Resolved 2026-06-15 — §11.6 attachment strategy (now spec v0.16)
+
+Case-mined **§11.6** (inline vs. content-addressed blob store with lazy sync). It dissolved into existing
+primitives with **no new founding principle** — same trajectory as §11.8/§11.9/§11.10 — forcing only one
+day-one envelope reserve and one ladder-axis generalization. → [ADR-0013](spec/decisions/0013-attachments-content-addressed-lazy-blob-tier.md),
+canonical homes **[data-model §3.14](spec/data-model.md)** (attachment-reference shape + rendition set) and
+**[sync §6.6](spec/sync.md)** (the lazy byte tier), with back-pointers from [§3.8](spec/data-model.md)/[§3.13](spec/data-model.md)
+and the §6.1 priority bullets.
+
+- **Content-addressed by reference, never inlined — principle 1 applied to large binaries.** The content digest
+  is to a blob what the signature is to an event body (same bytes → same address → idempotent set-union, zero
+  merge). The event body names each attachment *by digest* and the **event signature covers that digest**, so a
+  blob carries no separate signature and **self-verifies against any source**. Tiny blobs may inline below a
+  node-tuned threshold; both forms expressible day one.
+- **Reference-eager, byte-lazy + the availability floor (the user's load-bearing case).** The reference rides the
+  eager event plane; bytes follow on a **separate, resource-isolated byte tier**. The user's Kimberley/*Communicare*
+  case — a nightly bulk-imaging sync that ground the whole system to a halt so emergencies could retrieve **no**
+  record at all (and recurred even in the degenerate single-server/thin-client topology) — sharpened the ruling:
+  **priority ordering is insufficient**; an in-flight gigabyte head-of-line-blocks. So byte transfer is
+  **chunked, preemptible, separately budgeted** (the user's "better async"), and the floor is an *availability*
+  one: **blob transfer must never reduce clinical-data availability** (availability + paper-parity applied to the
+  transport).
+- **Byte-replication is opt-in and separately scoped (the user's second requirement).** §6.4's prefetch-hint
+  applied to bytes, but the **blob predicate is a separate, much narrower thing** than event-scope: references
+  everywhere, **bytes by election**; a resource-starved node is **references-only, fetch-on-demand** (it need not
+  store every PACS blob). Content-addressing → **multi-source, self-verifying, resumable swarm fetch** (LAN
+  sibling / parent / patient-carried device, zero trust in source — sneakernet generalized to binaries).
+- **The rendition set is the binary's legibility twin** (resolves the §3.13 "how do you twin a CT's pixels?"
+  tension — *you don't*; the twin is the coded/descriptor fields, the lightweight rendition is the blob's twin).
+  Adds a **retrievability** axis to the §3.13 ladder: **effective rendering = `min(retrievable, parseable,
+  cleared)`** (present / pending / shredded). *Coarseness varies; existence never disappears* — the floor invariant
+  generalized once more.
+- **Erasure + lossless passthrough inherit unchanged:** per-blob DEK → crypto-shreddable like the §3.5 body slot
+  (GC ≠ erasure; **no convergent encryption** for sealed blobs — confirmation-attack leak); bytes are **never
+  transcoded in place** (would break embedded signatures + change the hash) — a preview is a *new* rendition added.
+  DICOM/WADO/XDS is a **façade**, never the store (§3.4 FHIR posture).
+- **The four forks the user ruled on (all agreed):** (1) no convergent encryption for sealed blobs; (2) yes, a
+  small-blob inline path; (3) blob store is the **sync plane's lazy tier, not a third plane** (it's content — no
+  code, no RCE); (4) the day-one reference fields locked (self-describing digest w/ algorithm agility · seal/DEK-wrap
+  indicator · clear-text descriptor · rendition set · inline distinction).
+- **Blast-radius (§9):** digest-binding-in-signed-event + seal/DEK-wrap + crypto-shred + **content-verification on
+  fetch** (a wrong-hash blob must never be served as the named one) are safety-critical; store/transfer/dedup/GC +
+  all viewers are fit-for-purpose; the **fetch-verify seam** (bytes-in → hash-check → serve) is the one
+  safety-critical path (the content-addressing analogue of the §3.13 write-time twin seam).
 
 ---
 
@@ -403,8 +505,14 @@ keystore cost / key granularity for crypto-shredding — see ADR-0005.)**
 
 ## Decided in conversation, NOT yet written into the documents
 
-1. **Governance / CONTRIBUTING document** is identified as the next principles document to write, but
-   does not exist yet. STEWARDSHIP-OF-THE-NAME.md is intended for inclusion in it.
+1. **Governance / CONTRIBUTING document — DONE (2026-06-16).** Written as
+   **[docs/principles/GOVERNANCE.md](principles/GOVERNANCE.md)** (a principles-level doc) folding in
+   Stewardship of the Name by reference, plus a thin root **`CONTRIBUTING.md`** pointer (GitHub
+   convention). README Contributing stub and mkdocs nav updated. Notable governance commitments recorded:
+   **mission as tie-breaker; AGPL-3.0 inbound=outbound with DCO and *no CLA*** (a CLA would be the capture
+   surface the project guards against); name-stewardship binds the steward too; case-mining is a
+   first-class contribution. Entity/jurisdiction and formal trademark remain **parked** (carried into the
+   doc, not re-litigated).
 2. **Status line:** README and spec both say "specification / architecture phase." Still accurate today
    — flip when implementation begins.
 
@@ -426,25 +534,27 @@ keystore cost / key granularity for crypto-shredding — see ADR-0005.)**
 
 ## Open questions / where we'd pick up
 
-Spec §11: items 1, 2, 3, **4**, **5**, **8**, **9**, **10**, 11, and **12** now struck-through/resolved, and the
-ADR-0007 deferred **additive-vs-suppressing** ([ADR-0010](spec/decisions/0010-additive-vs-suppressing-classification.md))
-and **AI-agent identity registry** ([ADR-0011](spec/decisions/0011-actor-registry-version-pinning-and-key-custody.md))
-follow-ons are closed too. Remaining architecture open questions are just **§11.6** (attachment strategy) and
-**§11.7** (locale-pluggable matcher comparators) — neither as sharp as the clusters already closed. The only
-ADR-0007 follow-ons still open are small (closed role-enum membership finalisation; proxy/liability semantics,
-out of scope — Cairn records the chain). The most *generative* mode is now continued **clinical case-mining**,
-or one of the build-prep threads below.
+**Every original §11 open question is now resolved** (items 1–12 struck-through), and the ADR-0007 deferred
+**additive-vs-suppressing** ([ADR-0010](spec/decisions/0010-additive-vs-suppressing-classification.md)) and
+**AI-agent identity registry** ([ADR-0011](spec/decisions/0011-actor-registry-version-pinning-and-key-custody.md))
+follow-ons are closed too. The last two — **§11.6** (attachments, [ADR-0013](spec/decisions/0013-attachments-content-addressed-lazy-blob-tier.md))
+and **§11.7** (locale-pluggable comparators, [ADR-0014](spec/decisions/0014-locale-pluggable-matcher-comparators.md))
+— closed this session. The only ADR-0007 follow-ons still open are small (closed role-enum membership
+finalisation; proxy/liability semantics, out of scope — Cairn records the chain). With the open-question backlog
+empty, the highest-signal modes are now **fresh clinical case-mining** and the **build-prep threads** below
+(the architecture spec is feature-complete enough to start specifying the first implementation spike).
 
 **The recurring menu** when resuming (pick one):
 - More clinical **case-mining** — the most productive mode so far (the event-overlay + key-custody + actor
   primitives have absorbed every case raised without new architecture). The AI-authorship arc (ADR-0007 →
   0009 → 0010 → 0011) is now complete, so fresh clinical cases are the highest-signal next input.
-- **Write the GOVERNANCE / CONTRIBUTING document** (folding in STEWARDSHIP-OF-THE-NAME.md).
+- ~~Write the GOVERNANCE / CONTRIBUTING document~~ **DONE 2026-06-16** ([GOVERNANCE.md](principles/GOVERNANCE.md) + root `CONTRIBUTING.md`).
 - **Define the Pi-benchmark spike** in enough detail to be the first implementation task (now validates
   both the ADR-0001 projection cost *and* the ADR-0005 keystore/crypto-shred cost).
 - **Polish a non-developer landing page** for the generated site (frontend-design work; draft plans
   already exist under `docs/superpowers/`).
-- Other still-open §11 items: attachment strategy (§11.6), locale-pluggable matcher comparators (§11.7).
+
+*(All §11 open architecture questions are now resolved — no remaining items in that backlog.)*
 
 ---
 

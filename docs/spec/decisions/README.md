@@ -33,6 +33,8 @@ was made — the context, the choice, and its consequences. Aspect documents in
 | [0010](0010-additive-vs-suppressing-classification.md) | Additive-vs-suppressing classification: structural derivation, the demotion boundary, and automation-complacency detection | Accepted (refines 0007) | 2026-06-15 |
 | [0011](0011-actor-registry-version-pinning-and-key-custody.md) | The actor registry: version-pinned immutable identity, behavioral-configuration granularity, and key custody | Accepted (refines 0007) | 2026-06-15 |
 | [0012](0012-schema-evolution-event-format-and-legibility-across-time.md) | Schema evolution, event-format migration across the offline fleet, and legibility across time | Accepted | 2026-06-15 |
+| [0013](0013-attachments-content-addressed-lazy-blob-tier.md) | Attachments: content-addressed blobs, the lazy byte tier, and reference-eager replication | Accepted | 2026-06-15 |
+| [0014](0014-locale-pluggable-matcher-comparators.md) | Locale-pluggable matcher comparators: content-addressed profiles that travel with the data | Accepted | 2026-06-16 |
 
 ## Template
 

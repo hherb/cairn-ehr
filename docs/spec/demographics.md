@@ -7,6 +7,8 @@ Each change is an immutable **assertion event**: *source S asserts at HLC t that
 
 **Provenance ladder:** document-verified > patient-stated > third-party-stated > clinician-observed > imported/unknown > inferred. Capturing provenance must cost the registrar one tap.
 
+**Comparator-profile tag (matcher interpretation provenance).** An assertion also carries an optional **comparator-profile** — the naming/date/address convention under which the value should be *interpreted* by the matcher (`namespace@content-hash`, content-addressed so it is globally meaningful with no central registry). It is additive provenance (no day-one reserve; absence = unknown → the matcher degrades to human review), **defaults silently from the registering node's locale with a registrar-visible override** (the relocation and visitor cases — a tourist injured in the Top End must not be silently tagged with the local Indigenous convention, nor vice-versa), and is **per-assertion** (one patient may carry differently-tagged names). This is what lets the right comparator *travel with the data* while the comparator code travels the distribution plane — see [identity §5.13](identity.md#513-locale-pluggable-comparators-the-matcher-extension-point), [ADR-0014](decisions/0014-locale-pluggable-matcher-comparators.md).
+
 ## 4.2 Per-field projection policy
 | Field | Nature | Projection rule | Conflict across linked records means |
 |---|---|---|---|

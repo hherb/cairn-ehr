@@ -82,8 +82,36 @@ fleet): evolution is routed through **two planes** — clinical events sync forw
 executable code), while code/DDL/pgrx extensions travel a **separate signed, per-architecture,
 sneakernet-capable distribution plane**; the schema/extension version is a *local node property*, so there
 is no lockstep fleet upgrade ([ADR-0012](docs/spec/decisions/0012-schema-evolution-event-format-and-legibility-across-time.md),
-spec §3.13 / §6.5 / §7.6). Remaining open §11 items: **§11.6** (attachment strategy) and **§11.7**
-(locale-pluggable matcher comparators).
+spec §3.13 / §6.5 / §7.6).
+
+**§11.6 (attachment strategy) is resolved** — attachments are **content-addressed blobs referenced by the signed
+event, never inlined** (append-only applied to large binaries; the digest is to a blob what the signature is to a
+body). The **reference is eager, the bytes are lazy** on a **resource-isolated byte tier** that can never starve
+clinical sync (the availability floor, *chunked/preemptible/separately-budgeted, not merely priority-ordered* —
+motivated by a real nightly-imaging-sync-grinds-everything-to-a-halt failure); **byte-replication is opt-in and
+separately scoped** (references everywhere, bytes by election; starved node = references-only, fetch-on-demand);
+content-addressing gives **self-verifying multi-source swarm fetch**. The **rendition set** is the binary's
+legibility twin, adding a **retrievability** axis to the §3.13 ladder (`min(retrievable, parseable, cleared)`);
+erasure (per-blob DEK crypto-shred) and lossless passthrough inherit. The one can't-retrofit piece is the
+**day-one attachment-reference shape**. No new founding principle
+([ADR-0013](docs/spec/decisions/0013-attachments-content-addressed-lazy-blob-tier.md), spec §3.14 / §6.6).
+
+**§11.7 (locale-pluggable matcher comparators) is resolved** — and with it **every original §11 open question
+is now closed.** The matcher is **advisory**, so this is low-stakes (no envelope reserve, one small *additive*
+data-model field, no new founding principle). Hardcoding one culture's name/date/address model is **cultural
+capture**; comparators are pluggable and *no-data-is-never-disagreement* (principle 4). The sharp resolution to
+*"comparators must travel with the data"* (relocation across wildly different naming conventions) without syncing
+code or a central registry: a **content-addressed comparator-profile tag travels with each demographic assertion**
+(silently defaults from the registering node's locale, registrar-overridable for relocation/visitor cases), the
+comparator **code** travels the distribution plane, and a node lacking a record's comparator **degrades honestly
+to human review, never forcing the wrong comparator** (safety-preserving: uncertainty can only *withhold* an
+auto-link). Silent false splits are caught by a **low-priority, preemptible, aggressive background duplicate sweep
+at the hub** whose advisory-worklist yield doubles as the miss-rate/drift metric. Hard vetoes **force a human
+decision, never an auto-reject.** The matcher is a **registered actor** (config version-pinned, recall via
+contamination cascade); GitHub doubles as a federated, signed, content-addressed registry
+([ADR-0014](docs/spec/decisions/0014-locale-pluggable-matcher-comparators.md), spec §5.13 / §4.1). The remaining
+generative mode is now continued **clinical case-mining** or the build-prep threads (governance doc, Pi-benchmark
+spike).
 
 ## When implementation begins: language/substrate selection rule
 
