@@ -17,6 +17,8 @@ use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use cairn_event::{blob_address, plaintext_twin, sign, verify_self_described, EventBody, Hlc, SigningKey};
@@ -656,6 +658,28 @@ fn cmd_run(
     let mut client = postgres::Client::connect(conn, postgres::NoTls)?;
     eprintln!("run: serving on {listen}, pulling {peer_name} ({peer}) every {interval_ms}ms -> {log_path}");
 
+    // The lazy byte tier runs on its OWN thread, never inline in the clinical pull
+    // loop. do_blobd fetches a whole blob to completion; inlining it would let a
+    // single multi-MB blob over a high-latency link head-of-line-block clinical
+    // sync for the entire fetch — the exact availability-floor violation ADR-0013
+    // forbids ("byte transfer must never reduce clinical-data availability").
+    // Spawned like the serve thread; the main loop below does clinical work only.
+    let blobs_fetched = Arc::new(AtomicU64::new(0));
+    {
+        let (c, p) = (conn.to_string(), peer.to_string());
+        let counter = Arc::clone(&blobs_fetched);
+        std::thread::spawn(move || match postgres::Client::connect(&c, postgres::NoTls) {
+            Ok(mut bclient) => loop {
+                match do_blobd(&mut bclient, &p, budget_ms) {
+                    Ok(n) => counter.fetch_add(n as u64, Ordering::Relaxed),
+                    Err(_) => 0, // peer unreachable: the next pass retries, never fatal
+                };
+                std::thread::sleep(Duration::from_millis(interval_ms));
+            },
+            Err(e) => eprintln!("blob thread could not connect: {e}"),
+        });
+    }
+
     let start = Instant::now();
     let mut cycle: u64 = 0;
     loop {
@@ -675,10 +699,9 @@ fn cmd_run(
                 line["pull_error"] = serde_json::json!(e.to_string());
             }
         }
-        match do_blobd(&mut client, peer, budget_ms) {
-            Ok(n) => line["blobs_fetched"] = serde_json::json!(n),
-            Err(e) => line["blob_error"] = serde_json::json!(e.to_string()),
-        }
+        // Cumulative blobs fetched by the separate byte-tier thread (informational;
+        // never blocks this loop).
+        line["blobs_fetched"] = serde_json::json!(blobs_fetched.load(Ordering::Relaxed));
         if let Ok(fp) = do_fingerprint(&mut client) {
             status += &format!(
                 ", {} events, blobs {}+{}",

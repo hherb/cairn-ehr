@@ -83,9 +83,44 @@ multihash/BLAKE3 + the thin set-union ship-apply daemon in Rust (no merge logic)
   per-sample work so it's a like-for-like comparison — single-box validates mechanics; the real A4 contention
   is on the link). One subtlety found + fixed: a free-running generator made the A4 baseline a misleading
   backlog drain (23s); switched to drain-then-fixed-batch sampling.
-- **Next:** run **Bet A on the Cape York ↔ Dorrigo WireGuard link** (start `serve`+`gen` on each node,
-  drive partition via the injector hooks, compare `fingerprint`s with `bet_a.py report`); **Bet B on a Pi
-  next week** (§6). Then ratify the §4 primitives into an ADR per Spike 0001 §7.
+### Run 2026-06-16 — Bet A concluded on the real Cape York ↔ Dorrigo link — **ALL SIX ROWS PASS + a real bug fixed** (spike §8)
+
+The lunchtime run is **done**: ran the §5 table over the actual link — this MacBook (Cape York, WG `10.0.0.2`,
+PG16) ↔ the **DGX Spark** (Dorrigo, WG `10.0.0.3`, a *user-owned* **PG18.4** instance on :5444, no sudo) — via
+the **canonical field path added by PR #8** (`cairn-sync run` per node → `bet_a.py analyze`/`report`). The
+field-readiness session's predicted fix was right: **bind `--listen` to the WireGuard address, not
+`127.0.0.1`** (so the peer can reach you); that was the whole "minor issue."
+
+- **The link is a genuine ~710 ms-RTT satellite path** (`ping` 667/710/775 ms, with loss) — real adverse-WAN.
+- **A1** both nodes **792 events, event + projection hash identical**; conflicting shared-patient overlay →
+  **same winner both sides** (deterministic HLC tie-break). **A2** 0 verify-failures, both directions. **A3**
+  HLC merged past every event; max gap reported (35 s/42 s), never auto-resolved. **A5** **494–495 B/event**
+  (budget 4096). **A6** referenced-but-unfetched blob shown as not-present. **A4** see the bug below.
+- **The link surfaced a real availability-floor bug — now fixed (spike §8.1).** The field `run` loop fetched
+  blobs **inline in the clinical pull cycle**; on the 710 ms link a single 2 MB blob's ~32 sequential RTTs
+  **head-of-line-blocked Cape York's whole 150 s run** — 1 cycle, **0 clinical pulls**, never converged
+  (396 vs 792) while its serve thread still fed Dorrigo. That's exactly the ADR-0013 failure (byte transfer
+  starving clinical availability — the Kimberley nightly-imaging case in miniature). **Fix in this change:**
+  the lazy byte tier now runs on **its own thread** in `cairn-sync run` (like the serve thread), so it can
+  never block clinical sync. Re-run: Cape York did **30 cycles + full convergence** while the blob fetched
+  lazily. `cargo test` + `clippy` green.
+- **Deferred byte-tier findings (spike §8.2, both ADR-0013-mandated):** `do_blobd` is still (1) **synchronous
+  one-RTT-per-64 KiB-chunk** (latency binds: a 64 MB blob ≈ 12 min of pure RTT — the real tier must
+  pipeline/window/swarm) and (2) **not resumable across passes** (restarts from offset 0 on any drop — the
+  2 MB blob was still `referenced-only` at the 150 s cutoff). The thread move is the *availability* fix;
+  pipelining + resumability is the *throughput* fix, left for the production byte tier.
+- **Merge note:** my interim SSH-orchestrated driver `bet_a_wan.py` was **dropped** — superseded by PR #8's
+  `run`/`analyze` (the blessed field path). The set-union/signature/HLC/bytes verdicts were first seen on
+  that driver (442 events) and re-confirmed here on the canonical path.
+- **DGX left provisioned** for re-runs / Bet B: rustup + `~/cairn-skeleton` + the :5444 PG instance
+  (`/usr/lib/postgresql/18/bin/pg_ctl -D ~/cairn-pg -o "-p 5444 ..." start`). All user-local, nothing
+  system-wide.
+
+- **Next:** **ratify the §4 primitives into the serialization/signature/digest ADR** (Spike 0001 §7.1 — Bet A
+  passing is the trigger; optionally wait for Bet B's ARM Ed25519/BLAKE3 throughput before fixing the §4.4
+  blob-digest default). **Bet B on a Pi-5-class node next week** (§6): `patient_chart` trigger path,
+  chart-read latency, keystore cost, ARM crypto throughput. Also worth doing for the byte tier: §8.2's
+  pipelined/resumable fetch.
 
 ### Field-readiness 2026-06-16 (PR #7 merged to main; this work is post-merge on the branch)
 
@@ -629,8 +664,9 @@ empty, the highest-signal modes are now **fresh clinical case-mining** and the *
 - ~~Write the GOVERNANCE / CONTRIBUTING document~~ **DONE 2026-06-16** ([GOVERNANCE.md](principles/GOVERNANCE.md) + root `CONTRIBUTING.md`).
 - ~~**Define the Pi-benchmark spike**~~ **DRAFTED 2026-06-16** as **[Spike 0001](spikes/0001-walking-skeleton-wan-sync-and-pi-cost.md)**,
   reframed into two bets (WAN-sync now / Pi-cost next week) on one shared walking skeleton, with the
-  day-one serialization/signature/digest defaults. **Next:** build the skeleton, then run Bet A on the
-  Cape York ↔ Dorrigo link; ratify the crypto primitives into an ADR per the §7 exit criteria.
+  day-one serialization/signature/digest defaults. ~~build the skeleton~~ **DONE**; ~~run Bet A on the
+  Cape York ↔ Dorrigo link~~ **DONE 2026-06-16 — all six §5 rows PASS** (see the run note above).
+  **Now:** ratify the §4 crypto primitives into an ADR per the §7 exit criteria; **Bet B on a Pi next week**.
 - **Polish a non-developer landing page** for the generated site (frontend-design work; draft plans
   already exist under `docs/superpowers/`).
 
