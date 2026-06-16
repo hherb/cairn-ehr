@@ -462,6 +462,127 @@ fn cmd_fingerprint(conn: &str) -> R<()> {
     Ok(())
 }
 
+fn pct(sorted: &[f64], p: f64) -> f64 {
+    if sorted.is_empty() {
+        return 0.0;
+    }
+    sorted[((sorted.len() - 1) as f64 * p).round() as usize]
+}
+
+/// Bet B (B1) — time `count` projection-maintained single-op writes at the current
+/// log size. Each `emit_event` is one transaction whose `AFTER INSERT` trigger folds
+/// the event into `patient_chart`, so this measures the exact maintenance path
+/// ADR-0001 bets stays cheap. The harness samples at growing log sizes to check the
+/// cost does not grow with the log.
+fn cmd_bench_insert(conn: &str, node: &str, key_path: &str, count: usize) -> R<()> {
+    let (sk, kid) = load_or_create_key(key_path)?;
+    let mut client = postgres::Client::connect(conn, postgres::NoTls)?;
+    let log_size: i64 = client
+        .query_one("SELECT count(*) FROM event_log", &[])?
+        .get(0);
+    let pid = uuid::Uuid::now_v7().to_string();
+    emit_event(&mut client, node, &sk, &kid, "patient.created", &pid, "patient/1",
+        serde_json::json!({"name":"Bench Patient","dob":"1980-01-01","sex":"U"}), None)?;
+
+    let mut lat = Vec::with_capacity(count);
+    for n in 0..count {
+        let t = Instant::now();
+        emit_event(&mut client, node, &sk, &kid, "note.added", &pid, "note/1",
+            serde_json::json!({"text": format!("b1 maintenance sample {n}")}), None)?;
+        lat.push(t.elapsed().as_secs_f64() * 1000.0);
+    }
+    lat.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    println!(
+        "{}",
+        serde_json::json!({
+            "op": "bench_insert", "log_size": log_size, "count": count,
+            "p50_ms": pct(&lat, 0.50), "p95_ms": pct(&lat, 0.95), "max_ms": pct(&lat, 1.0)
+        })
+    );
+    Ok(())
+}
+
+/// Bet B (B2) — time a full chart read: demographics from the `patient_chart`
+/// projection plus the patient's note timeline rendered from the plaintext legibility
+/// twins (the version-independent §3.13 substrate). The paper-parity floor: this must
+/// beat "grab the paper chart."
+fn cmd_chart(conn: &str, patient: &str) -> R<()> {
+    let mut client = postgres::Client::connect(conn, postgres::NoTls)?;
+    let t = Instant::now();
+    let demo = client.query_opt(
+        "SELECT name, dob, sex, note_count FROM patient_chart WHERE patient_id=$1::text::uuid",
+        &[&patient],
+    )?;
+    let notes = client.query(
+        "SELECT plaintext_twin FROM event_log
+         WHERE patient_id=$1::text::uuid AND event_type='note.added'
+         ORDER BY hlc_wall, hlc_counter, node_origin",
+        &[&patient],
+    )?;
+    // Touch the rendered text so the assembly is real work, not a lazy cursor.
+    let chars: usize = notes.iter().map(|r| r.get::<_, String>(0).len()).sum();
+    let elapsed_ms = t.elapsed().as_secs_f64() * 1000.0;
+    println!(
+        "{}",
+        serde_json::json!({
+            "op": "chart", "patient": patient, "found": demo.is_some(),
+            "notes": notes.len(), "rendered_chars": chars, "elapsed_ms": elapsed_ms
+        })
+    );
+    Ok(())
+}
+
+/// Bet B (B3/B4) — pure-CPU crypto microbenchmarks (no DB). B4: Ed25519 sign/verify
+/// throughput and SHA-256-vs-BLAKE3 hashing throughput (the ARM number that could
+/// revisit ADR-0015's provisional blob digest). B3: DEK-wrap and body-seal throughput
+/// — the keystore cost of crypto-shredding ([ADR-0005](../spec/decisions/0005...)),
+/// from which the harness extrapolates per-event vs per-episode key granularity.
+fn cmd_bench(hash_mb: usize, sig_iters: u32, dek_iters: u32) -> R<()> {
+    use chacha20poly1305::aead::{Aead, KeyInit};
+    use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
+
+    let (sign_per_s, verify_per_s) = cairn_event::bench_sign_verify(sig_iters);
+    let (sha_mbps, blake_mbps) = cairn_event::bench_hash_mbps(hash_mb);
+
+    // B3: a KEK wraps a fresh per-body DEK; the DEK seals the body. Crypto-shred =
+    // destroy the DEK, so opening a sealed episode is one unwrap per DEK — hence the
+    // per-event vs per-episode granularity question this cost feeds.
+    let kek = XChaCha20Poly1305::new(Key::from_slice(&[9u8; 32]));
+    let nonce = XNonce::from_slice(&[0u8; 24]);
+    let dek = [3u8; 32];
+    let t = Instant::now();
+    for _ in 0..dek_iters {
+        std::hint::black_box(kek.encrypt(nonce, dek.as_ref()).unwrap());
+    }
+    let dek_wrap_per_s = dek_iters as f64 / t.elapsed().as_secs_f64();
+
+    let body = vec![0x7Eu8; 1024]; // a representative ~1 KiB clinical body
+    let body_kek = XChaCha20Poly1305::new(Key::from_slice(&dek));
+    let t = Instant::now();
+    for _ in 0..dek_iters {
+        std::hint::black_box(body_kek.encrypt(nonce, body.as_ref()).unwrap());
+    }
+    let body_seal_mbps = (dek_iters as f64 * body.len() as f64 / (1 << 20) as f64)
+        / t.elapsed().as_secs_f64();
+
+    println!(
+        "{}",
+        serde_json::json!({
+            "op": "bench",
+            // B4
+            "ed25519_sign_per_s": sign_per_s,
+            "ed25519_verify_per_s": verify_per_s,
+            "sha256_mbps": sha_mbps,
+            "blake3_mbps": blake_mbps,
+            "blake3_faster_than_sha256": blake_mbps >= sha_mbps,
+            // B3
+            "dek_wrap_per_s": dek_wrap_per_s,
+            "body_seal_mbps": body_seal_mbps
+        })
+    );
+    Ok(())
+}
+
 fn cmd_put_blob(conn: &str, file: &str, media: &str) -> R<()> {
     let bytes = std::fs::read(file)?;
     let addr = blob_address(&bytes);
@@ -794,6 +915,9 @@ USAGE (all take --conn <postgres-uri>):
   run         --conn URI --listen HOST:PORT --peer HOST:PORT --peer-name NAME
               [--interval-ms N] [--budget-ms N] [--log PATH] [--duration-s N]
               (unattended: serve+pull+blob, logs one JSON line/cycle, survives drops)
+  bench-insert --conn URI --node NAME --key PATH [--count N]   (Bet B B1: maintained-write latency)
+  chart       --conn URI --patient UUID                        (Bet B B2: chart-read latency)
+  bench       [--hash-mb N] [--sig-iters N] [--dek-iters N]    (Bet B B3/B4: crypto throughput, no DB)
 
 Run over WireGuard; NoTls is intentional (the link is the transport)."
     );
@@ -832,6 +956,18 @@ fn main() -> R<()> {
             &need(flag(&args, "--media")),
         )?,
         "fingerprint" => cmd_fingerprint(&need(conn))?,
+        "bench-insert" => cmd_bench_insert(
+            &need(conn),
+            &need(flag(&args, "--node")),
+            &flag(&args, "--key").unwrap_or_else(|| "node.key".into()),
+            flag(&args, "--count").and_then(|s| s.parse().ok()).unwrap_or(200),
+        )?,
+        "chart" => cmd_chart(&need(conn), &need(flag(&args, "--patient")))?,
+        "bench" => cmd_bench(
+            flag(&args, "--hash-mb").and_then(|s| s.parse().ok()).unwrap_or(256),
+            flag(&args, "--sig-iters").and_then(|s| s.parse().ok()).unwrap_or(20000),
+            flag(&args, "--dek-iters").and_then(|s| s.parse().ok()).unwrap_or(100000),
+        )?,
         "pull" => cmd_pull(
             &need(conn),
             &need(flag(&args, "--peer")),

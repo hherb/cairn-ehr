@@ -163,12 +163,37 @@ python3 harness/bet_a.py report  --local capeyork.jsonl.fingerprint.json \
 latency p50/p95/max, A2 verify-failures, A5 bytes/event, A3 HLC merge + gap, and A6
 blob present/referenced-only — and writes a `.fingerprint.json` for the A1 compare.
 
+## Bet B benchmark harness (the Pi compute-cost bet)
+
+`harness/bench_b.py` (stdlib only) drives the binary to emit the §6 table. The
+daemon grew three commands for it: `bench-insert` (B1 — maintained-write latency at
+the current log size), `chart` (B2 — full chart assembly from the projection + the
+plaintext legibility twins), and `bench` (B3/B4 — pure-CPU crypto: Ed25519 sign/verify,
+SHA-256 vs BLAKE3, DEK-wrap/body-seal).
+
+```sh
+cargo build --release          # REQUIRED — debug crypto/projection numbers are meaningless
+# Run ON THE PI, against its local PostgreSQL:
+python3 harness/bench_b.py --bin target/release/cairn-sync selftest \
+    --conn "host=127.0.0.1 user=cairn dbname=pi" --sizes 5000 50000 200000
+# just the pure-CPU crypto numbers (B3/B4), no DB:
+python3 harness/bench_b.py --bin target/release/cairn-sync bench
+```
+
+It measures: **B1** single-op projection maintenance and *that it stays flat as the
+log grows* (the ADR-0001 load-bearing bet), **B2** chart read beats "grab the paper
+chart" (sub-second), **B3** keystore cost (DEK-wrap/body-seal → per-event vs
+per-episode crypto-shred granularity), **B4** Ed25519 verify/s + SHA-256-vs-BLAKE3
+(the ARM input to ADR-0015's *provisional* blob-digest default). On a miss it prints
+the ADR-0002 mitigation ladder (PL/pgSQL → pgrx → external Rust). Run it **on the Pi**;
+single-machine numbers reflect whatever ran them.
+
 ## Next (the spike's bets)
 
-- **Bet A (now):** run two real nodes over WireGuard on the Cape York ↔ Dorrigo
-  link and exercise §5 with the harness above — partition/convergence,
-  signatures-on-wire, the availability floor, eager-plane bytes/event, honest
-  assembly-state.
-- **Bet B (next week):** run the same skeleton on a Pi-5-class node and time the
-  `patient_chart` trigger path and a chart read (§6), plus Ed25519/BLAKE3
-  throughput on ARM and the keystore cost.
+- **Bet A — DONE** (#9): all six §5 rows PASS over the real Cape York ↔ Dorrigo
+  link; §4 primitives ratified as [ADR-0015](../../docs/spec/decisions/0015-event-serialization-signatures-and-content-addressing.md).
+- **Bet B — harness ready:** run `bench_b.py selftest` on a Pi-5-class node. The
+  ARM SHA-256-vs-BLAKE3 number is the one input that could revisit ADR-0015's
+  provisional blob-digest default.
+- **Byte-tier throughput** (spike §8.2): pipelined/windowed + resumable/swarm
+  fetch — the *availability* fix shipped in #9; this is the *throughput* fix.

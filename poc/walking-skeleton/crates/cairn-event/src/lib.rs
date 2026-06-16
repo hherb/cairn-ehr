@@ -201,6 +201,51 @@ pub fn plaintext_twin(body: &EventBody) -> String {
     )
 }
 
+/// Bet B (B4) — Ed25519 sign/verify throughput, ops/s. Pure CPU; the number that
+/// matters on ARM (a Pi), where the safety-critical verify gate must keep up with
+/// sync + chart reads.
+pub fn bench_sign_verify(iters: u32) -> (f64, f64) {
+    use ed25519_dalek::{Signer, Verifier};
+    let sk = SigningKey::from_bytes(&[7u8; 32]);
+    let vk = sk.verifying_key();
+    let msg = vec![0xABu8; 512]; // a representative signed-event size (~A5: ~500 B)
+
+    let t = std::time::Instant::now();
+    for _ in 0..iters {
+        std::hint::black_box(sk.sign(&msg));
+    }
+    let sign_per_s = iters as f64 / t.elapsed().as_secs_f64();
+
+    let sig = sk.sign(&msg);
+    let t = std::time::Instant::now();
+    for _ in 0..iters {
+        vk.verify(&msg, &sig).unwrap();
+    }
+    let verify_per_s = iters as f64 / t.elapsed().as_secs_f64();
+    (sign_per_s, verify_per_s)
+}
+
+/// Bet B (B4) — SHA-256 vs BLAKE3 hashing throughput, MB/s each. This is the one
+/// input that could revisit ADR-0015's *provisional* blob-digest default: if BLAKE3
+/// is not faster than SHA-256 on ARM and offers no offsetting benefit, revisit.
+pub fn bench_hash_mbps(total_mb: usize) -> (f64, f64) {
+    use sha2::{Digest, Sha256};
+    let buf = vec![0x5Au8; 1 << 20]; // 1 MiB
+
+    let t = std::time::Instant::now();
+    for _ in 0..total_mb {
+        std::hint::black_box(Sha256::digest(&buf));
+    }
+    let sha = total_mb as f64 / t.elapsed().as_secs_f64();
+
+    let t = std::time::Instant::now();
+    for _ in 0..total_mb {
+        std::hint::black_box(blake3::hash(&buf));
+    }
+    let blake = total_mb as f64 / t.elapsed().as_secs_f64();
+    (sha, blake)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
