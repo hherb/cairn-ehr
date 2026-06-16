@@ -84,7 +84,7 @@ $BIN put-blob --conn "$A" --file scan.dcm --media application/dicom   # prints t
 psql "$B" -c "select blob_note_reference(decode('<addr>','hex'),'application/dicom', <len>);"
 $BIN blobd --conn "$B" \
     --blob-peer 127.0.0.1:7710 [--blob-peer HOST:PORT ...] \          # repeatable; swarm sources
-    [--window N] [--budget-ms 50] [--metrics]                         # N ≤ 16; default budget-ms 50
+    [--window N] [--budget-ms 20] [--metrics]                         # N ≤ 16; default budget-ms 20
 ```
 
 `serve` accepts an optional `--corrupt` flag (**TEST-ONLY** fault injection — flips
@@ -161,8 +161,10 @@ On each node (point `--peer` at the *peer's* WireGuard address):
 # or the peer can't reach you.
 cairn-sync run --conn "$CONN" \
     --listen 10.0.0.1:7710 --peer 10.0.0.2:7710 --peer-name dorrigo \
-    --interval-ms 2000 --log capeyork.jsonl \      # runs until killed (--duration-s 0)
-    [--blob-peer 10.0.0.2:7710 ...] [--window N]   # windowed/swarm blob fetch
+    --interval-ms 2000 --log capeyork.jsonl
+    # runs until killed (--duration-s 0); add optional flags as needed:
+    #   --blob-peer 10.0.0.2:7710 ...   (repeatable; swarm sources)
+    #   --window N                       (windowed blob fetch, N ≤ 16)
 
 # meanwhile, generate clinical load on each node (a separate terminal):
 cairn-sync gen --conn "$CONN" --node capeyork --key node.key --count 100000 --rate 2
@@ -216,7 +218,7 @@ sources, and swarm self-heal (lying peer → per-slice reject → heal from good
 Also validates the availability floor (byte transfer must not starve clinical sync).
 
 ```sh
-# Three connections: node A (source), node B (fetcher), node C (second swarm source).
+# Three connections: node A (source A), node B (source B, second swarm source), node C (fetcher/dst).
 # selftest DROPs+recreates blob data — requires --force to guard a mistyped --conn.
 python3 harness/bench_blob.py selftest \
     --conn   "host=127.0.0.1 user=postgres dbname=skeleton_a" \
