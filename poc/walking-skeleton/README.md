@@ -69,13 +69,27 @@ $BIN pull  --conn "$B" --peer 127.0.0.1:7710 --peer-name cape-york
 ```
 
 Blob byte-tier (Bet A4): `put-blob` stores bytes on one node; the other learns the
-reference and fetches lazily, chunked, BLAKE3-verified:
+reference and fetches lazily. The byte tier is **resumable** (verified slices
+persist in `blob_chunk`; a restart fetches only missing indexes), **windowed**
+(concurrent slice workers, `--window N`, ≤16 to protect the availability floor),
+**swarm-capable** (repeat `--blob-peer HOST:PORT` for multiple sources), and
+**per-slice verified** (every slice is checked against the BLAKE3 `blob_address`
+via bao verified streaming; a lying or faulty source is rejected per-slice and
+healed by another source). The `--budget-ms` sleep between requests is preserved
+to keep byte transfer from starving clinical sync.
 
 ```sh
+$BIN gen-blob --conn "$A" [--size-mb N] [--media MEDIA_TYPE]          # mint a large local blob to fetch
 $BIN put-blob --conn "$A" --file scan.dcm --media application/dicom   # prints the blob address
 psql "$B" -c "select blob_note_reference(decode('<addr>','hex'),'application/dicom', <len>);"
-$BIN blobd --conn "$B" --peer 127.0.0.1:7710 --budget-ms 50           # preemptible fetch
+$BIN blobd --conn "$B" \
+    --blob-peer 127.0.0.1:7710 [--blob-peer HOST:PORT ...] \          # repeatable; swarm sources
+    [--window N] [--budget-ms 50] [--metrics]                         # N ≤ 16; default budget-ms 50
 ```
+
+`serve` accepts an optional `--corrupt` flag (**TEST-ONLY** fault injection — flips
+a byte of each served slice so the receiver's per-slice verify rejects it; used by
+`harness/bench_blob.py` to prove swarm self-heal; never set on a real node).
 
 For the real two-machine run (Cape York ↔ Dorrigo over WireGuard), point `--peer`
 at the peer's WireGuard address and follow the pattern in
@@ -88,8 +102,10 @@ CHECK rejecting a tampered row · sign → wire → verify-on-apply · bidirecti
 set-union **convergence to an identical event set + HLC order** · idempotent
 re-pull · watermark-0 re-pull still converging (the watermark is a hint, not an
 authority — [ADR-0004](../../docs/spec/decisions/0004-dynamic-sync-scope-prefetch-not-authority.md)) ·
-correct projection under **out-of-order** apply · BLAKE3 lazy blob fetch +
-verification · a self-verifying `blob_store` CHECK on both ends.
+correct projection under **out-of-order** apply · BLAKE3 blob fetch with
+**resumable/windowed/swarm** slice fetch + per-slice verified streaming ·
+a self-verifying `blob_store` CHECK on both ends · **swarm self-heal** (lying-peer
+fault injection via `serve --corrupt` → per-slice rejection → heal from good peer).
 
 **Stubbed on purpose** (Spike 0001 §2 — absence doesn't change the bet):
 - **Verification trusts the key embedded in the event.** Production resolves
@@ -100,8 +116,10 @@ verification · a self-verifying `blob_store` CHECK on both ends.
   logical decoding is the production change-capture optimization.
 - **The verify gate runs in the Rust applier, not in-DB.** The pgrx move (ADR-0002)
   is what makes it unbypassable; the content-address CHECK is the part already in SQL.
-- **Blobs are inline BYTEA, hex-on-the-wire, chunk offsets are int4** (< 2 GiB).
-  The real byte tier is a chunked object store shipping raw bytes with bigint offsets.
+- **Blob bytes are inline BYTEA** (not a dedicated object store). The fetch protocol
+  is now windowed, resumable, swarm-capable, and per-slice verified (Spike 0001 §8.2
+  resolved), but the storage substrate remains BYTEA; true N-way swarm is only
+  locally exercisable on the two-node rig.
 - **Sealing/crypto-shred** (`sealed`/`dek_wrapped`) and rich **contributor sets**
   are reserved in the envelope but not exercised.
 
@@ -143,7 +161,8 @@ On each node (point `--peer` at the *peer's* WireGuard address):
 # or the peer can't reach you.
 cairn-sync run --conn "$CONN" \
     --listen 10.0.0.1:7710 --peer 10.0.0.2:7710 --peer-name dorrigo \
-    --interval-ms 2000 --log capeyork.jsonl        # runs until killed (--duration-s 0)
+    --interval-ms 2000 --log capeyork.jsonl \      # runs until killed (--duration-s 0)
+    [--blob-peer 10.0.0.2:7710 ...] [--window N]   # windowed/swarm blob fetch
 
 # meanwhile, generate clinical load on each node (a separate terminal):
 cairn-sync gen --conn "$CONN" --node capeyork --key node.key --count 100000 --rate 2
@@ -189,6 +208,23 @@ verify/s + SHA-256-vs-BLAKE3 (the ARM input to ADR-0015's *provisional* blob-dig
 default, gated). On a miss it prints the ADR-0002 mitigation ladder (PL/pgSQL → pgrx →
 external Rust). Run it **on the Pi**; single-machine numbers reflect whatever ran them.
 
+## Byte-tier throughput harness (Spike 0001 §8.2)
+
+`harness/bench_blob.py` (stdlib only) exercises the windowed/resumable/swarm/lying-peer
+byte tier: throughput vs window size, resume-across-drop, swarm fetch from multiple
+sources, and swarm self-heal (lying peer → per-slice reject → heal from good source).
+Also validates the availability floor (byte transfer must not starve clinical sync).
+
+```sh
+# Three connections: node A (source), node B (fetcher), node C (second swarm source).
+# selftest DROPs+recreates blob data — requires --force to guard a mistyped --conn.
+python3 harness/bench_blob.py selftest \
+    --conn   "host=127.0.0.1 user=postgres dbname=skeleton_a" \
+    --conn-b "host=127.0.0.1 user=postgres dbname=skeleton_b" \
+    --conn-c "host=127.0.0.1 user=postgres dbname=skeleton_c" \
+    --force
+```
+
 ## Next (the spike's bets)
 
 - **Bet A — DONE** (#9): all six §5 rows PASS over the real Cape York ↔ Dorrigo
@@ -196,5 +232,5 @@ external Rust). Run it **on the Pi**; single-machine numbers reflect whatever ra
 - **Bet B — harness ready:** run `bench_b.py selftest` on a Pi-5-class node. The
   ARM SHA-256-vs-BLAKE3 number is the one input that could revisit ADR-0015's
   provisional blob-digest default.
-- **Byte-tier throughput** (spike §8.2): pipelined/windowed + resumable/swarm
-  fetch — the *availability* fix shipped in #9; this is the *throughput* fix.
+- **Byte-tier throughput — DONE** (spike §8.2): windowed/resumable/swarm/verified
+  fetch shipped; `harness/bench_blob.py` is the selftest harness.
