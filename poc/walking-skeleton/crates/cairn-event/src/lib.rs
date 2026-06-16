@@ -15,6 +15,8 @@
 //!      header is what lets a future event re-sign an old one under a stronger
 //!      primitive as an ordinary overlay event.
 
+use std::io::{Cursor, Read};
+
 use ed25519_dalek::{Signer, Verifier};
 use serde::{Deserialize, Serialize};
 
@@ -39,6 +41,10 @@ pub enum EventError {
     NoPayload,
     #[error("entropy: {0}")]
     Entropy(String),
+    #[error("malformed blob address (expected blake3 multihash)")]
+    BadAddress,
+    #[error("blob slice extraction: {0}")]
+    BlobSlice(String),
 }
 
 /// Hybrid Logical Clock stamp — the objective `t_recorded` ceiling (§3.6).
@@ -122,6 +128,61 @@ pub fn blob_address(bytes: &[u8]) -> Vec<u8> {
     let mut out = BLAKE3_MULTIHASH_PREFIX.to_vec();
     out.extend_from_slice(blake3::hash(bytes).as_bytes());
     out
+}
+
+/// Compute the BLAKE3 verified-streaming **outboard** tree for a blob's bytes.
+/// Stored alongside the bytes on a node that holds them; needed only to *serve*
+/// slices. The bao root of this encoding equals `blake3::hash(bytes)` — i.e. the
+/// `blob_address` payload — so it binds to the existing content address (§4.4).
+pub fn blob_outboard(bytes: &[u8]) -> Vec<u8> {
+    let (outboard, hash) = bao::encode::outboard(bytes);
+    debug_assert_eq!(hash.as_bytes(), &blob_address(bytes)[2..]);
+    outboard
+}
+
+/// Recover the 32-byte BLAKE3 root from a multihash blob address (`0x1e 0x20` + 32).
+pub fn blake3_root_from_address(addr: &[u8]) -> Result<blake3::Hash, EventError> {
+    if addr.len() != 34 || addr[0..2] != BLAKE3_MULTIHASH_PREFIX {
+        return Err(EventError::BadAddress);
+    }
+    let bytes: [u8; 32] = addr[2..].try_into().map_err(|_| EventError::BadAddress)?;
+    Ok(blake3::Hash::from(bytes))
+}
+
+/// Server side: extract a verified bao slice covering `[start, start+len)` from a
+/// blob's `content` and precomputed `outboard` tree. The returned bytes are the
+/// verified-streaming slice (interleaved tree nodes + data) the client decodes.
+pub fn extract_slice(
+    content: &[u8],
+    outboard: &[u8],
+    start: u64,
+    len: u64,
+) -> Result<Vec<u8>, EventError> {
+    let mut ex = bao::encode::SliceExtractor::new_outboard(
+        Cursor::new(content),
+        Cursor::new(outboard),
+        start,
+        len,
+    );
+    let mut out = Vec::new();
+    ex.read_to_end(&mut out).map_err(|e| EventError::BlobSlice(e.to_string()))?;
+    Ok(out)
+}
+
+/// Client side — THE safety seam (§4.4): decode and verify a slice against the
+/// known root, returning the verified content bytes. A tampered slice, a slice
+/// claimed at the wrong offset, or verification against the wrong root all error,
+/// so a lying source can never have its bytes accepted.
+pub fn verify_slice(
+    slice: &[u8],
+    root: &blake3::Hash,
+    start: u64,
+    len: u64,
+) -> Result<Vec<u8>, EventError> {
+    let mut dec = bao::decode::SliceDecoder::new(Cursor::new(slice), root, start, len);
+    let mut out = Vec::new();
+    dec.read_to_end(&mut out).map_err(|_| EventError::BadSignature)?;
+    Ok(out)
 }
 
 /// Sign a body into `signed_bytes` (COSE_Sign1, Ed25519) plus its content address.
@@ -319,5 +380,48 @@ mod tests {
         let (sha, blake) = bench_hash_mbps(2);
         assert!(sha > 0.0, "SHA-256 throughput should be positive");
         assert!(blake > 0.0, "BLAKE3 throughput should be positive");
+    }
+
+    #[test]
+    fn outboard_root_equals_blob_address() {
+        let data = vec![0x33u8; 700_000];
+        let ob = blob_outboard(&data);
+        // The bao root must equal the BLAKE3 root we content-address by.
+        let addr = blob_address(&data);
+        let root = blake3_root_from_address(&addr).unwrap();
+        // Ground truth: the bao root (checked inside blob_outboard) and the recovered
+        // address root must both equal the plain BLAKE3 hash of the content.
+        assert_eq!(root, blake3::hash(&data));
+        let slice = extract_slice(&data, &ob, 0, data.len() as u64).unwrap();
+        let got = verify_slice(&slice, &root, 0, data.len() as u64).unwrap();
+        assert_eq!(got, data);
+    }
+
+    #[test]
+    fn verify_slice_accepts_good_and_rejects_bad() {
+        let data: Vec<u8> = (0..600_000u32).map(|i| (i % 251) as u8).collect();
+        let ob = blob_outboard(&data);
+        let addr = blob_address(&data);
+        let root = blake3_root_from_address(&addr).unwrap();
+
+        let (start, len) = (256u64 * 1024, 256u64 * 1024);
+        let slice = extract_slice(&data, &ob, start, len).unwrap();
+
+        // Good slice verifies and returns the right bytes.
+        let got = verify_slice(&slice, &root, start, len).unwrap();
+        assert_eq!(got, data[start as usize..(start + len) as usize]);
+
+        // Tampered slice bytes -> reject.
+        let mut bad = slice.clone();
+        let m = bad.len() / 2;
+        bad[m] ^= 0x01;
+        assert!(verify_slice(&bad, &root, start, len).is_err());
+
+        // Right slice, wrong claimed offset -> reject.
+        assert!(verify_slice(&slice, &root, 0, len).is_err());
+
+        // Right slice, wrong root -> reject.
+        let other = blake3_root_from_address(&blob_address(b"different")).unwrap();
+        assert!(verify_slice(&slice, &other, start, len).is_err());
     }
 }

@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS blob_store (
     media_type   TEXT    NOT NULL,
     byte_len     BIGINT,                 -- known from the reference before bytes arrive
     content      BYTEA,                  -- NULL until fetched; verified before present := TRUE
+    outboard     BYTEA,                  -- bao verified-streaming tree; set with content, serves slices
     present      BOOLEAN NOT NULL DEFAULT FALSE,
     first_seen   TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
     fetched_at   TIMESTAMPTZ,
@@ -27,6 +28,20 @@ CREATE TABLE IF NOT EXISTS blob_store (
     -- restates the invariant so a wrong-hash blob can never masquerade as present.
     CONSTRAINT blob_self_verifying
         CHECK (NOT present OR (content IS NOT NULL AND byte_len = octet_length(content)))
+);
+
+-- Persistent partial-fetch state (§8.2 resumability). Each VERIFIED slice lands
+-- here as it arrives — out of order, from any swarm source — keyed by its index
+-- (offset / SLICE_BYTES). ON CONFLICT DO NOTHING makes chunk apply idempotent
+-- set-union, exactly like the event plane. When every index for a blob is present
+-- the byte tier assembles, whole-blob-verifies, fills blob_store, and deletes
+-- these rows. A restart therefore resumes by fetching only the missing indexes.
+CREATE TABLE IF NOT EXISTS blob_chunk (
+    blob_address BYTEA       NOT NULL,
+    chunk_index  INT         NOT NULL,
+    content      BYTEA       NOT NULL,   -- verified bytes for this slice
+    received_at  TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    PRIMARY KEY (blob_address, chunk_index)
 );
 
 -- A node learns blobs exist from event references it applies. This helper upserts
