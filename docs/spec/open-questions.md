@@ -49,14 +49,18 @@ confirmed. "Essential" is a graded, multi-source, append-only flag, and the conf
 composes with the [§5.9](identity.md#59-sensitivity-grade-the-safety-projection-and-break-glass-visibility-scope)
 safety projection. Sizing validated against real-system data: ~2.5 TB and ~75–150 kbit/s for 100 M people.
 
-## Open — Custodian & Federation Admission (new spec)
+## Resolved — Custodian & Federation Admission
 
-Surfaced as a hard dependency of [ADR-0016](decisions/0016-record-discovery-and-the-replicated-essential-tier.md):
-the existence-disclosure surface of record discovery (and the lawfulness of replicating a nation's essential
-set) is bounded by requiring every node that **joins the sync mesh** to present **proof of health-system
-participation + an enforceable privacy contract**; a node lacking these may run fully but isolated. This is
-**admission control for federation** — a governance/security spec, sibling to
-[GOVERNANCE](../principles/GOVERNANCE.md) and [Stewardship of the Name](../principles/STEWARDSHIP-OF-THE-NAME.md).
-To define: the credential/attestation a node presents, who issues and verifies it, how it is revoked
-(contamination-cascade reuse?), the contract's minimum terms, and the disclosure granularity it permits
-(region, never named clinic). Out of scope for the spec, into jurisdiction: the contract's legal force.
+Surfaced as a hard dependency of [ADR-0016](decisions/0016-record-discovery-and-the-replicated-essential-tier.md)
+and now **RESOLVED** ([ADR-0017](decisions/0017-federation-admission-sovereignty-peering-and-trust-anchors.md),
+[security §7.7](security.md#77-federation-admission-peering-trust-anchors-and-the-custodian-contract)): a node
+needs **no permission to run alone** (the *sovereignty floor*); federation is **mutual, signed, append-only
+peering** (the [§7.5](security.md#75-the-actor-registry-enrollment-version-pinning-and-key-custody) actor algebra
+applied to nodes), gated by **pluggable, self-hostable trust anchors** (no Cairn-owned root) that span the
+spectrum from a two-node practice LAN (direct pairwise) through a self-sovereign practice network (its own
+issuing key) to a **national registry as a node role**. The **custodian contract** is signed, verifiable
+metadata bound to the credential (Cairn ships format/verification/revocation; legal force is jurisdiction).
+Admission gates the **outer boundary only** — *peered is not may-see-everything*; intra-federation
+confidentiality stays [ADR-0006](decisions/0006-visibility-scope-replication-and-the-safety-projection.md)
+key-custody + visibility. Verification is offline-capable; revocation reuses the contamination cascade as an
+honestly-stale signed feed. **No new founding principle** (one operational corollary: the sovereignty floor).

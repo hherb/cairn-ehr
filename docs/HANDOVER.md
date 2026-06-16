@@ -1,13 +1,47 @@
 # HANDOVER — Cairn
 
-**Session date:** 2026-06-16 (spec bumped to **v0.19**)
+**Session date:** 2026-06-16 (spec bumped to **v0.20**)
 **Status of this file:** Working scaffolding, not a source of truth. Disposable — regenerate
 at the end of each working session. If this file ever disagrees with the canonical documents,
 the canonical documents win.
 
 ---
 
-## Resolved 2026-06-16 — national-scale record discovery (now spec v0.19) → ADR-0016
+## Resolved 2026-06-16 — Custodian & Federation Admission (now spec v0.20) → ADR-0017
+
+Drafted the spec dependency ADR-0016 surfaced, **same session, while the memory was fresh.** It dissolved into
+existing primitives + one operational corollary — **no new founding principle.** → [ADR-0017](spec/decisions/0017-federation-admission-sovereignty-peering-and-trust-anchors.md),
+canonical home **[security §7.7](spec/security.md)**, with back-pointers from [topology §2](spec/topology.md)
+and the §7 intro mTLS bullet; the [open-questions.md](spec/open-questions.md) item is struck resolved.
+
+- **The user's governing principle (verbatim intent):** a single node needs **no permission** as long as it
+  doesn't talk to others (works out of the box, zero data); once two nodes want to talk they **negotiate who
+  may access what**; a private practice may build **its own node network with no third-party authority** (no
+  capture) **but must set its own join rules**; a national system **ideally runs a registry**; the
+  infrastructure must serve that **whole spectrum with least friction.**
+- **The elegant result — it's mostly the §7.5 actor registry + §7.6 ceremony applied to node-to-node
+  relationships, not a new subsystem.** A node is a `device`-kind actor with a self-generated signing identity;
+  peering is the closed actor-event algebra (peer/supersede/revoke) appended to a trust set; revocation reuses
+  the contamination cascade.
+- **Three rulings carry it:** (1) **the sovereignty floor** — permission is a property of inter-node
+  *relationships*, never of a node's right to run (corollary of paper-parity + availability + anti-capture;
+  default deny-all peering). (2) **Pluggable, self-hostable trust anchors are the spectrum knob** (fractal
+  topology applied to trust): no-anchor pairwise → the practice's own issuing key → a national registry **as a
+  node role**, one verification mechanism, **no Cairn-owned root**. (3) **Admission gates the outer boundary
+  only** — *peered ≠ may-see-everything*; intra-federation confidentiality stays ADR-0006 key-custody +
+  visibility (don't re-introduce replication-as-access-control).
+- **The custodian contract** = signed, verifiable metadata bound to the credential; Cairn ships
+  format/verification/revocation, **legal force is jurisdiction** (the ADR-0007 records-the-chain posture). Solo
+  practice self-issues. Verification is **offline-capable**; revocation is an **honestly-stale signed feed**
+  (§6.2). Onboarding reuses the §5.11 possession gesture (low-time, high-distinctiveness, no mandatory cloud).
+- **Blast-radius (§9):** credential/signature verification + peering gate + anchor evaluation + revocation
+  checking are safety-critical (in-DB/Rust, beside the §7.5 registry); issuance UI / contract tooling /
+  onboarding wizards are fit-for-purpose; the *verified credential → admitted peer* seam is the one
+  safety-critical path (the recurring seam motif).
+
+---
+
+## Resolved 2026-06-16 — national-scale record discovery (spec v0.19) → ADR-0016
 
 Case-mined a **new** problem (not in the original §11 set): at national scale **no node holds the whole
 population's records**; a patient new to a region presents at a small under-resourced clinic — how does it
@@ -783,11 +817,12 @@ follow-ons are closed too. The last two — **§11.6** (attachments, [ADR-0013](
 and **§11.7** (locale-pluggable comparators, [ADR-0014](spec/decisions/0014-locale-pluggable-matcher-comparators.md))
 — closed this session. The only ADR-0007 follow-ons still open are small (closed role-enum membership
 finalisation; proxy/liability semantics, out of scope — Cairn records the chain). This session's record-discovery
-case-mining (→ [ADR-0016](spec/decisions/0016-record-discovery-and-the-replicated-essential-tier.md)) added
-**one new open item**: the **Custodian & Federation Admission** spec (see the top section + [open-questions.md](spec/open-questions.md)).
-With the original §11 backlog otherwise empty, the highest-signal modes are now **the Custodian & Federation
-Admission spec**, **fresh clinical case-mining**, and the **build-prep threads** below (the architecture spec is
-feature-complete enough to start specifying the first implementation spike).
+case-mining (→ [ADR-0016](spec/decisions/0016-record-discovery-and-the-replicated-essential-tier.md)) surfaced the
+**Custodian & Federation Admission** dependency, which was then **drafted the same session** (→ [ADR-0017](spec/decisions/0017-federation-admission-sovereignty-peering-and-trust-anchors.md),
+[security §7.7](spec/security.md)). With the backlog empty again, the highest-signal modes are now **fresh
+clinical case-mining** and the **build-prep threads** below (the architecture spec is feature-complete enough to
+start specifying the first implementation spike). Build-prep next steps unchanged: **Bet B on a Pi**, then the
+byte-tier connection-reuse throughput lever.
 
 **The recurring menu** when resuming (pick one):
 - More clinical **case-mining** — the most productive mode so far (the event-overlay + key-custody + actor
