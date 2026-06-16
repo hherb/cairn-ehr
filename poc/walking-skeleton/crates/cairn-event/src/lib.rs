@@ -41,6 +41,10 @@ pub enum EventError {
     NoPayload,
     #[error("entropy: {0}")]
     Entropy(String),
+    #[error("malformed blob address (expected blake3 multihash)")]
+    BadAddress,
+    #[error("blob slice extraction: {0}")]
+    BlobSlice(String),
 }
 
 /// Hybrid Logical Clock stamp — the objective `t_recorded` ceiling (§3.6).
@@ -139,9 +143,9 @@ pub fn blob_outboard(bytes: &[u8]) -> Vec<u8> {
 /// Recover the 32-byte BLAKE3 root from a multihash blob address (`0x1e 0x20` + 32).
 pub fn blake3_root_from_address(addr: &[u8]) -> Result<blake3::Hash, EventError> {
     if addr.len() != 34 || addr[0..2] != BLAKE3_MULTIHASH_PREFIX {
-        return Err(EventError::BadKeyId);
+        return Err(EventError::BadAddress);
     }
-    let bytes: [u8; 32] = addr[2..].try_into().map_err(|_| EventError::BadKeyId)?;
+    let bytes: [u8; 32] = addr[2..].try_into().map_err(|_| EventError::BadAddress)?;
     Ok(blake3::Hash::from(bytes))
 }
 
@@ -155,13 +159,13 @@ pub fn extract_slice(
     len: u64,
 ) -> Result<Vec<u8>, EventError> {
     let mut ex = bao::encode::SliceExtractor::new_outboard(
-        Cursor::new(content.to_vec()),
-        Cursor::new(outboard.to_vec()),
+        Cursor::new(content),
+        Cursor::new(outboard),
         start,
         len,
     );
     let mut out = Vec::new();
-    ex.read_to_end(&mut out).map_err(|e| EventError::Cose(e.to_string()))?;
+    ex.read_to_end(&mut out).map_err(|e| EventError::BlobSlice(e.to_string()))?;
     Ok(out)
 }
 
@@ -175,7 +179,7 @@ pub fn verify_slice(
     start: u64,
     len: u64,
 ) -> Result<Vec<u8>, EventError> {
-    let mut dec = bao::decode::SliceDecoder::new(Cursor::new(slice.to_vec()), root, start, len);
+    let mut dec = bao::decode::SliceDecoder::new(Cursor::new(slice), root, start, len);
     let mut out = Vec::new();
     dec.read_to_end(&mut out).map_err(|_| EventError::BadSignature)?;
     Ok(out)
@@ -384,9 +388,10 @@ mod tests {
         let ob = blob_outboard(&data);
         // The bao root must equal the BLAKE3 root we content-address by.
         let addr = blob_address(&data);
-        assert_eq!(blake3_root_from_address(&addr).unwrap().as_bytes(), &addr[2..]);
-        // A slice extracted with this outboard verifies against the address root.
         let root = blake3_root_from_address(&addr).unwrap();
+        // Ground truth: the bao root (checked inside blob_outboard) and the recovered
+        // address root must both equal the plain BLAKE3 hash of the content.
+        assert_eq!(root, blake3::hash(&data));
         let slice = extract_slice(&data, &ob, 0, data.len() as u64).unwrap();
         let got = verify_slice(&slice, &root, 0, data.len() as u64).unwrap();
         assert_eq!(got, data);
