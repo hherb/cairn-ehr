@@ -303,14 +303,32 @@ ADR-0013 and left for the production byte tier:
    (ADR-0013 *chunked/resumable*). Moving the fetch off the clinical loop (8.1) is the **availability** fix;
    pipelining + resumability is the **throughput** fix.
 
-**STATUS — implemented (PR #12), pending real-link confirmation.** Both deferred items above are now built:
-`do_blobd` is **windowed** (worker pool, `--window N` ≤16), **resumable** (verified slices persist in a
+**STATUS — implemented (PR #12) and DELIVERED on the real link 2026-06-16.** Both deferred items above are
+built: `do_blobd` is **windowed** (worker pool, `--window N` ≤16), **resumable** (verified slices persist in a
 `blob_chunk` set-union table; a restart fetches only the missing indexes), **multi-source swarm**
 (`--blob-peer` repeatable, per-slice failover), and **per-slice BLAKE3 verified** via `bao`
 (`cairn-event::verify_slice` — a lying/faulty source is rejected per-slice and healed by another). Slices
-travel as **raw binary frames** (not hex, which would halve measured throughput). Validated locally by
-`harness/bench_blob.py selftest` (T1 windowed throughput · T2 resume-across-interrupt · T3 swarm · T4
-lying-peer heal · T5 availability floor — all PASS). **What the real Cape York ↔ Dorrigo run must still
-confirm** before §8.2 is marked *delivered*: throughput + round-trip reduction vs the old stub on the actual
-~710 ms link, **resume across a real Starlink drop**, and **clinical p95 unaffected** during the windowed
-fetch at the *production* `--budget-ms`. Record the chosen `SLICE_BYTES` / `--window` from that run.
+travel as **raw binary frames** (not hex, which would halve measured throughput).
+
+**Real Cape York ↔ Dorrigo run (2026-06-16, ~680–860 ms-RTT WireGuard satellite link;** MacBook 10.0.0.2
+fetcher ↔ DGX Spark 10.0.0.3 source, PG18 :5444; driver `harness/wan_spike.py`, raw log alongside it).
+**All three claims the local selftest can't exercise PASS:**
+
+| Claim | Result |
+|-------|--------|
+| **T1 windowing / RTT reduction** | 4 MB fetched in **21.4 s windowed (w8)** vs **101 s sequential (w1) = 4.7×**, single pass. Round-trips collapse from ~64 sequential (the 64 KiB stub) to ~2 windowed waves. |
+| **T2 resume across a real drop** | Killed mid-fetch at 25 s → **14/16 verified slices persisted**, then resumed from `blob_chunk` and completed (only the 2 missing indexes refetched). |
+| **T5 availability floor** | Clinical pull p95 **3064 → 3918 ms (+28 %)** during a concurrent windowed fetch at `--budget-ms 20`; **clinical sync never stalled** (the ADR-0013 floor — availability preserved). |
+
+**Tuning findings (the "choose `SLICE_BYTES`/`--window`" deliverable):**
+- **Throughput is RTT-bound, ~0.2 MB/s per link.** The cost is dominated by a **fresh TCP connection +
+  slow-start per slice** on a high bandwidth-delay-product link, so throughput comes from **parallel flows**,
+  not bigger slices: window sweep at 4 MB gave **w4 0.12 / w8 0.19 / w16 0.17 MB/s** (peaks ≈ **window 8**,
+  16 flows give no further gain — bandwidth/contention saturated), and a *larger* slice was *worse*
+  (256 KiB 0.19 → 1 MiB 0.16 → 4 MiB 0.11 MB/s, the 4 MiB case being a single slow-starting flow).
+- **Keep `SLICE_BYTES = 256 KiB`** (confirmed good) and **default `--window` 4–8** (8 for throughput, lower
+  to stay floor-conservative). On a *shared-bandwidth* link the availability-floor knob is **window width
+  (concurrency)**, not `--budget-ms` (its inter-request sleep is negligible against a ~750 ms RTT).
+- **Next throughput lever (beyond this spike):** connection reuse / persistent streaming instead of one TCP
+  connection per slice — the production object-store tier already noted in the skeleton README. Windowing
+  delivers the §8.2 requirement (parallel, resumable, verified); the per-connection cost is the next ceiling.
