@@ -1,6 +1,7 @@
 # Spike 0001 — Walking Skeleton, WAN-Sync Validation, and Pi Cost
 
-- **Status:** Proposed (first implementation task)
+- **Status:** Bet A **PASS** (run 2026-06-16 over the Cape York ↔ Dorrigo WireGuard link — see §8; the run also
+  surfaced and fixed a real availability-floor bug in the field `run` loop, §8.1); Bet B (Pi) pending
 - **Date:** 2026-06-16
 - **Validates:** [ADR-0001](../spec/decisions/0001-fat-postgres-thin-daemon.md) (projection cost on weak
   hardware), the [§6.2](../spec/sync.md#62-consistency-model) set-union convergence claim under a *real*
@@ -237,3 +238,65 @@ When both bets have run:
    can't meet B2**, that is a genuine go/no-go signal to revisit the projection model.
 3. Either way, the skeleton becomes the seed of the real implementation — it is built to be the
    architecture, not thrown away.
+
+---
+
+## 8. Bet A — results (Cape York ↔ Dorrigo, 2026-06-16) — **PASS** (and one real bug, fixed)
+
+Ran the §5 table over the real link: a MacBook (**Cape York** node, WireGuard `10.0.0.2`, PostgreSQL 16) and
+the **DGX Spark** (**Dorrigo** node, WireGuard `10.0.0.3`, a user-owned **PostgreSQL 18.4** instance). **The
+link was genuinely adverse — a satellite path with ~710 ms RTT** (`ping` min/avg/max 667/710/775 ms, with
+loss), which is exactly the design-validity stress Bet A exists to apply.
+
+Exercised through the **unattended field path** — `cairn-sync run` on each node (serve + pull + lazy blob
+fetch on a timer, drop-resilient, one JSON line/cycle) summarised by `bet_a.py analyze` per node and
+cross-compared with `bet_a.py report`. Scenario: a partition (each node writes independently, plus a
+**conflicting demographic overlay on one shared patient**), then both nodes `run` for 150 s under continuous
+2 ev/s clinical load, with a 2 MB DICOM blob put on Dorrigo and referenced on Cape York (the lazy-fetch / A4
+/ A6 case).
+
+| # | Question | Result | Detail (clean canonical run) |
+|---|---|---|---|
+| **A1** | set-union converges after partition | **PASS** | both nodes reach **792 events, event-hash AND projection-hash identical**; the conflicting shared-patient overlay resolved to the **same winner on both sides** (`Alma Tjapaltjarri (Dorrigo)`, deterministic HLC `(wall, counter, origin)` tie-break), no operator intervention |
+| **A2** | signatures survive the wire | **PASS** | **0** verify-failures on apply across the whole event set, both directions (move 1 — sign-the-stored-bytes — makes this structural) |
+| **A3** | HLC ordering under latency + skew | **PASS** | local clock merged past every applied event on both nodes; max HLC↔record gap **reported** (Cape York 35 s / Dorrigo 42 s — the partition window), **flagged, never auto-resolved** |
+| **A4** | availability floor | **PASS (after the fix below)** | clinical sync ran 30 cycles to full convergence (median inter-cycle gap **5.0 s**, max 11.5 s) **while** the blob fetched lazily on a separate tier — no head-of-line stall |
+| **A5** | eager plane slim | **PASS** | **494–495 B/event** on the clinical plane (budget 4096) — directly the deterministic-CBOR/COSE compactness bet |
+| **A6** | honest assembly-state | **PASS** | the referenced-but-unfetched blob shows as **referenced-not-present** on the fetching node, never a silent absence (it was still in-flight at the 150 s cutoff — the tier yielding to clinical work, exactly as intended) |
+
+**Bet A: PASS — proceed to ratify the §4 primitives** (the per-§7.1 ADR; optionally gated on Bet B's ARM
+crypto-throughput number, which touches the §4.4 blob-digest default). The set-union/signature/HLC/bytes
+core was independently corroborated by an earlier two-node SSH-driven run (442 events, same verdicts) before
+the field path existed.
+
+### 8.1 The real bug the link surfaced — an availability-floor violation in the run loop (fixed)
+
+The first canonical run **FAILED A1** — and the failure was instructive, not noise. The field `run` loop
+fetched blobs **inline in the clinical pull cycle** (`do_blobd` runs a whole-blob fetch to completion each
+cycle). On the 710 ms link, the 2 MB blob's ~32 sequential round-trips **head-of-line-blocked the Cape York
+node's entire 150 s run**: it logged **one cycle**, pulled **zero** clinical events, and never converged
+(396 vs 792) — even though its *serve* thread happily fed Dorrigo the whole time. That is precisely the
+failure [ADR-0013](../spec/decisions/0013-attachments-content-addressed-lazy-blob-tier.md) names: **byte
+transfer reducing clinical-data availability** (the Kimberley nightly-imaging-grinds-everything-to-a-halt
+case, reproduced in miniature on a real satellite link).
+
+**Fix (in this change):** the lazy byte tier now runs on **its own thread** in `cairn-sync run` — like the
+serve thread — so blob fetching is on a separate cadence and **can never block the clinical pull loop**
+(the ADR-0013 *separately-budgeted byte tier*, not mere priority ordering). Re-running: Cape York completed
+**30 clinical cycles and fully converged** while the same blob fetched lazily in the background. `cargo test`
++ `clippy` green.
+
+### 8.2 Carried into the real byte-tier build (not blocking, deferred)
+
+The skeleton's `do_blobd` is still a **stub** in two ways the link exposed, both already mandated by
+ADR-0013 and left for the production byte tier:
+
+1. **Pull is synchronous, one round-trip per 64 KiB chunk.** Latency, not bandwidth, binds: a 64 MB blob is
+   ~1024 sequential RTTs (~12 min) on this link regardless of throughput. The real tier must **pipeline/window
+   many chunks in flight** and **pull from multiple sources** (swarm) — BLAKE3's independent-chunk
+   verification (§4.4) is what makes that windowing safe.
+2. **The whole-blob fetch is not resumable across passes** — it restarts from offset 0 on any mid-fetch drop,
+   so on a flaky high-latency link a large blob may never complete within a session (in the clean run the
+   2 MB blob was still `referenced-only` at cutoff). The real tier must **persist partial bytes and resume**
+   (ADR-0013 *chunked/resumable*). Moving the fetch off the clinical loop (8.1) is the **availability** fix;
+   pipelining + resumability is the **throughput** fix.
