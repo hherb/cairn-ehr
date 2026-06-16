@@ -57,6 +57,28 @@ and a [spikes/README.md](spikes/README.md) index. Added to `mkdocs.yml` nav; bui
   The serialization/signature **ADR is written after the spike**, citing its results (Spike 0001 §7 exit
   criteria). Spec version intentionally **not** bumped: no §1–11 aspect or ADR changed yet.
 
+### Built + validated 2026-06-16 — the walking skeleton (first code in the repo)
+
+**[`poc/walking-skeleton/`](../poc/walking-skeleton/)** — Rust + SQL, sibling to the existing Python
+`poc/replication-failover`. This is the §3 shared prerequisite for both spike bets, and (Spike 0001 §7)
+the **seed of the real implementation**. Faithful to the §9 blast-radius rule: signed envelope +
+content-address invariant + trigger-maintained projection in-DB/SQL; canonical-bytes/COSE_Sign1/Ed25519/
+multihash/BLAKE3 + the thin set-union ship-apply daemon in Rust (no merge logic).
+
+- **It compiles and runs end-to-end** — proven live on a real PostgreSQL (PG16 here; SQL uses no 18-only
+  syntax, UUIDv7 minted in Rust): schema load · the in-DB **content-address CHECK rejects a tampered row** ·
+  sign → wire → **verify-on-apply** · bidirectional **set-union convergence to an identical event set + HLC
+  order** · idempotent re-pull · **watermark-0 re-pull still converges** (hint, not authority — ADR-0004) ·
+  correct projection under **out-of-order** apply · **BLAKE3 lazy blob fetch + verification**. `cargo test`
+  green (incl. the Bet-A2 round-trip/tamper test), clippy clean.
+- **Two real bugs found and fixed by running it** (the value of building, not just specifying): a
+  NULL-safe projection winner-comparison (a node that writes a note *before* the patient arrives), and
+  param-type binding (`$n::text::uuid/jsonb`, int4 chunk offsets).
+- **Stubs are documented** (README "what it proves / deliberately stubs"): key trust = embedded key (not yet
+  the ADR-0011 registry); change-capture = watermark-pull (not yet logical decoding); verify-in-applier (not
+  yet the in-DB pgrx gate); inline BYTEA blobs. None change either bet.
+- **Next:** Bet A on the Cape York ↔ Dorrigo WireGuard link (Spike 0001 §5); Bet B on a Pi next week (§6).
+
 ---
 
 ## Resolved 2026-06-16 — §11.7 locale-pluggable comparators (now spec v0.17) — **§11 is now fully closed**
