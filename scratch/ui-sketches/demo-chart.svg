@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="720" viewBox="0 0 1040 720" font-family="'Segoe UI', Helvetica, Arial, sans-serif">
+  <style>
+    .frame   { fill:#ffffff; stroke:#9aa3ad; stroke-width:1.5; }
+    .panel   { fill:#f6f8fa; stroke:#cbd2da; stroke-width:1.2; }
+    .chip     { fill:#eef2f6; stroke:#b7c0c9; stroke-width:1; }
+    .accent  { fill:#dde9f3; stroke:#7fa6c6; stroke-width:1; }
+    .lbl     { fill:#3a424b; font-size:13px; }
+    .lblsm   { fill:#6b757f; font-size:11px; }
+    .lblbig  { fill:#22272c; font-size:16px; font-weight:600; }
+    .meta    { fill:#8b949e; font-size:10px; }
+    .ev      { fill:#ffffff; stroke:#cbd2da; stroke-width:1; }
+    .dot     { fill:#7fa6c6; }
+    .rail    { stroke:#cbd2da; stroke-width:2; }
+    .note    { fill:#b0563a; font-size:10px; font-style:italic; }
+  </style>
+
+  <!-- outer frame -->
+  <rect x="8" y="8" width="1024" height="704" rx="6" class="frame"/>
+
+  <!-- top bar -->
+  <rect x="8" y="8" width="1024" height="48" rx="6" class="panel"/>
+  <text x="28" y="38" class="lblbig">Cairn</text>
+  <rect x="120" y="20" width="430" height="24" rx="12" class="chip"/>
+  <text x="136" y="36" class="lblsm">search patient — name, DOB, identifier…</text>
+  <rect x="858" y="18" width="150" height="28" rx="4" class="accent"/>
+  <text x="878" y="36" class="lbl">● this workstation</text>
+
+  <!-- patient banner -->
+  <rect x="8" y="56" width="1024" height="60" class="panel"/>
+  <text x="28" y="84" class="lblbig">PARK, Min-jun</text>
+  <text x="28" y="104" class="lblsm">UUID a3f1… · ♂ · 1971-04-02 (55y) · linked identities: 2</text>
+  <rect x="700" y="70" width="140" height="32" rx="4" class="chip"/>
+  <text x="716" y="91" class="lbl">⚑ safety projection</text>
+  <rect x="852" y="70" width="156" height="32" rx="4" class="accent"/>
+  <text x="868" y="91" class="lbl">+ new event</text>
+  <text x="700" y="74" class="note">de-identified — no disclosure</text>
+
+  <!-- left column: problem / med list -->
+  <rect x="20" y="128" width="250" height="572" rx="4" class="panel"/>
+  <text x="36" y="152" class="lbl" font-weight="600">Problems</text>
+  <rect x="32" y="162" width="226" height="34" rx="3" class="ev"/>
+  <text x="44" y="184" class="lbl">Type 2 diabetes</text>
+  <rect x="32" y="200" width="226" height="34" rx="3" class="ev"/>
+  <text x="44" y="222" class="lbl">Hypertension</text>
+  <rect x="32" y="238" width="226" height="34" rx="3" class="ev"/>
+  <text x="44" y="260" class="lbl">CKD stage 3 <tspan class="meta">(uncertain)</tspan></text>
+
+  <text x="36" y="312" class="lbl" font-weight="600">Medications</text>
+  <rect x="32" y="322" width="226" height="34" rx="3" class="ev"/>
+  <text x="44" y="344" class="lbl">Metformin 1g BD</text>
+  <rect x="32" y="360" width="226" height="34" rx="3" class="ev"/>
+  <text x="44" y="382" class="lbl">Ramipril 5mg OD</text>
+
+  <text x="36" y="436" class="lbl" font-weight="600">Allergies</text>
+  <rect x="32" y="446" width="226" height="34" rx="3" class="ev"/>
+  <text x="44" y="468" class="lbl">Penicillin — rash</text>
+  <text x="44" y="500" class="lblsm">No others recorded</text>
+  <text x="44" y="516" class="meta">(unknown ≠ none — not yet asked)</text>
+
+  <!-- center: clinical timeline -->
+  <rect x="282" y="128" width="500" height="572" rx="4" class="panel"/>
+  <text x="298" y="152" class="lbl" font-weight="600">Clinical timeline</text>
+  <text x="690" y="152" class="lblsm">newest first ▾</text>
+  <line x1="320" y1="170" x2="320" y2="688" class="rail"/>
+
+  <!-- events -->
+  <circle cx="320" cy="196" r="5" class="dot"/>
+  <rect x="340" y="178" width="426" height="62" rx="4" class="ev"/>
+  <text x="356" y="200" class="lbl" font-weight="600">ED note — chest pain</text>
+  <text x="356" y="220" class="lblsm">Dr A. Okafor · attested · t_eff 2026-06-17 09:14</text>
+  <text x="356" y="234" class="meta">t_rec 2026-06-17 09:31 (HLC) · signed</text>
+
+  <circle cx="320" cy="280" r="5" class="dot"/>
+  <rect x="340" y="262" width="426" height="62" rx="4" class="ev"/>
+  <text x="356" y="284" class="lbl" font-weight="600">Troponin 0.04 → 0.09  ⬆</text>
+  <text x="356" y="304" class="lblsm">Lab feed · machine author · unattested</text>
+  <text x="356" y="318" class="meta">references order #c81a · signed</text>
+
+  <circle cx="320" cy="364" r="5" class="dot"/>
+  <rect x="340" y="346" width="426" height="50" rx="4" class="ev"/>
+  <text x="356" y="368" class="lbl">Correction → overlays prior BP entry</text>
+  <text x="356" y="386" class="meta">supersedes ev 9f02 · original retained</text>
+
+  <circle cx="320" cy="436" r="5" class="dot"/>
+  <rect x="340" y="418" width="426" height="50" rx="4" class="ev"/>
+  <text x="356" y="440" class="lbl">Triage vitals — HR 96, BP 158/92</text>
+  <text x="356" y="458" class="meta">Nurse T. Bello · attested · signed</text>
+
+  <circle cx="320" cy="508" r="5" class="dot"/>
+  <rect x="340" y="490" width="426" height="50" rx="4" class="ev"/>
+  <text x="356" y="512" class="lbl">Prior discharge summary (region node)</text>
+  <text x="356" y="530" class="meta">replicated · bytes lazy ⤓ fetch on demand</text>
+
+  <!-- right: context / detail -->
+  <rect x="794" y="128" width="226" height="572" rx="4" class="panel"/>
+  <text x="810" y="152" class="lbl" font-weight="600">Selected event</text>
+  <rect x="806" y="162" width="202" height="120" rx="3" class="accent"/>
+  <text x="820" y="184" class="lbl">ED note — chest pain</text>
+  <text x="820" y="204" class="lblsm">legibility twin ▾</text>
+  <text x="820" y="224" class="meta">"55M, central chest pain</text>
+  <text x="820" y="238" class="meta"> 40min, radiates L arm…"</text>
+  <text x="820" y="262" class="lblsm">authored by · attested by</text>
+
+  <text x="810" y="316" class="lbl" font-weight="600">Provenance</text>
+  <text x="820" y="338" class="lblsm">origin node: ED-03</text>
+  <text x="820" y="354" class="lblsm">signature: ✓ verified</text>
+  <text x="820" y="370" class="lblsm">arrived via: facility hub</text>
+
+  <text x="810" y="416" class="lbl" font-weight="600">Actions</text>
+  <rect x="806" y="426" width="202" height="30" rx="3" class="chip"/>
+  <text x="820" y="446" class="lbl">overlay / correct</text>
+  <rect x="806" y="462" width="202" height="30" rx="3" class="chip"/>
+  <text x="820" y="482" class="lbl">add follow-up</text>
+  <rect x="806" y="498" width="202" height="30" rx="3" class="chip"/>
+  <text x="820" y="518" class="lbl">view full history</text>
+
+  <text x="298" y="678" class="meta">wireframe — layout & affordances only, not visual design</text>
+</svg>
