@@ -1,9 +1,137 @@
 # HANDOVER — Cairn
 
-**Session date:** 2026-06-16 (spec bumped to **v0.17**)
+**Session date:** 2026-06-16 (spec bumped to **v0.21**)
 **Status of this file:** Working scaffolding, not a source of truth. Disposable — regenerate
 at the end of each working session. If this file ever disagrees with the canonical documents,
 the canonical documents win.
+
+---
+
+## Resolved 2026-06-16 — federation revocation + author-scoped export (now spec v0.21) → ADR-0018, ADR-0019
+
+Pressure-tested ADR-0017 with adversarial cases (the user's bad-actor revocation case + generated follow-ons),
+then folded the harvest into two ADRs. Both **dissolved** — **no new founding principle.**
+
+- **[ADR-0018](spec/decisions/0018-federation-revocation-cascade-and-the-anchor-as-power.md) (refines 0017),
+  canonical [security §7.7](spec/security.md) revocation block.** The struck-off-operator-with-subsidiaries
+  case sharpened seven properties: (1) **enforced by counterparties, never the revoked node** (the enforceable
+  boundary is the honest set); (2) **forward-distrust, not retroactive erasure** (events authored while
+  credentialed stay, marked; later ones refused); (3) **cascade over the issuance/affiliation graph — revoke
+  the principal, not the key** (by chain + a new additive **controlling-entity/`on_behalf_of` credential
+  attribute** fed to the contamination cascade; issuance checks principal status → no whack-a-mole); (4)
+  **anchor revocation (bidirectional, cascades) ≠ voluntary unpeering (unilateral, local)**; (5) **the anchor
+  is a position of power** — anti-capture turned inward: minimise blast radius (sovereignty floor, multi-anchor
+  default — *never mandate a single anchor*, audited signed revocation, availability floor), but never prevent
+  *legitimate* exclusion (the deepest pressure-test finding — the captured-registry kill-switch); (6)
+  **partition-honest** with a **local-read-never-fails-closed** freshness knob; (7) **one credential per
+  accountable principal** (granularity guidance). **Clawback of already-synced data = authorities' matter, not
+  Cairn's** (honest ceiling).
+- **[ADR-0019](spec/decisions/0019-author-scoped-record-export-the-medico-legal-copy.md) (refines 0007),
+  canonical [security §7.8](spec/security.md).** From the roaming-locum case: a clinician's records are their
+  **sole litigation defence decades on**, and per-workplace loss risk **compounds across a portfolio career**.
+  So a first-class, **audited** export selected by **contributor identity**, **strictly author-scoped** (the
+  user's ruling: progress notes, path/imaging *requests*, referrals — the reasoning + actioning; **not**
+  results — results are a separable practice-custodianship duty the clinician enforces by delivery/re-litigation).
+  **Self-verifying + legible-across-time** (signed bytes + plaintext twins → court-admissible 20 yrs on,
+  tamper-evident, schema-drift-proof). Export is an append-only audit event recording **blast radius**
+  (the user's requirement). **Seal mode = policy-neutral key-custody ladder** (author-readable /
+  authority-public-key-sealed / both). It is the **general mechanism behind ADR-0005 rung-2's escrowed clinician
+  copy**; the erasure interaction is the intended honest ceiling. Pleasing fit: Cairn's append-only signed
+  design is almost purpose-built for "my records are my defence."
+- **Pressure-test cases run (all dissolved):** whack-a-mole re-enrolment, captured/compromised registry (the
+  deep one → principle-level "anchor is power"), anchor-revocation-vs-unpeering, roaming-locum (clinician
+  identity is itself a §5 claim; cross-federation linkage is link-events, no auto-propagating revocation),
+  shared-node collateral (granularity guidance), mid-sync atomicity, insider-races-revocation (audited, not
+  preventable), reinstatement-on-appeal (new overlay), cross-jurisdiction anchors (mutual recognition = policy),
+  feed forgery/DoS (signature + availability floor).
+- **Blast-radius (§9):** revocation checking + the controlling-entity cascade seam (ADR-0018) and the
+  export predicate+seal+audit-emit seam (ADR-0019) are safety/privacy-critical; UI/packaging fit-for-purpose.
+
+---
+
+## Resolved 2026-06-16 — Custodian & Federation Admission (spec v0.20) → ADR-0017
+
+Drafted the spec dependency ADR-0016 surfaced, **same session, while the memory was fresh.** It dissolved into
+existing primitives + one operational corollary — **no new founding principle.** → [ADR-0017](spec/decisions/0017-federation-admission-sovereignty-peering-and-trust-anchors.md),
+canonical home **[security §7.7](spec/security.md)**, with back-pointers from [topology §2](spec/topology.md)
+and the §7 intro mTLS bullet; the [open-questions.md](spec/open-questions.md) item is struck resolved.
+
+- **The user's governing principle (verbatim intent):** a single node needs **no permission** as long as it
+  doesn't talk to others (works out of the box, zero data); once two nodes want to talk they **negotiate who
+  may access what**; a private practice may build **its own node network with no third-party authority** (no
+  capture) **but must set its own join rules**; a national system **ideally runs a registry**; the
+  infrastructure must serve that **whole spectrum with least friction.**
+- **The elegant result — it's mostly the §7.5 actor registry + §7.6 ceremony applied to node-to-node
+  relationships, not a new subsystem.** A node is a `device`-kind actor with a self-generated signing identity;
+  peering is the closed actor-event algebra (peer/supersede/revoke) appended to a trust set; revocation reuses
+  the contamination cascade.
+- **Three rulings carry it:** (1) **the sovereignty floor** — permission is a property of inter-node
+  *relationships*, never of a node's right to run (corollary of paper-parity + availability + anti-capture;
+  default deny-all peering). (2) **Pluggable, self-hostable trust anchors are the spectrum knob** (fractal
+  topology applied to trust): no-anchor pairwise → the practice's own issuing key → a national registry **as a
+  node role**, one verification mechanism, **no Cairn-owned root**. (3) **Admission gates the outer boundary
+  only** — *peered ≠ may-see-everything*; intra-federation confidentiality stays ADR-0006 key-custody +
+  visibility (don't re-introduce replication-as-access-control).
+- **The custodian contract** = signed, verifiable metadata bound to the credential; Cairn ships
+  format/verification/revocation, **legal force is jurisdiction** (the ADR-0007 records-the-chain posture). Solo
+  practice self-issues. Verification is **offline-capable**; revocation is an **honestly-stale signed feed**
+  (§6.2). Onboarding reuses the §5.11 possession gesture (low-time, high-distinctiveness, no mandatory cloud).
+- **Blast-radius (§9):** credential/signature verification + peering gate + anchor evaluation + revocation
+  checking are safety-critical (in-DB/Rust, beside the §7.5 registry); issuance UI / contract tooling /
+  onboarding wizards are fit-for-purpose; the *verified credential → admitted peer* seam is the one
+  safety-critical path (the recurring seam motif).
+
+---
+
+## Resolved 2026-06-16 — national-scale record discovery (spec v0.19) → ADR-0016
+
+Case-mined a **new** problem (not in the original §11 set): at national scale **no node holds the whole
+population's records**; a patient new to a region presents at a small under-resourced clinic — how does it
+discover a record exists elsewhere, and request it? It dissolved into existing primitives + **one new
+replication tier**, **no new founding principle**. → [ADR-0016](spec/decisions/0016-record-discovery-and-the-replicated-essential-tier.md),
+canonical homes **[sync §6.7](spec/sync.md)** (the tier + discovery mechanism) and
+**[identity §5.2](spec/identity.md)** (discovery feeds the matcher; national ID as accelerator), with the
+confidential-essential composition in **[identity §5.9](spec/identity.md)**.
+
+- **The gap:** §5.2's *"match at the lowest tier that sees both registrations"* breaks when the lowest
+  common ancestor is *the nation* — which can be neither a fat index the clinic queries nor one it can hold.
+  The conventional fix (a national **Master Patient Index**) is the surveillance/lock-in capture surface
+  principle 7 forbids.
+- **Two phases of opposite character:** *identity* discovery is irreducibly the matcher's fuzzy problem
+  (**you cannot content-address a human** — why ADR-0013's content-addressing doesn't solve it); *part/locator*
+  discovery (UUID → which nodes hold its events) **is** content-addressable, the §6.6 swarm-fetch shape.
+- **The resolution (the user's keystone intuition, validated by the math):** a **replicated essential-state
+  tier** — a tiny, replicate-to-all-*federated* projection of each person's essential safety set (demographics,
+  active allergies, active meds, problem list, code-status, care pointer) + a blocking-key summary on every
+  node. Discovery becomes a **local matcher query** — offline, partition-proof, *no broadcast of who is being
+  sought*. Hit → middle band → human → `link` → §6.4 lazy acquisition of the full record. ADR-0013's
+  **reference-eager/byte-lazy** generalized from attachments to **patient existence**.
+- **The footgun the research caught + nailed in the spec:** the essential tier carries **current state, not
+  transaction history** (~77 % of dispensed items are repeats that don't change the list). Dispensing history,
+  observations, labs, notes stay in the scoped/lazy full record. This is the line that keeps it affordable.
+- **"Essential" is a graded, multi-source, append-only flag, not a fixed list** (the user's *Sildenafil* case:
+  privacy-sensitive, sporadic, undisclosed, but lethal-with-nitrates). Policy default pre-label pack + any
+  accountable contributor may tag; *when unsure, err toward essential* (principle 4). **Confidential ∧ essential
+  composes with the §5.9 safety projection:** the **de-identified projection** (interaction class + severity,
+  naming nothing) replicates broadly and is itself the actionable fact; the **identified body stays sealed**
+  behind break-glass — patient kept safe without being outed and without point-of-care disclosure.
+- **National/memorable ID (Norway *personnummer*) = deterministic accelerator, never a dependency** (the user:
+  patient-carried tokens fail in practice — forgotten cards, failed logins). Patient-carried token optional.
+- **Sizing validated by a 5-angle deep-research pass** (PubMed + national stats; full numbers in
+  [ADR-0016 §8](spec/decisions/0016-record-discovery-and-the-replicated-essential-tier.md)): essential set
+  **~25 KB/person → ~2.5 TB for 100 M** (range 1.2–5 TB; a commodity 4 TB SSD), discovery summary ~0.4–1.6 GB;
+  churn **~5–10 essential events/person/yr → ~75–150 kbit/s per full-mirror node ≈ ~1 % of a mediocre
+  Starlink** (1–2 orders of headroom even at a sicker ~25/yr). Anchored on the spike's measured ~494 B/event,
+  England NHSBSA (~21 items/yr, ~77 % repeats), Scottish/Swedish polypharmacy registries (~40 % on zero meds),
+  Barnett 2012 multimorbidity, Zhou 2016 allergies (n≈1.77M), US MEPS utilisation skew.
+- **New open item surfaced (a hard dependency):** **Custodian & Federation Admission** — a separate
+  governance/security spec. Replicating a nation's essential set is lawful only because every holding node is a
+  **contracted, accountable custodian** (proof of health-system participation + enforceable privacy contract to
+  join the mesh; else isolated). This bounds the unavoidable existence-disclosure to vetted custodians at
+  **region** granularity. Logged in [open-questions.md](spec/open-questions.md).
+- **Blast-radius (§9):** the summary build + local matcher query + ranking are fit-for-purpose (advisory); the
+  essential-tier replication predicate + **current-state projection seam** + the essential-flag→safety-projection
+  seam + federation-admission credential verification are safety-critical (the recurring seam motif).
 
 ---
 
@@ -730,9 +858,13 @@ keystore cost / key granularity for crypto-shredding — see ADR-0005.)**
 follow-ons are closed too. The last two — **§11.6** (attachments, [ADR-0013](spec/decisions/0013-attachments-content-addressed-lazy-blob-tier.md))
 and **§11.7** (locale-pluggable comparators, [ADR-0014](spec/decisions/0014-locale-pluggable-matcher-comparators.md))
 — closed this session. The only ADR-0007 follow-ons still open are small (closed role-enum membership
-finalisation; proxy/liability semantics, out of scope — Cairn records the chain). With the open-question backlog
-empty, the highest-signal modes are now **fresh clinical case-mining** and the **build-prep threads** below
-(the architecture spec is feature-complete enough to start specifying the first implementation spike).
+finalisation; proxy/liability semantics, out of scope — Cairn records the chain). This session's record-discovery
+case-mining (→ [ADR-0016](spec/decisions/0016-record-discovery-and-the-replicated-essential-tier.md)) surfaced the
+**Custodian & Federation Admission** dependency, which was then **drafted the same session** (→ [ADR-0017](spec/decisions/0017-federation-admission-sovereignty-peering-and-trust-anchors.md),
+[security §7.7](spec/security.md)). With the backlog empty again, the highest-signal modes are now **fresh
+clinical case-mining** and the **build-prep threads** below (the architecture spec is feature-complete enough to
+start specifying the first implementation spike). Build-prep next steps unchanged: **Bet B on a Pi**, then the
+byte-tier connection-reuse throughput lever.
 
 **The recurring menu** when resuming (pick one):
 - More clinical **case-mining** — the most productive mode so far (the event-overlay + key-custody + actor

@@ -36,6 +36,10 @@ was made — the context, the choice, and its consequences. Aspect documents in
 | [0013](0013-attachments-content-addressed-lazy-blob-tier.md) | Attachments: content-addressed blobs, the lazy byte tier, and reference-eager replication | Accepted | 2026-06-15 |
 | [0014](0014-locale-pluggable-matcher-comparators.md) | Locale-pluggable matcher comparators: content-addressed profiles that travel with the data | Accepted | 2026-06-16 |
 | [0015](0015-event-serialization-signatures-and-content-addressing.md) | Event serialization, signatures, and content addressing: tagged, migratable primitives over three structural moves | Accepted | 2026-06-16 |
+| [0016](0016-record-discovery-and-the-replicated-essential-tier.md) | National-scale record discovery: the replicated essential-state tier and federation admission | Accepted | 2026-06-16 |
+| [0017](0017-federation-admission-sovereignty-peering-and-trust-anchors.md) | Federation admission: the sovereignty floor, mutual peering, pluggable trust anchors, and the custodian contract | Accepted | 2026-06-16 |
+| [0018](0018-federation-revocation-cascade-and-the-anchor-as-power.md) | Federation revocation: counterparty enforcement, cascade, and the anchor as a position of power | Accepted (refines 0017) | 2026-06-16 |
+| [0019](0019-author-scoped-record-export-the-medico-legal-copy.md) | Author-scoped record export: the clinician's medico-legal copy | Accepted (refines 0007) | 2026-06-16 |
 
 ## Template
 

@@ -116,7 +116,8 @@ The full ladder, the deniable-deletion design (the institution holds nothing; th
   AI-scribed note the clinician edited and signed is `{AI, drafted}` + `{clinician, attested, …}` — mixed
   authorship and mixed responsibility inside one immutable row. **An event is "AI-generated" iff its set
   contains a non-human author and no human in a responsibility-bearing role** — true by construction, never
-  tagged.
+  tagged. The contributor set is also the selection key for a clinician's **author-scoped record export**
+  ([security §7.8](security.md#78-author-scoped-record-export-the-medico-legal-copy)).
 
 - **Role — a closed core enum + free descriptor.** Roles are a **closed enum** (like `event_type`), kept
   small so the safety/DB layer reasons about them unambiguously and the taxonomy cannot sprawl into an

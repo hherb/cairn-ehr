@@ -32,3 +32,59 @@ is unaffected — it concerns priority/noise, not authorship.
 - ~~**Additive-vs-suppressing classification**~~ — **RESOLVED** ([ADR-0010](decisions/0010-additive-vs-suppressing-classification.md), [data-model §3.9](data-model.md#39-authorship-and-accountability), [identity §5.10](identity.md#510-authorship-and-responsibility-state-the-consumer-side)/[§5.12](identity.md#512-the-notification-economy-salience-responsibility-routing-and-the-acknowledgment-floor)): **structurally derived, not declared** — additive ≡ overlay, suppressing ≡ foreclosure (the append-only principle applied to the attention layer); the test is *"could a human still independently see and act on everything?"*. **Demotion is additive, only hiding/auto-deciding is suppressing** (a closed enumerated set); enforcement is a structural in-DB owner-gate; **responsibility is conserved** (relocated to the audited config act, never abolished); **declaration is a one-way caution ratchet** (the de-facto-suppression handle). Triage is a salience-scoring extension point (trend rules + AI oversight; mechanism, not policy), and **automation-complacency atrophy is detected** as an additive governance signal.
 - **Proxy/liability semantics** — what `on_behalf_of` legally binds is out of scope; Cairn records the
   chain, jurisdictions interpret it.
+
+## Resolved — national-scale record discovery (first contact, no central index)
+
+How a node that does **not** hold the whole population's records discovers that a record exists for a
+first-contact patient (new to the region) and requests it is **RESOLVED**
+([ADR-0016](decisions/0016-record-discovery-and-the-replicated-essential-tier.md),
+[sync §6.7](sync.md#67-record-discovery-and-the-replicated-essential-state-tier),
+[identity §5.2](identity.md#52-matching-pipeline-safety-asymmetric-false-merge-worse-than-false-split)):
+discovery is a **local matcher query** against a **replicated essential-state tier** (each person's
+essential safety snapshot + a blocking-key summary on every federated node) — **no national Master
+Patient Index** (the capture surface), no real-time dependency, no dependence on a patient-carried token.
+The tier carries **current state, not transaction history** (the affordability boundary); the full record
+follows lazily via [§6.4](sync.md#64-scope-is-a-prefetch-hint-not-an-authority) acquisition once a match is
+confirmed. "Essential" is a graded, multi-source, append-only flag, and the confidential-essential case
+composes with the [§5.9](identity.md#59-sensitivity-grade-the-safety-projection-and-break-glass-visibility-scope)
+safety projection. Sizing validated against real-system data: ~2.5 TB and ~75–150 kbit/s for 100 M people.
+
+## Resolved — Custodian & Federation Admission
+
+Surfaced as a hard dependency of [ADR-0016](decisions/0016-record-discovery-and-the-replicated-essential-tier.md)
+and now **RESOLVED** ([ADR-0017](decisions/0017-federation-admission-sovereignty-peering-and-trust-anchors.md),
+[security §7.7](security.md#77-federation-admission-peering-trust-anchors-and-the-custodian-contract)): a node
+needs **no permission to run alone** (the *sovereignty floor*); federation is **mutual, signed, append-only
+peering** (the [§7.5](security.md#75-the-actor-registry-enrollment-version-pinning-and-key-custody) actor algebra
+applied to nodes), gated by **pluggable, self-hostable trust anchors** (no Cairn-owned root) that span the
+spectrum from a two-node practice LAN (direct pairwise) through a self-sovereign practice network (its own
+issuing key) to a **national registry as a node role**. The **custodian contract** is signed, verifiable
+metadata bound to the credential (Cairn ships format/verification/revocation; legal force is jurisdiction).
+Admission gates the **outer boundary only** — *peered is not may-see-everything*; intra-federation
+confidentiality stays [ADR-0006](decisions/0006-visibility-scope-replication-and-the-safety-projection.md)
+key-custody + visibility. Verification is offline-capable; revocation reuses the contamination cascade as an
+honestly-stale signed feed. **No new founding principle** (one operational corollary: the sovereignty floor).
+
+**Revocation refined** ([ADR-0018](decisions/0018-federation-revocation-cascade-and-the-anchor-as-power.md),
+[security §7.7](security.md#77-federation-admission-peering-trust-anchors-and-the-custodian-contract), pressure-tested
+on the struck-off-operator-with-subsidiaries case): revocation is **enforced by the counterparties, never the
+revoked node**; it is **forward-looking distrust, not retroactive erasure**; it **cascades over the
+issuance/affiliation graph** (by chain + a controlling-entity attribute — *revoke the principal, not the key*);
+**anchor revocation ≠ voluntary unpeering**; a **trust anchor is a position of power** whose blast radius Cairn
+minimises (sovereignty floor, multi-anchor default — *never mandate a single anchor*, audited signed revocation,
+availability floor) but whose *legitimate* exclusion it cannot and must not prevent; partition-honest with a
+local-read-never-fails-closed freshness knob; **clawback of already-synced data is an authorities' matter, not
+Cairn's**.
+
+## Resolved — author-scoped record export (the clinician's medico-legal copy)
+
+How a clinician retains their own records as a litigation defence across a portfolio career (compounding
+per-workplace loss risk) is **RESOLVED** ([ADR-0019](decisions/0019-author-scoped-record-export-the-medico-legal-copy.md),
+[security §7.8](security.md#78-author-scoped-record-export-the-medico-legal-copy)): a first-class, **audited**
+export selected by **contributor identity** ([§3.9](data-model.md#39-authorship-and-accountability)), **strictly
+author-scoped** (progress notes, path/imaging *requests*, referrals — the reasoning and actioning; **not** results,
+which are a separable practice-custodianship duty), **self-verifying and legible across time** (signed bytes +
+plaintext twins → court-admissible decades on), with a **policy-neutral seal ladder** (author-readable /
+authority-public-key-sealed / both). It is the general mechanism behind [ADR-0005](decisions/0005-erasure-key-custody-and-crypto-shredding.md)
+rung-2's escrowed clinician copy; the erasure interaction is the intended honest ceiling. **No new founding
+principle** (refines [ADR-0007](decisions/0007-authorship-and-accountability.md)).
