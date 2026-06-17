@@ -100,7 +100,45 @@ Cairn principle alignment:
 - Smart defaults / forced-manual = principle-4 + paper-parity: strip keystrokes where safe, force
   attention where a default could harm.
 
-### Further refinements (HH)
+### CLOSED thread — legibility twin vs. the readable note line
+
+**Resolution (HH):** the generated note line is a **derived projection of the structured event**
+(the legibility twin rendered inline), not an independently authored artifact — so the
+"two artifacts could diverge" worry dissolves at the root. There is only one event; the prose
+is a rendering *of* it and cannot say something different. The clinician's only freedom over the
+line is **visibility**.
+
+**Governing principle (HH, quotable):** *"delete only ever removes one UI aspect of the data
+representation, never the original data."* = never-erase-always-overlay (principle 2) applied to
+the **display layer**. Deleting the line suppresses a rendering; the event's timestamp, author,
+context and downstream processing are untouched (the test is still ordered, resulted,
+interaction-checked). The data resurfaces because it never left.
+
+**Two-verb taxonomy Cairn must keep distinct (conventional EHRs conflate them):**
+| | delete | erase |
+|---|---|---|
+| acts on | a rendering (visibility overlay) | the data (crypto-shred, [ADR-0005](../../docs/spec/decisions/0005-erasure-key-custody-and-crypto-shredding.md)) |
+| reversible | yes — data intact | no — keys destroyed |
+| friction | none | the rare forced-rationale gate |
+| frequency | routine | ~never |
+Corollary: ordinary "delete" needs zero friction *because* it destroys nothing; only erasure earns
+the modal. Further shrinks the modal-worthy set.
+
+**Slots under [ADR-0006](../../docs/spec/decisions/0006-visibility-scope-replication-and-the-safety-projection.md):**
+confidentiality lives in visibility/presentation, not in existence/replication (the STI-screen case:
+structured event persists → safety projection + interaction-checking still protect the patient;
+only the prose narration is withheld). Replication is never the confidentiality boundary.
+
+**Two things to preserve when writing this up:**
+1. The event's own mandatory **legibility twin (§3.13)** is untouched by line-suppression — it remains
+   the signed audit/RAG substrate, just not *rendered* in that prose view.
+2. Record the suppression as an **explicit visibility-overlay event (who/when)**, not merely an inferred
+   absence — turns "detectable by reconciliation" into "directly auditable" at no cost. The *why* may
+   stay unstated (often patient confidentiality); the *that* should be a recorded event.
+
+**Canon-worthy:** folds into the ADR-0006 visibility family + the data-model projection/display section.
+
+## Further refinements (HH)
 
 **1a. The thin context id is a small first-class entity: `{time, place, author, ≥1 linked events}`.**
 - Same shape as the event envelope (HLC time, scope/place keys, contributor set) → it's a lightweight
