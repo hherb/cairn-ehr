@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="840" viewBox="0 0 1280 840" font-family="'Segoe UI', Helvetica, Arial, sans-serif">
+  <style>
+    .frame  { fill:#ffffff; stroke:#9aa3ad; stroke-width:1.5; }
+    .persist{ fill:#f0f4f8; stroke:#9fb4c7; stroke-width:1.5; }
+    .panel  { fill:#f7f9fb; stroke:#cbd2da; stroke-width:1.2; }
+    .work   { fill:#fcfdfe; stroke:#cbd2da; stroke-width:1.2; }
+    .chip   { fill:#eef2f6; stroke:#b7c0c9; stroke-width:1; }
+    .accent { fill:#dde9f3; stroke:#7fa6c6; stroke-width:1; }
+    .urgent { fill:#f6e2d9; stroke:#cf8b6f; stroke-width:1; }
+    .tabon  { fill:#ffffff; stroke:#7fa6c6; stroke-width:1.5; }
+    .taboff { fill:#eef2f6; stroke:#cbd2da; stroke-width:1; }
+    .lbl    { fill:#3a424b; font-size:13px; }
+    .lblsm  { fill:#6b757f; font-size:11px; }
+    .lblbig { fill:#1f2429; font-size:17px; font-weight:700; }
+    .head   { fill:#22272c; font-size:12px; font-weight:700; letter-spacing:0.4px; }
+    .meta   { fill:#8b949e; font-size:10px; }
+    .note   { fill:#b0563a; font-size:10px; font-style:italic; }
+    .danger { fill:#b0322a; font-size:13px; font-weight:600; }
+    .portrait{ fill:#dfe6ec; stroke:#9fb4c7; stroke-width:1; }
+  </style>
+
+  <rect x="8" y="8" width="1264" height="824" rx="6" class="frame"/>
+
+  <!-- ===================== PERSISTENT ZONE (1-4) ===================== -->
+  <rect x="8" y="8" width="1264" height="232" rx="6" class="persist"/>
+  <text x="1142" y="26" class="meta">PERSISTENT — never covered, never scrolls</text>
+
+  <!-- (1) identity block -->
+  <rect x="20" y="20" width="328" height="150" rx="4" class="panel"/>
+  <text x="32" y="40" class="head">① RIGHT CHART?</text>
+  <rect x="32" y="50" width="90" height="108" rx="4" class="portrait"/>
+  <text x="55" y="108" class="lblsm">portrait</text>
+  <text x="60" y="124" class="meta">if available</text>
+  <text x="134" y="74" class="lblbig">PARK, Min-jun</text>
+  <text x="134" y="98" class="lbl">02 Apr 1971 · 55y · ♂</text>
+  <text x="134" y="120" class="lbl">14 Marsh Rd, Bendigo</text>
+  <text x="134" y="142" class="lblsm">UUID a3f1… · 2 linked identities</text>
+
+  <!-- (2) must-not-miss -->
+  <rect x="356" y="20" width="470" height="150" rx="4" class="panel"/>
+  <text x="368" y="40" class="head">② MUST NOT MISS</text>
+  <text x="368" y="62" class="danger">⚠ Penicillin</text>
+  <rect x="470" y="49" width="60" height="18" rx="9" class="chip"/>
+  <text x="478" y="62" class="lblsm">details ▸</text>
+  <text x="368" y="84" class="lbl">Meds: Metformin 1g BD · Ramipril 5mg OD</text>
+  <text x="368" y="104" class="lbl">Hx: T2DM · HTN · CKD-3 <tspan class="meta">(uncertain)</tspan></text>
+  <line x1="368" y1="116" x2="814" y2="116" stroke="#dde3e9"/>
+  <!-- inline NON-MODAL expansion of the allergy -->
+  <rect x="368" y="122" width="446" height="40" rx="4" class="accent"/>
+  <text x="378" y="138" class="lblsm">Penicillin — "rash, 1974". NOT anaphylaxis. Unconfirmed.</text>
+  <text x="378" y="154" class="meta">Cephalexin &amp; amoxicillin tolerated since (2019, 2021). ← inline, nothing blocked</text>
+
+  <!-- (3) here & now -->
+  <rect x="834" y="20" width="426" height="150" rx="4" class="panel"/>
+  <text x="846" y="40" class="head">③ HERE &amp; NOW</text>
+  <text x="846" y="66" class="lbl" font-weight="600">Presenting: central chest pain, 40 min</text>
+  <text x="846" y="90" class="lbl">Working dx: ?ACS — rule out</text>
+  <text x="846" y="114" class="lblsm">ED · bed 7 · arrived 09:02 · under Dr Okafor</text>
+  <rect x="846" y="128" width="200" height="28" rx="4" class="chip"/>
+  <text x="858" y="146" class="lbl">edit context</text>
+
+  <!-- (4) pending & urgent banner -->
+  <rect x="20" y="180" width="1240" height="48" rx="4" class="urgent"/>
+  <text x="32" y="200" class="head" fill="#9c4a2f">④ PENDING &amp; URGENT</text>
+  <rect x="180" y="190" width="180" height="28" rx="14" class="chip"/>
+  <text x="196" y="209" class="lbl">3 results unreviewed</text>
+  <rect x="372" y="190" width="150" height="28" rx="14" class="chip"/>
+  <text x="388" y="209" class="lbl">1 report to sign</text>
+  <rect x="534" y="190" width="160" height="28" rx="14" class="chip"/>
+  <text x="550" y="209" class="lbl">2 messages</text>
+  <rect x="706" y="190" width="210" height="28" rx="14" class="accent"/>
+  <text x="722" y="209" class="lbl">⬆ Troponin 0.09 (09:31) NEW</text>
+  <text x="1010" y="208" class="note">chips open in work zone ↓ — non-modal</text>
+
+  <!-- ===================== WORK ZONE (5-6) ===================== -->
+  <!-- left rail: drill-in launchers -->
+  <rect x="20" y="248" width="150" height="572" rx="4" class="panel"/>
+  <text x="32" y="270" class="head">DRILL IN</text>
+  <rect x="30" y="280" width="130" height="34" rx="4" class="accent"/>
+  <text x="44" y="302" class="lbl">Past visits</text>
+  <rect x="30" y="320" width="130" height="34" rx="4" class="chip"/>
+  <text x="44" y="342" class="lbl">Results</text>
+  <rect x="30" y="360" width="130" height="34" rx="4" class="chip"/>
+  <text x="44" y="382" class="lbl">Reports / letters</text>
+  <rect x="30" y="400" width="130" height="34" rx="4" class="chip"/>
+  <text x="44" y="422" class="lbl">Imaging</text>
+  <rect x="30" y="440" width="130" height="34" rx="4" class="chip"/>
+  <text x="44" y="462" class="lbl">Medications</text>
+  <rect x="30" y="480" width="130" height="34" rx="4" class="chip"/>
+  <text x="44" y="502" class="lbl">Messages</text>
+  <text x="32" y="800" class="meta">1–3 stay visible</text>
+  <text x="32" y="814" class="meta">while you browse</text>
+
+  <!-- tabbed, vertically-splittable workspace -->
+  <rect x="180" y="248" width="1080" height="572" rx="4" class="work"/>
+  <!-- tab strip -->
+  <rect x="188" y="256" width="150" height="30" rx="4" class="tabon"/>
+  <text x="202" y="276" class="lbl" font-weight="600">Current note</text>
+  <rect x="342" y="256" width="150" height="30" rx="4" class="taboff"/>
+  <text x="356" y="276" class="lblsm">Visit 2025-11-03</text>
+  <rect x="496" y="256" width="120" height="30" rx="4" class="taboff"/>
+  <text x="510" y="276" class="lblsm">Results</text>
+  <rect x="620" y="256" width="40" height="30" rx="4" class="taboff"/>
+  <text x="634" y="276" class="lbl">+</text>
+  <text x="1086" y="276" class="lblsm">⬍ split  ·  ⬌ split</text>
+
+  <!-- split: left pane = current note entry -->
+  <rect x="188" y="294" width="528" height="518" rx="4" class="work"/>
+  <text x="204" y="316" class="head">CURRENT NOTE — chest pain</text>
+  <rect x="200" y="326" width="504" height="380" rx="4" fill="#ffffff" stroke="#cbd2da"/>
+  <text x="216" y="350" class="lbl">55M central chest pain 40 min, radiates L arm.</text>
+  <text x="216" y="372" class="lbl">No prior cardiac hx. Diaphoretic on arrival.</text>
+  <text x="216" y="394" class="lbl">ECG: ___</text>
+  <text x="216" y="690" class="meta">free text + structured · uncertainty values first-class</text>
+  <rect x="200" y="716" width="150" height="34" rx="4" class="accent"/>
+  <text x="216" y="738" class="lbl">sign &amp; attest</text>
+  <rect x="358" y="716" width="120" height="34" rx="4" class="chip"/>
+  <text x="374" y="738" class="lbl">t_eff: now ▾</text>
+  <text x="200" y="772" class="meta">no save button that "loses" — append-only autosave to local node</text>
+
+  <!-- divider -->
+  <line x1="724" y1="294" x2="724" y2="812" stroke="#9fb4c7" stroke-width="1.5" stroke-dasharray="4 3"/>
+
+  <!-- split: right pane = a past visit, side by side -->
+  <rect x="732" y="294" width="520" height="518" rx="4" class="work"/>
+  <text x="748" y="316" class="head">PAST VISIT — 03 Nov 2025 (side-by-side)</text>
+  <rect x="744" y="326" width="496" height="470" rx="4" fill="#ffffff" stroke="#cbd2da"/>
+  <text x="760" y="350" class="lbl" font-weight="600">ED — palpitations</text>
+  <text x="760" y="372" class="lblsm">Dr S. Lee · attested · signed</text>
+  <text x="760" y="398" class="lbl">ECG: sinus tach 110. Troponin neg ×2.</text>
+  <text x="760" y="420" class="lbl">D/c with Holter referral.</text>
+  <text x="760" y="452" class="meta">read-only · independent scroll cursor · compare any two views</text>
+  <text x="748" y="784" class="lblsm">↳ even two past visits, or note vs. result, side by side</text>
+
+  <text x="20" y="834" class="meta">wireframe — layout &amp; affordances only; persistent/work split + no-modal rule are the load-bearing decisions</text>
+</svg>
