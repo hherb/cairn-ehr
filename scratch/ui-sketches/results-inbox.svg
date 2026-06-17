@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="880" viewBox="0 0 1300 880" font-family="'Segoe UI', Helvetica, Arial, sans-serif">
+  <style>
+    .frame  { fill:#ffffff; stroke:#9aa3ad; stroke-width:1.5; }
+    .persist{ fill:#f0f4f8; stroke:#9fb4c7; stroke-width:1.5; }
+    .panel  { fill:#f7f9fb; stroke:#cbd2da; stroke-width:1.2; }
+    .work   { fill:#fcfdfe; stroke:#cbd2da; stroke-width:1.2; }
+    .chip   { fill:#eef2f6; stroke:#b7c0c9; stroke-width:1; }
+    .accent { fill:#dde9f3; stroke:#7fa6c6; stroke-width:1; }
+    .urgent { fill:#f0cdbf; stroke:#cf8b6f; stroke-width:1.2; }
+    .urgenttop{ fill:#e7b8a6; stroke:#bf6a4c; stroke-width:1.5; }
+    .selrow { fill:#dde9f3; stroke:#7fa6c6; stroke-width:1.5; }
+    .lbl    { fill:#3a424b; font-size:13px; }
+    .lblsm  { fill:#6b757f; font-size:11px; }
+    .lblbig { fill:#1f2429; font-size:16px; font-weight:700; }
+    .head   { fill:#22272c; font-size:12px; font-weight:700; letter-spacing:0.4px; }
+    .meta   { fill:#8b949e; font-size:10px; }
+    .danger { fill:#b0322a; font-size:12px; font-weight:600; }
+    .ok     { fill:#2e7d52; font-size:12px; font-weight:600; }
+    .note   { fill:#b0563a; font-size:10px; font-style:italic; }
+    .primary{ fill:#2e6da4; stroke:#23527c; stroke-width:1.2; }
+  </style>
+
+  <rect x="8" y="8" width="1284" height="864" rx="6" class="frame"/>
+
+  <!-- ================= LEFT: INBOX (no patient context to start) ================= -->
+  <rect x="16" y="16" width="372" height="848" rx="5" class="panel"/>
+  <text x="28" y="40" class="head">INBOX — results &amp; reports</text>
+  <text x="28" y="58" class="lblsm">sorted: urgency ▾  ·  then grouped by patient</text>
+  <rect x="28" y="68" width="348" height="24" rx="12" class="chip"/>
+  <text x="40" y="84" class="lblsm">filter · mine · unacknowledged (42)</text>
+
+  <!-- patient group 1 (selected/expanded) -->
+  <rect x="24" y="104" width="356" height="34" rx="4" class="urgenttop"/>
+  <text x="36" y="118" class="danger">⚑ CRITICAL  Creatinine 268 ⬆⬆  eGFR 21</text>
+  <text x="36" y="132" class="lblsm">PARK, Min-jun · 55y · 09:31 today</text>
+  <!-- expanded: other incoming for same patient -->
+  <rect x="40" y="140" width="340" height="26" rx="3" class="selrow"/>
+  <text x="52" y="157" class="lbl">↳ Potassium 5.9 ⬆ · 09:31</text>
+  <rect x="40" y="168" width="340" height="26" rx="3" class="chip"/>
+  <text x="52" y="185" class="lbl">↳ CXR report — no acute · 08:50</text>
+  <rect x="40" y="196" width="340" height="26" rx="3" class="chip"/>
+  <text x="52" y="213" class="lbl">↳ FBC — within range · 09:31</text>
+  <text x="52" y="236" class="meta">click group unfolds all incoming for this patient</text>
+
+  <!-- patient group 2 -->
+  <rect x="24" y="250" width="356" height="34" rx="4" class="urgent"/>
+  <text x="36" y="264" class="danger">⚑ urgent  INR 6.8 ⬆</text>
+  <text x="36" y="278" class="lblsm">NGUYEN, Lan · 78y · 09:12 today</text>
+
+  <!-- patient group 3 -->
+  <rect x="24" y="296" width="356" height="34" rx="4" class="chip"/>
+  <text x="36" y="316" class="lbl">Histology — benign · ROBERTS, J · 08:40</text>
+
+  <!-- patient group 4 -->
+  <rect x="24" y="338" width="356" height="34" rx="4" class="chip"/>
+  <text x="36" y="358" class="lbl">HbA1c 7.1% · OKAFOR, B · yesterday</text>
+
+  <rect x="24" y="380" width="356" height="34" rx="4" class="chip"/>
+  <text x="36" y="400" class="lbl">Lipids · normal · DUBOIS, M · yesterday</text>
+
+  <text x="28" y="846" class="meta">worklist = per-clinician projection; selection drives the right pane →</text>
+
+  <!-- ================= RIGHT: CONTEXT FOR SELECTED RESULT ================= -->
+  <!-- top folds down into the SAME persistent top bar as the chart -->
+  <rect x="396" y="16" width="888" height="92" rx="5" class="persist"/>
+  <text x="1140" y="32" class="meta">same top bar as the chart ↑</text>
+  <rect x="404" y="24" width="58" height="68" rx="4" fill="#dfe6ec" stroke="#9fb4c7"/>
+  <text x="416" y="62" class="meta">portrait</text>
+  <text x="474" y="44" class="lblbig">PARK, Min-jun · 55y ♂</text>
+  <text x="474" y="64" class="lbl">02 Apr 1971 · 14 Marsh Rd, Bendigo</text>
+  <text x="474" y="84" class="danger">⚠ Penicillin (unconfirmed) · Metformin, Ramipril</text>
+
+  <!-- selected result header + actions -->
+  <rect x="396" y="116" width="888" height="56" rx="5" class="accent"/>
+  <text x="408" y="140" class="lblbig">Creatinine 268 µmol/L ⬆⬆  ·  eGFR 21  ·  K⁺ 5.9 ⬆</text>
+  <text x="408" y="160" class="lblsm">collected 09:31 today · lab ED-03 · ordered by Dr Okafor</text>
+  <!-- single-keystroke acknowledge + configurable buttons -->
+  <rect x="1148" y="120" width="128" height="22" rx="4" class="primary"/>
+  <text x="1166" y="136" fill="#ffffff" font-size="12" font-weight="600">✓ Acknowledge (A)</text>
+  <rect x="1148" y="146" width="62" height="20" rx="4" class="chip"/>
+  <text x="1156" y="160" class="meta">urgent recall</text>
+  <rect x="1214" y="146" width="62" height="20" rx="4" class="chip"/>
+  <text x="1224" y="160" class="meta">comment</text>
+
+  <!-- middle: ordering consultation note (auto-reproduced) -->
+  <rect x="396" y="180" width="430" height="430" rx="5" class="work"/>
+  <text x="408" y="202" class="head">ORDERING CONSULT — why was this requested?</text>
+  <text x="408" y="220" class="lblsm">auto-reproduced: consult where this test was ordered</text>
+  <line x1="408" y1="228" x2="814" y2="228" stroke="#dde3e9"/>
+  <text x="408" y="250" class="lbl" font-weight="600">14 May 2026 · CKD review · Dr Okafor</text>
+  <text x="408" y="274" class="lbl">"Known CKD-3 on background T2DM + HTN.</text>
+  <text x="408" y="294" class="lbl">Creatinine trending up over 6 months.</text>
+  <text x="408" y="314" class="lbl">Repeat U&amp;E in 4/52 to confirm trajectory;</text>
+  <text x="408" y="334" class="lbl">if eGFR &lt;25 → nephrology referral."</text>
+  <text x="408" y="372" class="meta">↳ this result IS that repeat U&amp;E (references order #c81a)</text>
+  <text x="408" y="392" class="meta">if order→consult link absent: show most recent note instead</text>
+  <line x1="408" y1="410" x2="814" y2="410" stroke="#eef2f6"/>
+  <text x="408" y="586" class="meta">scrollable · read-only · this is the single most context-giving panel</text>
+
+  <!-- bottom-right: the "cockpit" -->
+  <rect x="834" y="180" width="450" height="430" rx="5" class="work"/>
+  <text x="846" y="202" class="head">COCKPIT — relevance to this patient</text>
+
+  <!-- trajectory graph -->
+  <text x="846" y="226" class="lblsm">Creatinine trajectory (µmol/L)</text>
+  <rect x="846" y="232" width="426" height="120" rx="4" fill="#ffffff" stroke="#cbd2da"/>
+  <polyline points="862,330 920,320 978,312 1036,296 1094,270 1152,230 1240,196"
+            fill="none" stroke="#bf6a4c" stroke-width="2.5"/>
+  <circle cx="862" cy="330" r="3" fill="#7fa6c6"/>
+  <circle cx="920" cy="320" r="3" fill="#7fa6c6"/>
+  <circle cx="978" cy="312" r="3" fill="#7fa6c6"/>
+  <circle cx="1036" cy="296" r="3" fill="#7fa6c6"/>
+  <circle cx="1094" cy="270" r="3" fill="#7fa6c6"/>
+  <circle cx="1152" cy="230" r="3" fill="#7fa6c6"/>
+  <circle cx="1240" cy="196" r="4" fill="#bf6a4c"/>
+  <text x="1196" y="190" class="danger">268</text>
+  <text x="858" y="346" class="meta">2024 ────────────────────────────▶ today</text>
+
+  <!-- relevant history, relevance-ranked -->
+  <text x="846" y="380" class="lblsm">Relevant history (ranked to this test)</text>
+  <rect x="846" y="388" width="426" height="26" rx="3" class="accent"/>
+  <text x="858" y="405" class="lbl">CKD stage 3  →  now stage 4?  ⬆</text>
+  <rect x="846" y="416" width="426" height="26" rx="3" class="accent"/>
+  <text x="858" y="433" class="lbl">Type 2 diabetes (nephropathy risk)</text>
+  <rect x="846" y="444" width="426" height="24" rx="3" class="chip"/>
+  <text x="858" y="460" class="lbl">Hypertension</text>
+  <rect x="846" y="470" width="426" height="24" rx="3" class="chip"/>
+  <text x="858" y="486" class="lblsm">Hyperlipidaemia (less relevant)</text>
+  <text x="846" y="506" class="note">ranking is advisory — orders, never hides; degrades to "show all"</text>
+
+  <!-- current meds, flagged for renal -->
+  <text x="846" y="534" class="lblsm">Current medication (renal-flagged)</text>
+  <rect x="846" y="542" width="426" height="24" rx="3" class="urgent"/>
+  <text x="858" y="558" class="danger">Metformin 1g BD — review at eGFR 21</text>
+  <rect x="846" y="570" width="426" height="24" rx="3" class="chip"/>
+  <text x="858" y="586" class="lbl">Ramipril 5mg OD — recheck K⁺</text>
+
+  <!-- footer: the payoff -->
+  <rect x="396" y="620" width="888" height="40" rx="5" class="accent"/>
+  <text x="408" y="645" class="lbl">Context understood at a glance → in most cases a single keystroke acknowledges. Here: trajectory + K⁺ + meds = NOT routine → urgent recall.</text>
+
+  <text x="396" y="690" class="head">WHAT MAKES THIS PERFORM (the materialized-view question)</text>
+  <text x="408" y="712" class="meta">• Inbox list = per-clinician worklist MV, pre-sorted (urgency, patient). Acknowledgement = append-only (clinician,item) event.</text>
+  <text x="408" y="730" class="meta">• On select, six things must assemble fast: identity+must-not-miss · ordering-consult note · test trajectory series · ranked Hx · renal-flagged meds · K⁺.</text>
+  <text x="408" y="748" class="meta">• Strategy: prefetch the context bundle for the top-N inbox items so the FIRST keystroke after select is instant (you select what you already see at top).</text>
+  <text x="408" y="766" class="meta">• Order MUST carry provenance link → originating consult/encounter, or "auto-reproduce ordering note" is impossible (data-model requirement, not a query trick).</text>
+  <text x="408" y="784" class="meta">• Trajectory = a fold over comparable observations (same analyte), latest-truth per time point — corrections overlay; the series is itself a maintained projection.</text>
+  <text x="408" y="802" class="meta">• Relevance ranking = advisory/fit-for-purpose layer; its OUTPUT is cached into the bundle so it renders instantly and can never starve the safety-critical read.</text>
+
+  <text x="16" y="858" class="meta">wireframe — affordances &amp; read-pattern only</text>
+</svg>
