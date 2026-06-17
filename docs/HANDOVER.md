@@ -1,13 +1,55 @@
 # HANDOVER — Cairn
 
-**Session date:** 2026-06-16 (spec bumped to **v0.20**)
+**Session date:** 2026-06-16 (spec bumped to **v0.21**)
 **Status of this file:** Working scaffolding, not a source of truth. Disposable — regenerate
 at the end of each working session. If this file ever disagrees with the canonical documents,
 the canonical documents win.
 
 ---
 
-## Resolved 2026-06-16 — Custodian & Federation Admission (now spec v0.20) → ADR-0017
+## Resolved 2026-06-16 — federation revocation + author-scoped export (now spec v0.21) → ADR-0018, ADR-0019
+
+Pressure-tested ADR-0017 with adversarial cases (the user's bad-actor revocation case + generated follow-ons),
+then folded the harvest into two ADRs. Both **dissolved** — **no new founding principle.**
+
+- **[ADR-0018](spec/decisions/0018-federation-revocation-cascade-and-the-anchor-as-power.md) (refines 0017),
+  canonical [security §7.7](spec/security.md) revocation block.** The struck-off-operator-with-subsidiaries
+  case sharpened seven properties: (1) **enforced by counterparties, never the revoked node** (the enforceable
+  boundary is the honest set); (2) **forward-distrust, not retroactive erasure** (events authored while
+  credentialed stay, marked; later ones refused); (3) **cascade over the issuance/affiliation graph — revoke
+  the principal, not the key** (by chain + a new additive **controlling-entity/`on_behalf_of` credential
+  attribute** fed to the contamination cascade; issuance checks principal status → no whack-a-mole); (4)
+  **anchor revocation (bidirectional, cascades) ≠ voluntary unpeering (unilateral, local)**; (5) **the anchor
+  is a position of power** — anti-capture turned inward: minimise blast radius (sovereignty floor, multi-anchor
+  default — *never mandate a single anchor*, audited signed revocation, availability floor), but never prevent
+  *legitimate* exclusion (the deepest pressure-test finding — the captured-registry kill-switch); (6)
+  **partition-honest** with a **local-read-never-fails-closed** freshness knob; (7) **one credential per
+  accountable principal** (granularity guidance). **Clawback of already-synced data = authorities' matter, not
+  Cairn's** (honest ceiling).
+- **[ADR-0019](spec/decisions/0019-author-scoped-record-export-the-medico-legal-copy.md) (refines 0007),
+  canonical [security §7.8](spec/security.md).** From the roaming-locum case: a clinician's records are their
+  **sole litigation defence decades on**, and per-workplace loss risk **compounds across a portfolio career**.
+  So a first-class, **audited** export selected by **contributor identity**, **strictly author-scoped** (the
+  user's ruling: progress notes, path/imaging *requests*, referrals — the reasoning + actioning; **not**
+  results — results are a separable practice-custodianship duty the clinician enforces by delivery/re-litigation).
+  **Self-verifying + legible-across-time** (signed bytes + plaintext twins → court-admissible 20 yrs on,
+  tamper-evident, schema-drift-proof). Export is an append-only audit event recording **blast radius**
+  (the user's requirement). **Seal mode = policy-neutral key-custody ladder** (author-readable /
+  authority-public-key-sealed / both). It is the **general mechanism behind ADR-0005 rung-2's escrowed clinician
+  copy**; the erasure interaction is the intended honest ceiling. Pleasing fit: Cairn's append-only signed
+  design is almost purpose-built for "my records are my defence."
+- **Pressure-test cases run (all dissolved):** whack-a-mole re-enrolment, captured/compromised registry (the
+  deep one → principle-level "anchor is power"), anchor-revocation-vs-unpeering, roaming-locum (clinician
+  identity is itself a §5 claim; cross-federation linkage is link-events, no auto-propagating revocation),
+  shared-node collateral (granularity guidance), mid-sync atomicity, insider-races-revocation (audited, not
+  preventable), reinstatement-on-appeal (new overlay), cross-jurisdiction anchors (mutual recognition = policy),
+  feed forgery/DoS (signature + availability floor).
+- **Blast-radius (§9):** revocation checking + the controlling-entity cascade seam (ADR-0018) and the
+  export predicate+seal+audit-emit seam (ADR-0019) are safety/privacy-critical; UI/packaging fit-for-purpose.
+
+---
+
+## Resolved 2026-06-16 — Custodian & Federation Admission (spec v0.20) → ADR-0017
 
 Drafted the spec dependency ADR-0016 surfaced, **same session, while the memory was fresh.** It dissolved into
 existing primitives + one operational corollary — **no new founding principle.** → [ADR-0017](spec/decisions/0017-federation-admission-sovereignty-peering-and-trust-anchors.md),

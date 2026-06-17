@@ -64,3 +64,27 @@ Admission gates the **outer boundary only** — *peered is not may-see-everythin
 confidentiality stays [ADR-0006](decisions/0006-visibility-scope-replication-and-the-safety-projection.md)
 key-custody + visibility. Verification is offline-capable; revocation reuses the contamination cascade as an
 honestly-stale signed feed. **No new founding principle** (one operational corollary: the sovereignty floor).
+
+**Revocation refined** ([ADR-0018](decisions/0018-federation-revocation-cascade-and-the-anchor-as-power.md),
+[security §7.7](security.md#77-federation-admission-peering-trust-anchors-and-the-custodian-contract), pressure-tested
+on the struck-off-operator-with-subsidiaries case): revocation is **enforced by the counterparties, never the
+revoked node**; it is **forward-looking distrust, not retroactive erasure**; it **cascades over the
+issuance/affiliation graph** (by chain + a controlling-entity attribute — *revoke the principal, not the key*);
+**anchor revocation ≠ voluntary unpeering**; a **trust anchor is a position of power** whose blast radius Cairn
+minimises (sovereignty floor, multi-anchor default — *never mandate a single anchor*, audited signed revocation,
+availability floor) but whose *legitimate* exclusion it cannot and must not prevent; partition-honest with a
+local-read-never-fails-closed freshness knob; **clawback of already-synced data is an authorities' matter, not
+Cairn's**.
+
+## Resolved — author-scoped record export (the clinician's medico-legal copy)
+
+How a clinician retains their own records as a litigation defence across a portfolio career (compounding
+per-workplace loss risk) is **RESOLVED** ([ADR-0019](decisions/0019-author-scoped-record-export-the-medico-legal-copy.md),
+[security §7.8](security.md#78-author-scoped-record-export-the-medico-legal-copy)): a first-class, **audited**
+export selected by **contributor identity** ([§3.9](data-model.md#39-authorship-and-accountability)), **strictly
+author-scoped** (progress notes, path/imaging *requests*, referrals — the reasoning and actioning; **not** results,
+which are a separable practice-custodianship duty), **self-verifying and legible across time** (signed bytes +
+plaintext twins → court-admissible decades on), with a **policy-neutral seal ladder** (author-readable /
+authority-public-key-sealed / both). It is the general mechanism behind [ADR-0005](decisions/0005-erasure-key-custody-and-crypto-shredding.md)
+rung-2's escrowed clinician copy; the erasure interaction is the intended honest ceiling. **No new founding
+principle** (refines [ADR-0007](decisions/0007-authorship-and-accountability.md)).
