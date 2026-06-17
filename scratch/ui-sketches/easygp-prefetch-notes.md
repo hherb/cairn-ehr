@@ -72,12 +72,39 @@ authored under a foreign node's encounter context (or none) → the `encounter` 
 else's or null. Cairn-to-Cairn it can survive federation; from a foreign system it can't.
 Honest degradation (principle 4), labeled fallback to most-recent note.
 
-### To verify next week against easyGP
-- [ ] Granularity match: did easyGP's "consultation" map 1:1 to what Cairn calls an `encounter`?
-- [ ] Did the order row store a direct consult FK, or was context inferred? (informs whether the
-      two-hop result→order→encounter fold is enough, or we want the order to *also* denormalize a
-      pointer for prefetch speed.)
-- [ ] The `tx!`+tab parser: how the inline trigger turned note text into a structured order.
+### Answered (HH), with Cairn implications
+
+**1. Granularity — the context id is a "progress note" item, NOT a formal consultation.**
+Killer case: reviewing results, you order a test *with a comment*, no consultation occurred — yet
+those events share a context. easyGP captured that as a progress-note item. → **Cairn's `encounter`
+envelope key must be semantically THIN: an opaque context-grouping id that asserts nothing about
+formality.** Whether the context was a formal consult / phone / 5-sec results-review is a *separate,
+possibly-absent descriptor*, never forced (principle 4 — don't manufacture a consultation that
+didn't happen). A "virtual encounter" for one annotated order is zero-ceremony and first-class.
+Risk to avoid: the name "encounter" imports FHIR-Encounter / billing formality — guard against that
+in the data-model prose when written (it's a grouping id, full stop).
+
+**2. The order stored a direct FK to the context** (not inferred). → In Cairn the order event carries
+the context id directly in its envelope, so `result → order → context` is a direct pointer hop, fast
+by construction.
+
+**3. Type-through write model (16 yrs of keystroke elimination) — see sketch
+`active-write-typethrough.svg`.** `rx!` opens a prescribe tab BESIDE the note (non-modal, both
+visible); keep typing the drug → dropdown of formulations → ⇥ select → dosing (invariant default ⏎,
+or FORCED manual for paediatric/pregnant/breastfeeding/renal/hepatic) → ⇥ qty → ⏎ → back in note,
+Rx captured as a readable line, keep typing. Same pattern for `tx!`, referrals, most orders.
+Cairn principle alignment:
+- "Never modal" extends from *reading* to *writing* — the entry tab is a side panel, never an overlay.
+- Structured event + human-readable note line are **co-produced in one flow** = the **legibility twin**
+  ([principle 11](../../docs/spec/index.md)) born at authoring time, not bolted on.
+- Smart defaults / forced-manual = principle-4 + paper-parity: strip keystrokes where safe, force
+  attention where a default could harm.
+
+### Still to verify / pull next week against easyGP
+- [ ] The `rx!`/`tx!`+tab parser & the type-through state machine (port faithfully — battle-tested).
+- [ ] How the progress-note item (context id) was spawned — cost, lifecycle, when a new one starts.
+- [ ] Formulation/drug dropdown data source + the renal/hepatic/pregnancy forced-manual rule table.
+- [ ] Confirm the order FK pointed at the progress-note item (= the thin context), not a formal visit row.
 
 ## To look at next week (in the easyGP code)
 - [ ] Materialized table structures behind inbox + cockpit (schema, indexes).

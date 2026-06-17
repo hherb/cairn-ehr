@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="820" viewBox="0 0 1300 820" font-family="'Segoe UI', Helvetica, Arial, sans-serif">
+  <style>
+    .frame  { fill:#ffffff; stroke:#9aa3ad; stroke-width:1.5; }
+    .persist{ fill:#f0f4f8; stroke:#9fb4c7; stroke-width:1.5; }
+    .panel  { fill:#f7f9fb; stroke:#cbd2da; stroke-width:1.2; }
+    .work   { fill:#fcfdfe; stroke:#cbd2da; stroke-width:1.2; }
+    .note   { fill:#ffffff; stroke:#cbd2da; stroke-width:1.2; }
+    .chip   { fill:#eef2f6; stroke:#b7c0c9; stroke-width:1; }
+    .accent { fill:#dde9f3; stroke:#7fa6c6; stroke-width:1; }
+    .sel    { fill:#cfe0ef; stroke:#5b88ad; stroke-width:1.4; }
+    .warn   { fill:#f0cdbf; stroke:#cf8b6f; stroke-width:1.2; }
+    .lbl    { fill:#3a424b; font-size:13px; }
+    .lblsm  { fill:#6b757f; font-size:11px; }
+    .lblbig { fill:#1f2429; font-size:16px; font-weight:700; }
+    .head   { fill:#22272c; font-size:12px; font-weight:700; letter-spacing:0.4px; }
+    .meta   { fill:#8b949e; font-size:10px; }
+    .danger { fill:#b0322a; font-size:12px; font-weight:600; }
+    .key    { fill:#2e6da4; font-size:12px; font-weight:700; }
+    .cap    { fill:#2e7d52; font-size:12px; font-weight:600; }
+    .annot  { fill:#b0563a; font-size:10px; font-style:italic; }
+    .cursor { fill:#1f2429; }
+    .trig   { fill:#fff3c4; stroke:#caa400; stroke-width:1; }
+  </style>
+
+  <rect x="8" y="8" width="1284" height="804" rx="6" class="frame"/>
+
+  <!-- compact persistent bar -->
+  <rect x="16" y="16" width="1268" height="64" rx="5" class="persist"/>
+  <rect x="24" y="24" width="44" height="48" rx="4" fill="#dfe6ec" stroke="#9fb4c7"/>
+  <text x="33" y="52" class="meta">portr.</text>
+  <text x="80" y="40" class="lblbig">PARK, Min-jun · 55y ♂ · 02 Apr 1971</text>
+  <text x="80" y="62" class="danger">⚠ Penicillin (unconfirmed) · Metformin, Ramipril · T2DM · CKD-3</text>
+  <text x="1090" y="34" class="meta">persistent bar — still here</text>
+
+  <!-- =============== LEFT: PROGRESS NOTE (the thing you never leave) =============== -->
+  <rect x="16" y="90" width="624" height="690" rx="5" class="work"/>
+  <text x="28" y="112" class="head">PROGRESS NOTE — results review</text>
+  <text x="28" y="130" class="lblsm">context: virtual encounter · NO formal consultation occurred</text>
+  <rect x="28" y="140" width="596" height="2" fill="#dde3e9"/>
+
+  <!-- typed body with previously co-produced readable lines -->
+  <text x="36" y="166" class="lbl">Reviewed lipids — mild ↑ LDL, no acute action.</text>
+  <text x="36" y="190" class="lbl">Cr trending up; check renal function + electrolytes.</text>
+
+  <!-- captured Tx line (co-produced by tx!) -->
+  <rect x="32" y="202" width="588" height="26" rx="3" class="accent"/>
+  <text x="44" y="220" class="cap">Tx: U&amp;E + eGFR ordered — monitor CKD trajectory ✓ captured</text>
+
+  <text x="36" y="252" class="lbl">Continue meds. Optimise antihypertensive.</text>
+
+  <!-- the live trigger: rx! just typed -->
+  <text x="36" y="282" class="lbl">Start ACE-inhibitor uptitration.</text>
+  <text x="36" y="308" class="lbl">Rx<tspan class="key" dx="2">rx!</tspan><tspan class="cursor" dx="3">▮</tspan></text>
+  <rect x="62" y="296" width="34" height="18" rx="3" class="trig" fill="#fff3c4" stroke="#caa400"/>
+  <text x="118" y="308" class="annot">← inline trigger; tab opens on the right, note stays put</text>
+
+  <text x="36" y="724" class="meta">every action leaves a human-readable line here AND a structured event —</text>
+  <text x="36" y="740" class="meta">co-produced in one keystroke flow = the legibility twin, born at authoring time</text>
+  <text x="36" y="762" class="meta">all events on this note share ONE context id (the thin "encounter")</text>
+
+  <!-- flow arrow to the right tab -->
+  <path d="M 624 305 L 656 305" stroke="#5b88ad" stroke-width="2" marker-end="url(#arr)"/>
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#5b88ad"/>
+    </marker>
+  </defs>
+
+  <!-- =============== RIGHT: the rx! tab, filling BESIDE the note (non-modal) =============== -->
+  <rect x="660" y="90" width="624" height="690" rx="5" class="panel"/>
+  <text x="672" y="112" class="head">℞ PRESCRIBE — opened by rx!</text>
+  <text x="672" y="130" class="annot">opens BESIDE the note, never over it — non-modal, note still visible ←</text>
+  <rect x="672" y="140" width="600" height="2" fill="#dde3e9"/>
+
+  <!-- search / type-through -->
+  <text x="684" y="168" class="lblsm">just keep typing the drug</text>
+  <rect x="684" y="176" width="576" height="32" rx="4" class="note"/>
+  <text x="698" y="197" class="lbl">Perindo<tspan class="cursor">▮</tspan></text>
+
+  <!-- dropdown of formulations -->
+  <rect x="684" y="214" width="576" height="26" rx="3" class="chip"/>
+  <text x="698" y="231" class="lbl">Perindopril arginine 5 mg tab</text>
+  <rect x="684" y="242" width="576" height="26" rx="3" class="sel"/>
+  <text x="698" y="259" class="lbl" font-weight="600">Perindopril erbumine 4 mg tab</text>
+  <rect x="684" y="270" width="576" height="26" rx="3" class="chip"/>
+  <text x="698" y="287" class="lbl">Perindopril/indapamide 4/1.25 mg tab</text>
+  <text x="684" y="312" class="annot">⇥ selects highlighted formulation</text>
+
+  <!-- dosing: default vs forced manual -->
+  <text x="684" y="346" class="lblsm">dosing instructions</text>
+  <rect x="684" y="354" width="350" height="32" rx="4" class="accent"/>
+  <text x="698" y="375" class="lbl">1 tablet mane  <tspan class="meta">(invariant default)</tspan></text>
+  <rect x="1044" y="354" width="216" height="32" rx="4" class="chip"/>
+  <text x="1058" y="375" class="key">⏎ accept</text>
+
+  <!-- forced-manual safety panel -->
+  <rect x="684" y="396" width="576" height="58" rx="4" class="warn"/>
+  <text x="696" y="416" class="danger">Manual dosing FORCED — default suppressed — if patient is:</text>
+  <text x="696" y="438" class="lbl">paediatric · pregnant · breastfeeding · renal · hepatic impairment</text>
+  <text x="696" y="450" class="annot">strip keystrokes where safe; force attention where a default could harm (principle 4)</text>
+
+  <!-- quantity / repeats -->
+  <text x="684" y="486" class="lblsm">quantity &amp; repeats</text>
+  <rect x="684" y="494" width="576" height="30" rx="4" class="note"/>
+  <text x="698" y="514" class="lbl">30 tablets · 5 repeats  <tspan class="meta">(default — ⇥ to override)</tspan></text>
+
+  <!-- keystroke economy strip -->
+  <rect x="684" y="556" width="576" height="120" rx="5" class="work"/>
+  <text x="696" y="578" class="head">KEYSTROKE ECONOMY — hands never leave the keyboard</text>
+  <text x="696" y="604" class="lbl"><tspan class="key">rx!</tspan>  ▸  type drug  ▸  <tspan class="key">⇥</tspan> formulation  ▸  <tspan class="key">⇥</tspan> dose  ▸  <tspan class="key">⇥</tspan> qty  ▸  <tspan class="key">⏎</tspan></text>
+  <text x="696" y="632" class="cap">→ back in the progress note, Rx captured as a readable line, keep typing</text>
+  <text x="696" y="658" class="meta">16 years of removing keystrokes &amp; mouse-reaches. Same pattern for tx!, referrals, most orders.</text>
+
+  <text x="672" y="708" class="annot">no mouse · no modal · note + dialog both visible · structured + readable co-produced</text>
+
+  <text x="16" y="804" class="meta">wireframe — the "active write" / type-through surface; affordances &amp; flow only</text>
+</svg>
