@@ -43,10 +43,41 @@ single-practice scale.
    order→encounter link). Later AI cross-referencing only *proposes* a link as a new event,
    never asserts one (overlay discipline).
 
-## Concrete data-model requirement (already noted in the inbox sketch)
-- **Order event must carry a provenance link to its originating encounter/consult**, recorded
-  at order time. Cannot be reconstructed by any MV after the fact. The result event already
-  references its order; the order just also references its encounter.
+## Order provenance — RESOLVED: it's already in the envelope, not a new field
+HH described the easyGP order-capture path: context = current consultation; order triggered by
+button **or** by typing `tx!`+tab inline in the progress note (keyboard-only, fingers never
+leave home row); the order form is prefilled from the current consultation.
+
+Mapping to Cairn — this is **not** a bespoke "order.consult_id" feature:
+- **`encounter` is already a typed envelope scope key** ([data-model §3.1](../../docs/spec/data-model.md),
+  alongside facility/department). An order authored in the active consult inherits that key
+  ambiently, like every other event born in that context.
+- **The "current consultation" = the armed write-context** ([ADR-0008](../../docs/spec/decisions/0008-point-of-care-identity-possession-and-salvage.md),
+  [data-model §3.10](../../docs/spec/data-model.md#310-session-identity-event-authorship-and-draft-durability)):
+  possession binds `(clinician, patient)`; the draft/context store is keyed `(author, patient)`,
+  durable across re-auth. The active encounter rides on top.
+- **Reproducing "the ordering consult"** = fold all events sharing that encounter key into the
+  progress-note view. No reconstruction, no guessing.
+- **Result-returns-later chain (two hops):** `result → references order → order.encounter →
+  fold that encounter`. The order is the pivot; it carries the key for free because authored in-context.
+
+**Therefore the day-one requirement is a UX invariant, NOT a schema addition:**
+> Orders are always authored *inside* an armed encounter context, never as a free-floating
+> action. The `tx!`+tab inline trigger is that invariant made ergonomic — the order is woven
+> into note authoring (structured order event + note prose = two events, one encounter scope,
+> one possession). Paper-parity: writing "FBC" in the note IS placing the order.
+
+**External-results gap is now structurally explained:** referral-in / post-hospital results were
+authored under a foreign node's encounter context (or none) → the `encounter` key is someone
+else's or null. Cairn-to-Cairn it can survive federation; from a foreign system it can't.
+Honest degradation (principle 4), labeled fallback to most-recent note.
+
+### To verify next week against easyGP
+- [ ] Granularity match: did easyGP's "consultation" map 1:1 to what Cairn calls an `encounter`?
+- [ ] Did the order row store a direct consult FK, or was context inferred? (informs whether the
+      two-hop result→order→encounter fold is enough, or we want the order to *also* denormalize a
+      pointer for prefetch speed.)
+- [ ] The `tx!`+tab parser: how the inline trigger turned note text into a structured order.
 
 ## To look at next week (in the easyGP code)
 - [ ] Materialized table structures behind inbox + cockpit (schema, indexes).
