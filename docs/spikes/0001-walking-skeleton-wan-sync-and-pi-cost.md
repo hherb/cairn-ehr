@@ -212,8 +212,9 @@ wire (A2) → a canonicalization/round-trip bug slipped past move 1; blob transf
 
 **Setup.** The *same* skeleton on a Raspberry-Pi-5-class node (rural-clinic profile, low concurrency,
 [§8](../spec/deployment.md)), on a deliberately flaky link. **Target board:** a Raspberry Pi 5 / 16 GB
-with a 1 TB SSD (the suspected realistic floor); a smaller 8 GB board (Pi 4 / Pi 5) is the follow-on
-floor experiment. The full field procedure is `poc/walking-skeleton/PI-RUNBOOK.md`.
+with a 1 TB SSD (the suspected realistic floor); a **Pi 4 / 8 GB** is the follow-on floor experiment
+(older, cheaper hardware — does it still clear the gates?). The full field procedure is
+`poc/walking-skeleton/PI-RUNBOOK.md`.
 
 **Measure / assert:**
 

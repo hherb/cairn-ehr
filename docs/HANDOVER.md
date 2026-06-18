@@ -32,9 +32,9 @@ rule — all of it is fit-for-purpose Python in `poc/walking-skeleton/harness/`)
   so the smallest-headroom row (expected **B4** raw crypto, which tracks clock/core not tuning) sets the floor,
   and the Pi 5 run predicts whether a *smaller* board is viable before it's plugged in. New flags: `--label`
   (tag the board), `--json-out` (durable artifact), `--patients` (realistic B2 chart size = ~count/patients).
-- **The "8 GB Pi 3" is a slip** — a Pi 3 tops out at **1 GB**; the 8 GB boards are the **Pi 4 (8 GB)** or
-  **Pi 5 (8 GB)**. Flagged in the runbook §8; worth confirming which board the user means before the second
-  run (it changes only the `--label`, not the procedure).
+- **Floor experiment = Pi 4 / 8 GB** (confirmed with the user — they keep several Pi generations on hand; the
+  earlier "8 GB Pi 3" was a slip, a Pi 3 tops out at 1 GB). Older, cheaper hardware — the interesting "does it
+  still clear the gates" test; it changes only the `--label`, not the procedure.
 - **Docs wired:** Spike 0001 status line + new **§6.1** (preparation/floor methodology); skeleton README Bet B
   section + Next pointer; this entry + the build-prep pointer below. **Validated on the container** (PG 16
   here — harness flags it as < the PG 18 floor): `bench` and full `selftest` both run green end-to-end, env

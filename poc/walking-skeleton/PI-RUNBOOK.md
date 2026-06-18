@@ -286,11 +286,10 @@ Use a **distinct `--label`** and a separate `--json-out`, then compare the two r
 side by side — the headroom multipliers shrink toward 1.0 as you approach the floor.
 
 > [!NOTE]
-> **On the "8 GB Pi 3":** a Pi 3 (B/B+) tops out at **1 GB RAM** — there is no 8 GB
-> Pi 3. The 8 GB boards are the **Pi 4 (8 GB)** and the **Pi 5 (8 GB)**. Either is a
-> sensible floor candidate; a Pi 4 / 8 GB is the more interesting "can older/cheaper
-> hardware still serve a clinic" test. Worth confirming which board you mean before the
-> second run — it changes only the `--label`, not the procedure.
+> **The floor candidate is a Pi 4 / 8 GB.** It's the more interesting "can older,
+> cheaper hardware still serve a clinic" test, and dropping down to it changes only the
+> `--label`, not the procedure. (A Pi 3 B/B+ tops out at 1 GB RAM, so it would be
+> memory-bound long before these compute gates bite — not a board for this benchmark.)
 
 The deployment spec's stated rural-clinic floor is "Raspberry Pi 5 class"
 ([§8](../../docs/spec/deployment.md)); this experiment is how we learn whether that can
