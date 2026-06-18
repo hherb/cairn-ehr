@@ -203,20 +203,34 @@ blob present/referenced-only — and writes a `.fingerprint.json` for the A1 com
 
 ## Bet B benchmark harness (the Pi compute-cost bet)
 
+**Running it on a real Pi? Follow [`PI-RUNBOOK.md`](PI-RUNBOOK.md)** — the full field
+guide (SSD-not-SD-card, PG 18 on arm64, governor/cooling, the prescribed size ladder,
+reading the floor). This section is the harness reference.
+
 `harness/bench_b.py` (no Python deps; shells out to `psql`, present on any PG node)
 drives the binary to emit the §6 table. The daemon grew three commands for it:
 `bench-insert` (B1 — maintained-write latency at the current log size), `chart`
 (B2 — full chart assembly from the projection + the plaintext legibility twins), and
 `bench` (B3/B4 — pure-CPU crypto: Ed25519 sign/verify, SHA-256 vs BLAKE3, DEK-wrap/body-seal).
 
+Every run prints a **self-describing environment header** (board, cores/RAM, kernel,
+PG version, *which block device PGDATA sits on*, CPU governor, Pi throttle state, build
+profile) and warns on anything that would make the numbers misleading — because Bet B
+is a *hardware-class* bet, a §6 number is meaningless without the host that produced it
+(the same release binary measured SHA-256 at ~1500 MB/s on a SHA-NI host and ~200 MB/s
+on one without). `--json-out` records the header + thresholds + every row as a durable,
+self-identifying artifact; `--label` tags the board for the two-board floor comparison.
+
 ```sh
 cargo build --release          # REQUIRED — debug crypto/projection numbers are meaningless
 # Run ON THE PI, against its local PostgreSQL.
 # selftest DROPs+recreates the Cairn tables, so it requires --force (guards a mistyped --conn):
 python3 harness/bench_b.py --bin target/release/cairn-sync selftest --force \
-    --conn "host=127.0.0.1 user=cairn dbname=pi" --sizes 5000 50000 200000
+    --conn "host=127.0.0.1 user=cairn dbname=pi" \
+    --sizes 50000 500000 2000000 --patients 4000 \
+    --label "pi5-16gb-nvme" --json-out betb-pi5.json
 # just the pure-CPU crypto numbers (B3/B4), no DB, non-destructive:
-python3 harness/bench_b.py --bin target/release/cairn-sync bench
+python3 harness/bench_b.py --bin target/release/cairn-sync bench --label "pi5-16gb-nvme"
 ```
 
 It measures: **B1** single-op projection maintenance and *that it stays flat as the
@@ -224,8 +238,12 @@ log grows* (the ADR-0001 load-bearing bet, gated), **B2** chart read beats "grab
 paper chart" (sub-second, gated), **B3** keystore cost (DEK-wrap/body-seal → per-event
 vs per-episode crypto-shred granularity — reported as INFO, not gated), **B4** Ed25519
 verify/s + SHA-256-vs-BLAKE3 (the ARM input to ADR-0015's *provisional* blob-digest
-default, gated). On a miss it prints the ADR-0002 mitigation ladder (PL/pgSQL → pgrx →
-external Rust). Run it **on the Pi**; single-machine numbers reflect whatever ran them.
+default, gated). Each gated row prints its **headroom** (× under budget / over floor) —
+the signal for the *floor* question (how much weaker a board could still pass). On a
+miss it prints the ADR-0002 mitigation ladder (PL/pgSQL → pgrx → external Rust). Run it
+**on the Pi**; single-machine numbers reflect whatever ran them. `--patients` sizes the
+demographic panel so the fattest patient's chart (B2) stays realistic (~`count/patients`
+notes).
 
 ## Byte-tier throughput harness (Spike 0001 §8.2)
 
@@ -248,8 +266,9 @@ python3 harness/bench_blob.py selftest \
 
 - **Bet A — DONE** (#9): all six §5 rows PASS over the real Cape York ↔ Dorrigo
   link; §4 primitives ratified as [ADR-0015](../../docs/spec/decisions/0015-event-serialization-signatures-and-content-addressing.md).
-- **Bet B — harness ready:** run `bench_b.py selftest` on a Pi-5-class node. The
-  ARM SHA-256-vs-BLAKE3 number is the one input that could revisit ADR-0015's
-  provisional blob-digest default.
+- **Bet B — harness ready, runbook written ([`PI-RUNBOOK.md`](PI-RUNBOOK.md)):** run
+  `bench_b.py selftest` on a Pi-5-class node per the runbook. The ARM SHA-256-vs-BLAKE3
+  number is the one input that could revisit ADR-0015's provisional blob-digest default;
+  the per-row headroom answers whether a smaller board is a viable floor.
 - **Byte-tier throughput — DONE** (spike §8.2): windowed/resumable/swarm/verified
   fetch shipped; `harness/bench_blob.py` is the selftest harness.

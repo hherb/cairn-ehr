@@ -1,9 +1,45 @@
 # HANDOVER — Cairn
 
-**Session date:** 2026-06-17 (spec bumped to **v0.26**)
+**Session date:** 2026-06-18 (build-prep; spec unchanged at **v0.26**)
 **Status of this file:** Working scaffolding, not a source of truth. Disposable — regenerate
 at the end of each working session. If this file ever disagrees with the canonical documents,
 the canonical documents win.
+
+---
+
+## Prepared 2026-06-18 — Bet B (the Pi compute-cost spike): field runbook + self-describing, floor-finding harness
+
+Build-prep, **not** architecture — spec/ADR log unchanged (**v0.26**). The user has a **Pi 5 / 16 GB + 1 TB
+SSD** in hand and wants to run **Bet B** (the [ADR-0001](spec/decisions/0001-fat-postgres-thin-daemon.md)
+projection/keystore compute go/no-go, [Spike 0001 §6](spikes/0001-walking-skeleton-wan-sync-and-pi-cost.md#6-bet-b--projection--keystore-cost-on-the-pi-prepared-awaiting-the-board)).
+The harness was already green on x86; this session made the run **reproducible and its numbers
+trustworthy on real hardware**, with **zero change to the safety-critical Rust** (the §9 blast-radius
+rule — all of it is fit-for-purpose Python in `poc/walking-skeleton/harness/`). `cargo test --release` 6/6.
+
+- **Field runbook — [`poc/walking-skeleton/PI-RUNBOOK.md`](../poc/walking-skeleton/PI-RUNBOOK.md)** (the
+  main deliverable). Start-to-finish for when the board comes out of the drawer: **PGDATA on the SSD, never
+  the SD card** (the one Pi mistake that silently invalidates B1/B2), **PostgreSQL 18 on arm64** via PGDG,
+  the **`performance` governor + active cooling + `vcgencmd get_throttled`** check, **deployment-honest PG
+  tuning** (`fsync`/`synchronous_commit` left **on** — a clinic node must survive power loss), the release
+  build on the Pi, the prescribed run, and how to read the result.
+- **Self-describing harness.** Every `bench_b.py` run now prints (and `--json-out` records) an environment
+  header: board, cores/RAM, kernel, PG version, **which block device PGDATA sits on** (shouts if SD card),
+  CPU governor, Pi throttle state, build profile — and warns on anything skewing the result. Rationale: Bet B
+  is a *hardware-class* bet, so a §6 number is meaningless without its host — concretely, the *same* release
+  binary measured SHA-256 at ~1500 MB/s on a SHA-NI host and **~200 MB/s on this container** (validated live).
+- **The floor question answerable from one board.** Each gated row prints **headroom** (× under budget / over
+  floor). On the x86 validation run B1 landed **18× under budget**, B2 **207× under**, B4 **~11× over floor** —
+  so the smallest-headroom row (expected **B4** raw crypto, which tracks clock/core not tuning) sets the floor,
+  and the Pi 5 run predicts whether a *smaller* board is viable before it's plugged in. New flags: `--label`
+  (tag the board), `--json-out` (durable artifact), `--patients` (realistic B2 chart size = ~count/patients).
+- **Floor experiment = Pi 4 / 8 GB** (confirmed with the user — they keep several Pi generations on hand; the
+  earlier "8 GB Pi 3" was a slip, a Pi 3 tops out at 1 GB). Older, cheaper hardware — the interesting "does it
+  still clear the gates" test; it changes only the `--label`, not the procedure.
+- **Docs wired:** Spike 0001 status line + new **§6.1** (preparation/floor methodology); skeleton README Bet B
+  section + Next pointer; this entry + the build-prep pointer below. **Validated on the container** (PG 16
+  here — harness flags it as < the PG 18 floor): `bench` and full `selftest` both run green end-to-end, env
+  capture degrades gracefully off-Pi (no governor file / no `vcgencmd` → "n/a"), `--json-out` writes a clean
+  record. The PG-18-on-Pi numbers are the real ones, recorded when the board runs.
 
 ---
 
@@ -1072,7 +1108,8 @@ expression** (→ [ADR-0024](spec/decisions/0024-hard-policy-expression-the-poli
 **v0.26**. **The layering/API arc (0021 → 0022 → 0023 → 0024) is now complete** — no open architecture
 follow-ons from it. The highest-signal modes are now **fresh clinical case-mining** and the **build-prep
 threads** below. Build-prep next steps: the **easyGP next-week session** (port the `rx!`/`tx!` type-through +
-the prefetch/materialization warming daemon — the ADR-0020 deferred items), **Bet B on a Pi**, then the
+the prefetch/materialization warming daemon — the ADR-0020 deferred items), **Bet B on a Pi** (now
+**prepared** — runbook + self-describing harness ready, awaiting the board; see the top entry), then the
 byte-tier connection-reuse throughput lever.
 
 **The recurring menu** when resuming (pick one):
@@ -1084,7 +1121,9 @@ byte-tier connection-reuse throughput lever.
   reframed into two bets (WAN-sync now / Pi-cost next week) on one shared walking skeleton, with the
   day-one serialization/signature/digest defaults. ~~build the skeleton~~ **DONE**; ~~run Bet A on the
   Cape York ↔ Dorrigo link~~ **DONE 2026-06-16 — all six §5 rows PASS** (see the run note above).
-  **Now:** ratify the §4 crypto primitives into an ADR per the §7 exit criteria; **Bet B on a Pi next week**.
+  ~~run Bet A~~ **DONE — §4 primitives ratified as [ADR-0015](spec/decisions/0015-event-serialization-signatures-and-content-addressing.md)**.
+  **Now: Bet B on the Pi — PREPARED 2026-06-18** ([`PI-RUNBOOK.md`](../poc/walking-skeleton/PI-RUNBOOK.md) +
+  self-describing, floor-finding harness; see the top entry), awaiting the Pi 5 / 16 GB + 1 TB SSD.
 - **easyGP next-week session** (the live build-prep thread) — with full easyGP Postgres schema + PL/pgSQL +
   PL/Python access, port the ADR-0020 deferred items: the `rx!`/`tx!` parser + type-through state machine, the
   formulation/drug data source + renal/hepatic/pregnancy forced-manual rule table, and the prefetch/
