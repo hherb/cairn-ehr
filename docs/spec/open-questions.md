@@ -88,3 +88,72 @@ plaintext twins → court-admissible decades on), with a **policy-neutral seal l
 authority-public-key-sealed / both). It is the general mechanism behind [ADR-0005](decisions/0005-erasure-key-custody-and-crypto-shredding.md)
 rung-2's escrowed clinician copy; the erasure interaction is the intended honest ceiling. **No new founding
 principle** (refines [ADR-0007](decisions/0007-authorship-and-accountability.md)).
+
+## Resolved — application layering, the node API, and UI pluralism
+
+How a **plurality of UIs** (small teams building bespoke front-ends quickly and safely) can be facilitated
+**without ever compromising the guarantee the mission rests on — any Cairn node interoperating with any
+other, regardless of UI or policy** — is **RESOLVED** ([ADR-0021](decisions/0021-layering-the-node-api-and-ui-pluralism.md),
+[language-substrate §9.5](language-substrate.md#95-layering-the-node-api-and-ui-pluralism-uniform-core-plural-edges)):
+the inter-node contract is the **signed event core, below UI and policy** — already fixed and
+UI-independent by construction ([ADR-0015](decisions/0015-event-serialization-signatures-and-content-addressing.md)/[ADR-0001](decisions/0001-fat-postgres-thin-daemon.md)/[ADR-0012](decisions/0012-schema-evolution-event-format-and-legibility-across-time.md)/[ADR-0017](decisions/0017-federation-admission-sovereignty-peering-and-trust-anchors.md))
+— so nothing above it may sit on the inter-node path. A **four-layer model** (L0 wire core / L1 node
+enforcement floor / L2 policy + API / L3 UI) puts the compatibility boundary **below the application
+layer**. The bypass tension (*"UI → API or DB directly"*) dissolves by putting the **floor in the
+database**: safety/compatibility invariants are enforced in-DB (validated submit functions + RLS +
+constraints), so direct DB access is safe by construction and *"via API vs DB directly"* is a **privilege
+gradient, not a contradiction** — L2 is ergonomics + deployment hard policy, never the sole wall.
+**Hard vs soft policy** is the [§9.1](language-substrate.md#91-selection-rule-by-defect-blast-radius)
+blast-radius rule applied to policy. The **anti-drift guarantee:** a UI is a pure producer/consumer over a
+contract it cannot alter (the *node* owns serialization/signing), the native API evolves **additively**
+([principle 11](index.md#founding-principles-the-lens-for-every-decision) applied to the contract) and is
+**capability-described + conformance-tested**, so a bespoke UI can produce wrong content but **never a
+wire-incompatible event**. **Native API ≠ the FHIR façade** (two surfaces); the steward's reference UI is
+built only on the public API (anti-capture turned inward). Surfaced **founding principle 12 — uniform core,
+plural edges.**
+
+The **completeness of that submit surface** (the bet ADR-0021 rests on) is then specified
+([ADR-0022](decisions/0022-validated-submit-surface-the-write-path.md),
+[language-substrate §9.6](language-substrate.md#96-the-validated-submit-surface-the-write-path)): because the
+system is append-only, *almost every write is the same operation*, so the surface is **one generic
+validated-append** (`submit_event`, type-validated by additively-registered dispatch — a new event type adds
+a validator, never a new door) **plus a small closed set of non-append operations** (erasure/key-custody,
+author-scoped export, blob byte-tier put). It is **small and complete** by construction, and is the **in-DB
+convergence of every write-time seam** the spec has named (authorship stamp, clash detection, seal-time
+safety projection, suppressing owner-gate, legibility-twin derivation, canonicalize+sign). Signing must be
+reachable from the in-DB path (else the floor would be incomplete for direct-DB callers — the database
+process is part of the node's trusted base). Authoring (`submit_event`, signs) is distinct from applying
+(verifies peer signatures, never re-signs). **No new founding principle** (refines ADR-0021/ADR-0001).
+
+The **native API contract** (the anti-drift tool for bespoke UIs) is then specified
+([ADR-0023](decisions/0023-native-api-contract-capability-and-conformance.md),
+[language-substrate §9.7](language-substrate.md#97-the-native-api-contract-capability-description-and-conformance)):
+API compatibility is the **same problem as schema evolution** (permanent offline version skew), so the
+contract is **additive capability flags over a mandatory baseline, not a monotonic version number**, with the
+[§3.13](data-model.md#313-schema-evolution-event-format-and-the-legibility-twin) `min()` ladder for graceful
+degradation. A node serves a **self-describing capability descriptor** (a projection of its local-node
+schema/extension/config properties — not new state; transport-independent); negotiation is **stateless
+description + client-side degradation, not a handshake**, and degradation may cut experience but never
+correctness/safety (the mandatory core is the floor). The **conformance suite** is the executable contract in
+two faces — *wire/node* (does it correctly participate in L0; the "any node talks to any node" guarantee made
+checkable, a federation admission gate) and *API* (does the L2 API honor the contract for the capabilities it
+claims; capability-partitioned, additively versioned, tests never removed). It is **self-runnable and
+self-verifiable** — open, signed, content-addressed (the [ADR-0014](decisions/0014-locale-pluggable-matcher-comparators.md)
+registry pattern), never a steward-issued certificate (anti-capture turned inward, a second time), and doubles
+as the spec's executable form (principle 11). **No new founding principle** (refines ADR-0021).
+
+Finally, **how hard policy is expressed** is specified ([ADR-0024](decisions/0024-hard-policy-expression-the-policy-assertion-stream.md),
+[security §7.9](security.md#79-hard-policy-expression-projection-and-enforcement)), **closing the ADR-0021
+layering/API arc** (0021 → 0022 → 0023 → 0024): hard policy is just Cairn's universal shape applied to policy
+itself — an **append-only, signed, scoped policy-assertion stream with an effective-policy projection**, a
+**declarative selection over a closed Cairn-shipped mechanism set, never arbitrary code** (the selection is
+data on the event plane; the evaluation code travels the §7.6 distribution plane). The *DB-anchored vs
+role-gated-L2* question dissolves — same expression, the enforcement *locus* is a [§9.1](language-substrate.md#91-selection-rule-by-defect-blast-radius)
+blast-radius call (the §9.6 submit surface + RLS read the projection in-DB by default). Authoring is
+authority-gated (bootstrapped at provisioning); policy is **scoped and floor-composing** (a federation floor
+ratchets stricter, never weaker; local non-floor policy is node-autonomous — the sovereignty floor), and
+partition-honest (last-known policy; local reads never fail closed). It **unifies the scattered "expressible
+policy rungs"** (§5.10, ADR-0005/0006/0009/0010, §7.5/7.6/7.7) under one mechanism and closes
+[ADR-0010](decisions/0010-additive-vs-suppressing-classification.md)'s conservation-of-responsibility loop
+(the audited config act is now a concrete policy event). **No new founding principle** — it is the mechanism
+*of* principle 9.

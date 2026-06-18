@@ -1,9 +1,210 @@
 # HANDOVER — Cairn
 
-**Session date:** 2026-06-16 (spec bumped to **v0.21**)
+**Session date:** 2026-06-17 (spec bumped to **v0.26**)
 **Status of this file:** Working scaffolding, not a source of truth. Disposable — regenerate
 at the end of each working session. If this file ever disagrees with the canonical documents,
 the canonical documents win.
+
+---
+
+## Resolved 2026-06-17 — hard policy expression (now spec v0.26) → ADR-0024 (refines 0021); **closes the layering/API arc**
+
+Closed the last ADR-0021 follow-on (the user's pick, "3"): *how hard policy is expressed.* It **dissolved into
+Cairn's universal shape applied to policy itself** — **no new founding principle** — and **closes the
+layering/API arc (0021 → 0022 → 0023 → 0024).** → [ADR-0024](spec/decisions/0024-hard-policy-expression-the-policy-assertion-stream.md),
+canonical home **[security §7.9](spec/security.md)**, with back-pointers from §9.5/§9.6, identity §5.10, the §7
+intro, index principle 9, and the open-questions resolved area.
+
+- **Hard policy is an append-only, signed, scoped policy-assertion stream + an effective-policy projection** —
+  the §5.9 sensitivity / §3.11 routing / §5.1 link-graph shape applied to policy; **not a mutable config
+  file**. Every policy act is an audited event (who/when/scope/authority/selection), never mutated, always
+  overlaid. Makes ADR-0010's "explicit audited configuration act" concrete.
+- **Declarative selection over a closed Cairn-shipped mechanism set, NEVER arbitrary code** (the RCE surface
+  ADR-0012 forbids on the data plane). The two-plane split applies: the *selection* is data on the event
+  plane; the *evaluation code* travels the §7.6 distribution plane.
+- **The user's "DB-anchored config vs role-gated L2" fork dissolves:** same expression, the enforcement
+  *locus* is a §9.1 blast-radius call — the effective-policy projection is in-DB and the §9.6 submit surface +
+  RLS read it (unbypassable by default); richer evaluation runs in role-gated L2. Mirrors §9.4's
+  PL/pgSQL-default / pgrx-escape-hatch split.
+- **Authority-gated authoring, bootstrapped at provisioning** (the §7.6 root authority, like the steward key /
+  §7.7 self-issued practice key); meta-policy ("changing the retention floor needs two-person authority") is
+  the same mechanism on itself. **Scoped + floor-composing:** a federation floor ratchets *stricter, never
+  weaker* (the safety-floor-never-relaxes pattern; the policy analogue of the trust anchor), local non-floor
+  policy is node-autonomous (sovereignty floor). Partition-honest (last-known policy; local reads never fail
+  closed).
+- **Unifies the scattered "expressible policy rungs"** (§5.10 attestation, ADR-0005 erasure rungs, ADR-0006
+  sensitivity, ADR-0009 routing, ADR-0010 suppression-permission, §7.5/7.6/7.7 who-may-X) under one mechanism —
+  the consolidation of an existing scatter, not a new subsystem. Closes ADR-0010's conservation-of-responsibility
+  loop.
+- **Blast-radius (§9):** the effective-policy projection + the §9.6/RLS gates that read it are safety-critical
+  (mis-enforcement → compliance breach *or* care blocked); the **policy-authority model + provisioning
+  bootstrap** are the sensitive seam (who changes policy is who can weaken a floor → authority-gated + audited +
+  floor-protected). Shipped mechanism set stays **closed + additive-only**. Build `--strict` clean.
+
+---
+
+## Resolved 2026-06-17 — the native API contract: capability description + conformance (now spec v0.25) → ADR-0023 (refines 0021)
+
+Pursued the next ADR-0021 API follow-on (the user's pick, "2"): the **native API contract** — the
+capability-negotiation format + the conformance suite that turns the principle-12 compatibility guarantee into
+something a small UI team can *run*. **Determined by existing canon** (additive evolution + anti-capture) —
+**no new founding principle.** → [ADR-0023](spec/decisions/0023-native-api-contract-capability-and-conformance.md),
+canonical home **[language-substrate §9.7](spec/language-substrate.md)**, with a §9.5 pointer and the
+resolved-area note in [open-questions.md](spec/open-questions.md).
+
+- **Two framing realizations did the work:** (1) **API compatibility = schema evolution** (ADR-0012) —
+  permanent offline version skew — so the primitive is **additive capability flags over a mandatory baseline,
+  NOT a monotonic version number** (a number linearizes what is really a *set* of independently-present
+  capabilities), with the §3.13 `min()` ladder for degradation; (2) **anti-capture forbids a Cairn-owned
+  conformance gatekeeper** → conformance must be **self-runnable + self-verifiable** (the ADR-0014
+  signed/content-addressed registry pattern), never a steward-issued certificate.
+- **Capability descriptor = a served, self-describing projection of local-node-properties** (installed schema
+  versions + loaded validators/extensions + config — all already ADR-0012 local-node-properties; not new
+  state), additively evolvable, legible across time, **transport-independent** (operations, not REST endpoints
+  — ADR-0021's "properties fixed, transport later").
+- **Negotiation = stateless description + client-side graceful degradation, NOT a handshake** (no
+  partition-fragile round-trip; availability). Degradation may cut *experience*, **never correctness/safety** —
+  the mandatory core IS the floor, so the §5.9 safety projection is present on every conformant node.
+- **Conformance suite = the executable contract, two faces:** *wire/node* (correct L0 participation — the "any
+  node talks to any node" guarantee made checkable; a federation admission **technical** gate, distinct from
+  ADR-0017's trust gate) and *API* (L2 honors the contract for advertised capabilities; capability-partitioned;
+  additively versioned; **tests never removed**). Self-runnable, signed, content-addressed; **anti-capture
+  turned inward a second time** (ADR-0021 denied the steward's UI a private API; this denies a conformance
+  chokepoint); doubles as the spec's executable form (principle 11).
+- **Blast-radius / the bet:** the load-bearing call is the **mandatory core** — small enough for a Pi to fully
+  conform, rich enough that "conformant" means something to a UI (the ADR-0001 cost tension, now for the
+  contract). New artifacts (core definition + capability taxonomy + the suite) must be maintained **additively**
+  (never drop a test). Build `--strict` clean.
+- **The API thread now has one follow-on left:** **(3)** *how* hard policy is expressed (DB-anchored config vs
+  role-gated L2 — the §5.10 expressible-policy rung).
+
+---
+
+## Resolved 2026-06-17 — the validated submit surface (now spec v0.24) → ADR-0022 (refines 0021)
+
+Pursued the sharpest ADR-0021 follow-on (the user's pick, "1"): the **validated submit-function surface**
+whose *completeness* is the bet ADR-0021's "floor in the DB" rests on. It **dissolved into already-decided
+primitives** (append-only + the accumulated write-time seams) — **no new founding principle.**
+→ [ADR-0022](spec/decisions/0022-validated-submit-surface-the-write-path.md), canonical home
+**[language-substrate §9.6](spec/language-substrate.md)** (the authoring counterpart to the §9.4 apply
+boundary), with a back-pointer from data-model §3.1 and the resolved-area note in [open-questions.md](spec/open-questions.md).
+
+- **The completeness/minimality paradox** (smallest audited surface vs every-write-expressible) dissolves
+  because the system is **append-only**: *almost every write is the same operation.* So the surface is
+  **one generic `submit_event`** (type-validated by **dispatch to additively-registered validators** — a
+  new event type adds a validator *behind the same door*, never a new function; ADR-0012 discipline) **+ a
+  small closed set of non-append operations** (erasure/key-custody ADR-0005, author-scoped export ADR-0019,
+  blob byte-tier put §6.6). Small AND complete by construction. Co-produced events (the ADR-0020 order +
+  note-line) commit atomically; drafts (§3.10) are adjacent local mutable state, never on the log.
+- **`submit_event` is the in-DB convergence of every write-time seam** the spec had named — authorship
+  stamp (ADR-0008), clash detection (ADR-0003), seal-time safety projection (§5.9), suppressing owner-gate
+  (ADR-0010), legibility-twin derivation (ADR-0012), canonicalize+sign (ADR-0011/0015) — run atomically in
+  one pipeline (attestation-token → authz → envelope+Tier-1 ceiling → body+Tier-2 clash → hard-policy gates
+  → canonicalize+twin+sign → idempotent append). **Not a new mechanism — where they all land.**
+- **A real consequence of ADR-0021's floor-in-DB, now stated:** signing **must be reachable from the in-DB
+  path** (else a direct-DB caller couldn't produce a signed event and the floor would be incomplete) → the
+  node's trusted base **includes the database process** (fat Postgres); signing is in-DB (pgrx + keystore)
+  by default or delegated to a co-located signer the in-DB submit invokes, **never L2-only**.
+- **Authoring ≠ applying:** `submit_event` mints+validates+signs+appends; the §6.1/§9.4 apply path verifies
+  peer signatures + idempotent-appends, **never re-signs**. The **author-attestation token** (ADR-0008,
+  never the DB session) is what stops a direct-DB client forging authorship.
+- **Blast-radius (§9):** that one in-DB function becomes the **most safety-critical code in the system** →
+  reviewer-legible, the prime pgrx candidate (ADR-0002); the attestation-token verification + in-DB
+  signer/keystore access are the two sub-seams; the validator-dispatch registry must itself be additive-only
+  + tamper-evident. **The bet (refining ADR-0021's):** the generic-append + closed-non-append set stays
+  complete as the clinical model grows (a future write that is neither would force a new door — itself a
+  signal worth scrutinising). Build `--strict` clean.
+
+---
+
+## Resolved 2026-06-17 — layering, the node API & UI pluralism (now spec v0.23) → ADR-0021 + founding principle 12
+
+Case-mined the **application-layer / API architecture** — the user's framing: fat-Postgres core + Rust/PL-pgSQL,
+**hard policy** in a thin Rust layer, **soft policy** in the UI, UIs reaching an API *or the DB directly*, a
+baseline "best-of-breed" reference UI — all in service of **UI diversity without ever compromising inter-node
+compatibility** ("regardless of UI/policy, any Cairn node must talk to any other"). It mostly **dissolved into
+already-fixed primitives** + one bypass-tension resolution, and **elevated a new founding principle (12).**
+→ [ADR-0021](spec/decisions/0021-layering-the-node-api-and-ui-pluralism.md), canonical home
+**[language-substrate §9.5](spec/language-substrate.md)**, principle in **[index.md](spec/index.md)** + `CLAUDE.md`,
+new resolved area in [open-questions.md](spec/open-questions.md), with a topology note + back-pointers from §9.3 /
+data-model §3.4.
+
+- **The reframe that did the work:** "any node talks to any other regardless of UI/policy" is **already
+  guaranteed** — the compatibility contract is the signed **event core** (ADR-0015 format / ADR-0001+§6 sync /
+  §5.7+§3.12 algebras / ADR-0012 additive evolution / ADR-0017 federation), all UI/policy-independent by
+  construction. So the task was to **name that core as the sole inter-node contract and forbid everything above
+  it from the inter-node path**, not to *build* compatibility.
+- **Four layers, compatibility boundary below the application layer:** L0 wire/event core (uniform) · L1 node
+  enforcement floor (fat Postgres + in-DB/pgrx, uniform, unbypassable) · L2 policy + API (thin Rust, plural) ·
+  L3 UI (plural; reference UI is one citizen).
+- **The bypass tension resolved — floor in the DB (the user's call, fork 1).** Every safety/compatibility
+  invariant is enforced in-DB (validated submit functions + RLS + constraints), so **direct DB access is safe by
+  construction**; UIs call submit-functions, never raw `INSERT` (the §9.4 grant model extended to the UI role);
+  *"via API vs DB directly" is a privilege gradient, not a contradiction* — L2 is ergonomics + deployment hard
+  policy, **never the sole wall**.
+- **Hard vs soft policy** = the §9.1 blast-radius rule applied to policy (hard = DB-anchored or role-gated;
+  soft = UI, swappable, zero blast radius).
+- **Anti-drift guarantee (the core ask):** a UI is a pure producer/consumer over a contract it can't alter (the
+  *node* owns serialization/signing), the native API evolves **additively** (principle 11 on the contract), is
+  **capability-described** (graceful degradation, the §3.13 `min()` ladder) + **conformance-tested** — so a
+  bespoke UI can produce wrong-for-its-clinic content but **never a wire-incompatible event**. **Native API ≠
+  FHIR façade** (two surfaces); the reference UI is built only on the public API (anti-capture turned inward).
+- **Founding principle 12 — *uniform core, plural edges*** (the user's call, fork 2): compatibility is a property
+  of the event core, below UI and policy; many front-ends, one record.
+- **Blast-radius (§9):** the validated submit-function surface + RLS + role/grant model are now the trusted base
+  for *external* clients too (they **are** the floor for direct-DB callers); completeness of that submit surface
+  is the bet (a gap pushes UIs to raw access and re-opens the bypass). Transport (REST/gRPC/…) deliberately left
+  open — §9 fixes the rule, not the tech. Fresh user case-mining (not a parked §11 item). Build `--strict` clean.
+
+---
+
+## Resolved 2026-06-17 — the active-write model promoted to canon (now spec v0.22) → ADR-0020
+
+Promoted the **write-model / UI design cluster** — resolved in conversation across PRs #15–#17, captured in
+`scratch/ui-sketches/`, but never in canon — into the spec + ADR log. It dissolved into existing primitives
++ one principle-3 reconciliation: **no new envelope field, no new event stream, no new founding principle.**
+→ [ADR-0020](spec/decisions/0020-active-write-thin-encounters-and-the-delete-vs-erase-distinction.md),
+canonical home **[data-model §3.15](spec/data-model.md)**, with the forced-rationale gate in
+**[vision §1.2](spec/vision.md)** and back-pointers from data-model §3.5/§3.10/§3.13 and identity §5.11.
+
+- **Same one-word-hides-many-dials motif** that resolved "scope"/"signature"/"authentication"/"priority",
+  now applied to the write surface — "encounter", "the order's consult", "the note line", "delete".
+- **Thin encounter / context-entity.** `encounter` is an opaque grouping id that asserts **nothing** about
+  formality (a 5-second results-review with one annotated order is a first-class "virtual encounter"); a small
+  first-class header `{HLC time, place, contributor set, ≥1 events}`; author **may be non-human** (a recall
+  system spawns it). **Guard the prose against importing FHIR-`Encounter`/billing semantics — grouping id,
+  full stop.** It rides on the ADR-0008 armed write-context; events inherit it ambiently like
+  facility/department — no new field.
+- **Order provenance falls out of the encounter key** — `result → order → order.encounter → fold`; the
+  external-results gap is structurally explained + **honestly degraded** (labelled most-recent fallback,
+  never silently "the ordering consult"). AI cross-ref only *proposes* a link (overlay discipline).
+- **Type-through write model** (`rx!`/`tx!`+tab, non-modal side panel; smart-default-vs-**forced-manual**
+  dosing for paediatric/pregnant/breastfeeding/renal/hepatic). The readable note line is a **derived
+  projection of the one structured event = the §3.13 legibility twin rendered inline, born at authoring
+  time** — so the "two artifacts diverge" worry dissolves at the root (principle 11 at the point of authoring).
+- **Delete-vs-erase taxonomy** (conventional EHRs conflate them): **delete** = suppress a *rendering*
+  (visibility overlay, reversible, **zero friction**, routine) vs **erase** = crypto-shred the *data*
+  (ADR-0005, irreversible, ≈never). *"Delete only ever removes one UI aspect, never the original data"* =
+  never-erase-always-overlay (principle 2) applied to the **display layer**. Suppression is itself a recorded
+  visibility-overlay event (the *that*; the *why* may stay unstated). Slots under ADR-0006 (confidentiality in
+  presentation, never existence — the STI-screen case).
+- **Forced-rationale gate ≠ banned confirmation dialog** — a reconciliation of principle 3. Confirmation
+  dialogs stay banned (click-through fatigue); but the genuinely irreversible few (erase, repudiation) earn a
+  **forced-rationale** gate that demands a substantive recorded reason (can't be click-throughed). Because
+  overlay makes almost everything reversible, the modal-worthy set collapses to ~1–2×/yr — rarity preserves
+  the signal. Rule: **never block the reversible; for the irreversible few, don't confirm — demand a reason
+  and record it.** Canonical home vision §1.2.
+- **Blast-radius (§9):** the thin-encounter grouping + type-through state machine + forced-manual rule table
+  are fit-for-purpose; the **delete-is-never-erase** boundary and the **suppression-is-always-a-recorded-
+  overlay-event** invariant are safety/privacy-critical (trusted apply surface — the recurring seam motif).
+- **Still in `scratch/`, gated on next-week easyGP schema access (build-prep, intentionally NOT promoted):**
+  the `rx!`/`tx!` parser + type-through state machine port, the formulation/drug data source + forced-manual
+  rule table, and the **prefetch/materialization warming daemon** internals (validates ADR-0001 from
+  production; splits into *scavengeable mechanism* vs *swappable prediction policy*). See
+  `scratch/ui-sketches/easygp-prefetch-notes.md` (banner added pointing at the promoted canon).
+- **Why the previous handover missed this:** the whole UI/write-model thread — wireframes under
+  `scratch/ui-sketches/`, the `web/` landing-page + chart examples — ran across **PRs #15–#17 *after* the
+  2026-06-16 handover was last regenerated**, so it was unreflected until now. Build verified `--strict` clean.
 
 ---
 
@@ -861,9 +1062,17 @@ and **§11.7** (locale-pluggable comparators, [ADR-0014](spec/decisions/0014-loc
 finalisation; proxy/liability semantics, out of scope — Cairn records the chain). This session's record-discovery
 case-mining (→ [ADR-0016](spec/decisions/0016-record-discovery-and-the-replicated-essential-tier.md)) surfaced the
 **Custodian & Federation Admission** dependency, which was then **drafted the same session** (→ [ADR-0017](spec/decisions/0017-federation-admission-sovereignty-peering-and-trust-anchors.md),
-[security §7.7](spec/security.md)). With the backlog empty again, the highest-signal modes are now **fresh
-clinical case-mining** and the **build-prep threads** below (the architecture spec is feature-complete enough to
-start specifying the first implementation spike). Build-prep next steps unchanged: **Bet B on a Pi**, then the
+[security §7.7](spec/security.md)). This session (2026-06-17) was busy: promoted the **active-write model**
+cluster to canon (→ [ADR-0020](spec/decisions/0020-active-write-thin-encounters-and-the-delete-vs-erase-distinction.md)),
+then case-mined the **application-layer / API architecture** (→ [ADR-0021](spec/decisions/0021-layering-the-node-api-and-ui-pluralism.md),
+founding principle 12) and **closed its entire follow-on arc** in one session: the **validated submit surface**
+(→ [ADR-0022](spec/decisions/0022-validated-submit-surface-the-write-path.md)), the **native API contract**
+(→ [ADR-0023](spec/decisions/0023-native-api-contract-capability-and-conformance.md)), and **hard policy
+expression** (→ [ADR-0024](spec/decisions/0024-hard-policy-expression-the-policy-assertion-stream.md)); spec
+**v0.26**. **The layering/API arc (0021 → 0022 → 0023 → 0024) is now complete** — no open architecture
+follow-ons from it. The highest-signal modes are now **fresh clinical case-mining** and the **build-prep
+threads** below. Build-prep next steps: the **easyGP next-week session** (port the `rx!`/`tx!` type-through +
+the prefetch/materialization warming daemon — the ADR-0020 deferred items), **Bet B on a Pi**, then the
 byte-tier connection-reuse throughput lever.
 
 **The recurring menu** when resuming (pick one):
@@ -876,8 +1085,14 @@ byte-tier connection-reuse throughput lever.
   day-one serialization/signature/digest defaults. ~~build the skeleton~~ **DONE**; ~~run Bet A on the
   Cape York ↔ Dorrigo link~~ **DONE 2026-06-16 — all six §5 rows PASS** (see the run note above).
   **Now:** ratify the §4 crypto primitives into an ADR per the §7 exit criteria; **Bet B on a Pi next week**.
+- **easyGP next-week session** (the live build-prep thread) — with full easyGP Postgres schema + PL/pgSQL +
+  PL/Python access, port the ADR-0020 deferred items: the `rx!`/`tx!` parser + type-through state machine, the
+  formulation/drug data source + renal/hepatic/pregnancy forced-manual rule table, and the prefetch/
+  materialization warming daemon (mechanism scavenge, validates ADR-0001). Pre-read:
+  `scratch/ui-sketches/easygp-prefetch-notes.md`.
 - **Polish a non-developer landing page** for the generated site (frontend-design work; draft plans
-  already exist under `docs/superpowers/`).
+  already exist under `docs/superpowers/`). Note: the `web/` landing page + chart examples already advanced
+  across PRs #15–#17 (founding-principles cards, two-zone chart UI example).
 
 *(All §11 open architecture questions are now resolved — no remaining items in that backlog.)*
 
@@ -901,15 +1116,17 @@ byte-tier connection-reuse throughput lever.
 - The project's founding motivation is explicitly **anti-capture / anti-vendor-lock-in**, rooted in the
   user's experience of government EHR committees being sabotaged by commercial interests. Decisions
   consistently favour the mission over convenience; treat that as the tie-breaker.
-- **Eleven founding principles** now run through everything ([index.md](spec/index.md)); the **first four**
+- **Twelve founding principles** now run through everything ([index.md](spec/index.md)); the **first four**
   are the lens checked before any new design choice: **(1)** append-only + causal ordering; **(2)**
   identity is a claim, never a fact (never merge/erase, always link/overlay); **(3)** paper-parity;
   **(4)** acknowledged uncertainty (incl. the corollary *deletion is best-effort and declared*). The
   rest: availability-over-consistency, fractal topology, vendor independence, safety-critical-logic-in-
   Rust/DB, **(9) policy-neutral infrastructure** (mechanism, never policy), **(10) authorship is
-  compositional, accountability is separable**, and **(11) legibility across time** (paper-parity along the
+  compositional, accountability is separable**, **(11) legibility across time** (paper-parity along the
   time/version axis; the mandatory plaintext twin + additive-only schema evolution; *schema is versioned data,
-  not privileged structure* — ADR-0012). Note: the §5.11 point-of-care work added **no** new
+  not privileged structure* — ADR-0012), and **(12) uniform core, plural edges** (compatibility is a property
+  of the signed event core, below UI and policy; the floor is enforced unbypassably in the DB so UIs may
+  proliferate freely; *many front-ends, one record* — ADR-0021). Note: the §5.11 point-of-care work added **no** new
   founding principle — its three operational principles (never-wait / always-a-fallback / never-redo-work)
   are corollaries of paper-parity, availability, append-only, and identity-repair. The §5.12 notification
   economy likewise added none — its rulings (salience ≠ interruptiveness; notification-as-projection;

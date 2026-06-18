@@ -40,6 +40,11 @@ was made — the context, the choice, and its consequences. Aspect documents in
 | [0017](0017-federation-admission-sovereignty-peering-and-trust-anchors.md) | Federation admission: the sovereignty floor, mutual peering, pluggable trust anchors, and the custodian contract | Accepted | 2026-06-16 |
 | [0018](0018-federation-revocation-cascade-and-the-anchor-as-power.md) | Federation revocation: counterparty enforcement, cascade, and the anchor as a position of power | Accepted (refines 0017) | 2026-06-16 |
 | [0019](0019-author-scoped-record-export-the-medico-legal-copy.md) | Author-scoped record export: the clinician's medico-legal copy | Accepted (refines 0007) | 2026-06-16 |
+| [0020](0020-active-write-thin-encounters-and-the-delete-vs-erase-distinction.md) | The active-write model: thin encounters, type-through authoring, and the delete-vs-erase distinction | Accepted | 2026-06-17 |
+| [0021](0021-layering-the-node-api-and-ui-pluralism.md) | Layering, the node API, and UI pluralism: uniform core, plural edges | Accepted | 2026-06-17 |
+| [0022](0022-validated-submit-surface-the-write-path.md) | The validated submit surface: the node's write path | Accepted (refines 0021) | 2026-06-17 |
+| [0023](0023-native-api-contract-capability-and-conformance.md) | The native API contract: capability description and executable conformance | Accepted (refines 0021) | 2026-06-17 |
+| [0024](0024-hard-policy-expression-the-policy-assertion-stream.md) | Hard policy expression: the policy-assertion stream and the effective-policy projection | Accepted (refines 0021) | 2026-06-17 |
 
 ## Template
 
