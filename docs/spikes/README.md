@@ -19,4 +19,4 @@ the architecture documents describe a settled design, not a lab notebook.
 
 | Spike | Title | Status | Validates |
 |---|---|---|---|
-| [0001](0001-walking-skeleton-wan-sync-and-pi-cost.md) | Walking skeleton, WAN-sync, and Pi cost | Proposed | [ADR-0001](../spec/decisions/0001-fat-postgres-thin-daemon.md) projection cost · [§6.2](../spec/sync.md#62-consistency-model) convergence under real partition · [ADR-0013](../spec/decisions/0013-attachments-content-addressed-lazy-blob-tier.md) availability floor · day-one serialization/signature/digest primitives |
+| [0001](0001-walking-skeleton-wan-sync-and-pi-cost.md) | Walking skeleton, WAN-sync, and Pi cost | Bet A ✓ (→[ADR-0015](../spec/decisions/0015-event-serialization-signatures-and-content-addressing.md)) · Bet B prepared, awaiting the Pi | [ADR-0001](../spec/decisions/0001-fat-postgres-thin-daemon.md) projection cost · [§6.2](../spec/sync.md#62-consistency-model) convergence under real partition · [ADR-0013](../spec/decisions/0013-attachments-content-addressed-lazy-blob-tier.md) availability floor · day-one serialization/signature/digest primitives |
