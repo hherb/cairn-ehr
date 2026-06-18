@@ -1,0 +1,24 @@
+# Ecosystem evaluations
+
+This directory holds Cairn's **ecosystem evaluations** — design analyses that weigh *external* infrastructure
+(candidate plugins, adjacent tools, optional extensions) against the *decided* architecture (the numbered spec
+§1–§11 and the [Decision log](../spec/decisions/README.md)).
+
+An ecosystem evaluation is **not architecture and not a decision**. It is the *why of fit*: what an external project
+is, where it lands in the [four-layer model](../spec/decisions/0021-layering-the-node-api-and-ui-pluralism.md)
+(L0 wire core / L1 enforcement floor / L2 policy+API / L3 UI), which existing primitives it composes with, and what
+would have to be true for it to attach **without compromising the safety floor or inter-node compatibility**. Every
+subject here is an *optional* extension: a bare Cairn node is a complete EHR without it.
+
+## Why a separate area
+
+The spec stays a clean statement of *what Cairn is*; the [ADR log](../spec/decisions/README.md) stays a clean
+statement of *why Cairn decided what it did*. An evaluation of someone else's software is a third thing — *what we
+looked at, and what we concluded about fit* — and belongs in neither. When an evaluation surfaces a genuine
+architectural commitment, that commitment is ratified separately as an ADR; the evaluation only flags it.
+
+## Index
+
+| Eval | Title | Subjects | Outcome |
+|---|---|---|---|
+| [0001](0001-agent-and-messaging-plugins-kastellan-localmail.md) | Agent & messaging plugins | [kastellan](https://github.com/hherb/kastellan) · [localmail](https://github.com/hherb/localmail) | Both fit as optional L2/L3 extensions (three-membrane model); spec unchanged at v0.26; one [ADR-0011](../spec/decisions/0011-actor-registry-version-pinning-and-key-custody.md) refinement parked (skill-epoch as a pinned actor determinant) |

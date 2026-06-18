@@ -118,6 +118,9 @@ nav:
   - Spikes (build-prep):
       - spikes/README.md
       - Spike 0001 · Walking skeleton, WAN-sync & Pi cost: spikes/0001-walking-skeleton-wan-sync-and-pi-cost.md
+  - Ecosystem (plugin evaluations):
+      - ecosystem/README.md
+      - Eval 0001 · Agent & messaging plugins — kastellan & localmail: ecosystem/0001-agent-and-messaging-plugins-kastellan-localmail.md
   - Principles:
       - Governance & contributing: principles/GOVERNANCE.md
       - Stewardship of the name: principles/STEWARDSHIP-OF-THE-NAME.md
