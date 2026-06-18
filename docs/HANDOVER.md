@@ -1,9 +1,46 @@
 # HANDOVER — Cairn
 
-**Session date:** 2026-06-17 (spec bumped to **v0.24**)
+**Session date:** 2026-06-17 (spec bumped to **v0.25**)
 **Status of this file:** Working scaffolding, not a source of truth. Disposable — regenerate
 at the end of each working session. If this file ever disagrees with the canonical documents,
 the canonical documents win.
+
+---
+
+## Resolved 2026-06-17 — the native API contract: capability description + conformance (now spec v0.25) → ADR-0023 (refines 0021)
+
+Pursued the next ADR-0021 API follow-on (the user's pick, "2"): the **native API contract** — the
+capability-negotiation format + the conformance suite that turns the principle-12 compatibility guarantee into
+something a small UI team can *run*. **Determined by existing canon** (additive evolution + anti-capture) —
+**no new founding principle.** → [ADR-0023](spec/decisions/0023-native-api-contract-capability-and-conformance.md),
+canonical home **[language-substrate §9.7](spec/language-substrate.md)**, with a §9.5 pointer and the
+resolved-area note in [open-questions.md](spec/open-questions.md).
+
+- **Two framing realizations did the work:** (1) **API compatibility = schema evolution** (ADR-0012) —
+  permanent offline version skew — so the primitive is **additive capability flags over a mandatory baseline,
+  NOT a monotonic version number** (a number linearizes what is really a *set* of independently-present
+  capabilities), with the §3.13 `min()` ladder for degradation; (2) **anti-capture forbids a Cairn-owned
+  conformance gatekeeper** → conformance must be **self-runnable + self-verifiable** (the ADR-0014
+  signed/content-addressed registry pattern), never a steward-issued certificate.
+- **Capability descriptor = a served, self-describing projection of local-node-properties** (installed schema
+  versions + loaded validators/extensions + config — all already ADR-0012 local-node-properties; not new
+  state), additively evolvable, legible across time, **transport-independent** (operations, not REST endpoints
+  — ADR-0021's "properties fixed, transport later").
+- **Negotiation = stateless description + client-side graceful degradation, NOT a handshake** (no
+  partition-fragile round-trip; availability). Degradation may cut *experience*, **never correctness/safety** —
+  the mandatory core IS the floor, so the §5.9 safety projection is present on every conformant node.
+- **Conformance suite = the executable contract, two faces:** *wire/node* (correct L0 participation — the "any
+  node talks to any node" guarantee made checkable; a federation admission **technical** gate, distinct from
+  ADR-0017's trust gate) and *API* (L2 honors the contract for advertised capabilities; capability-partitioned;
+  additively versioned; **tests never removed**). Self-runnable, signed, content-addressed; **anti-capture
+  turned inward a second time** (ADR-0021 denied the steward's UI a private API; this denies a conformance
+  chokepoint); doubles as the spec's executable form (principle 11).
+- **Blast-radius / the bet:** the load-bearing call is the **mandatory core** — small enough for a Pi to fully
+  conform, rich enough that "conformant" means something to a UI (the ADR-0001 cost tension, now for the
+  contract). New artifacts (core definition + capability taxonomy + the suite) must be maintained **additively**
+  (never drop a test). Build `--strict` clean.
+- **The API thread now has one follow-on left:** **(3)** *how* hard policy is expressed (DB-anchored config vs
+  role-gated L2 — the §5.10 expressible-policy rung).
 
 ---
 
@@ -992,12 +1029,11 @@ case-mining (→ [ADR-0016](spec/decisions/0016-record-discovery-and-the-replica
 [security §7.7](spec/security.md)). This session (2026-06-17) was busy: promoted the **active-write model**
 cluster to canon (→ [ADR-0020](spec/decisions/0020-active-write-thin-encounters-and-the-delete-vs-erase-distinction.md)),
 then case-mined the **application-layer / API architecture** (→ [ADR-0021](spec/decisions/0021-layering-the-node-api-and-ui-pluralism.md),
-founding principle 12) and its sharpest follow-on, the **validated submit surface** (→ [ADR-0022](spec/decisions/0022-validated-submit-surface-the-write-path.md));
-spec **v0.24**. The two **remaining ADR-0021 API follow-ons** (the live architecture thread) are: **(2)** the
-native API contract specifics — capability-negotiation format + the conformance suite that makes "any node
-talks to any node" executable for small teams; and **(3)** *how* hard policy is expressed (DB-anchored config
-vs role-gated L2, tying into the §5.10 expressible-policy rung). With those aside, the highest-signal modes
-are **fresh clinical case-mining** and the **build-prep threads** below. Build-prep next steps: the **easyGP
+founding principle 12) and two follow-ons: the **validated submit surface** (→ [ADR-0022](spec/decisions/0022-validated-submit-surface-the-write-path.md))
+and the **native API contract** (capability description + conformance, → [ADR-0023](spec/decisions/0023-native-api-contract-capability-and-conformance.md));
+spec **v0.25**. **One ADR-0021 API follow-on remains** (the live architecture thread): **(3)** *how* hard
+policy is expressed (DB-anchored config vs role-gated L2, tying into the §5.10 expressible-policy rung). With
+that aside, the highest-signal modes are **fresh clinical case-mining** and the **build-prep threads** below. Build-prep next steps: the **easyGP
 next-week session** (port the `rx!`/`tx!` type-through + the prefetch/materialization warming daemon — the
 ADR-0020 deferred items), **Bet B on a Pi**, then the byte-tier connection-reuse throughput lever.
 

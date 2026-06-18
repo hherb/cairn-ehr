@@ -124,3 +124,22 @@ safety projection, suppressing owner-gate, legibility-twin derivation, canonical
 reachable from the in-DB path (else the floor would be incomplete for direct-DB callers — the database
 process is part of the node's trusted base). Authoring (`submit_event`, signs) is distinct from applying
 (verifies peer signatures, never re-signs). **No new founding principle** (refines ADR-0021/ADR-0001).
+
+The **native API contract** (the anti-drift tool for bespoke UIs) is then specified
+([ADR-0023](decisions/0023-native-api-contract-capability-and-conformance.md),
+[language-substrate §9.7](language-substrate.md#97-the-native-api-contract-capability-description-and-conformance)):
+API compatibility is the **same problem as schema evolution** (permanent offline version skew), so the
+contract is **additive capability flags over a mandatory baseline, not a monotonic version number**, with the
+[§3.13](data-model.md#313-schema-evolution-event-format-and-the-legibility-twin) `min()` ladder for graceful
+degradation. A node serves a **self-describing capability descriptor** (a projection of its local-node
+schema/extension/config properties — not new state; transport-independent); negotiation is **stateless
+description + client-side degradation, not a handshake**, and degradation may cut experience but never
+correctness/safety (the mandatory core is the floor). The **conformance suite** is the executable contract in
+two faces — *wire/node* (does it correctly participate in L0; the "any node talks to any node" guarantee made
+checkable, a federation admission gate) and *API* (does the L2 API honor the contract for the capabilities it
+claims; capability-partitioned, additively versioned, tests never removed). It is **self-runnable and
+self-verifiable** — open, signed, content-addressed (the [ADR-0014](decisions/0014-locale-pluggable-matcher-comparators.md)
+registry pattern), never a steward-issued certificate (anti-capture turned inward, a second time), and doubles
+as the spec's executable form (principle 11). **No new founding principle** (refines ADR-0021). **Remaining
+follow-on:** *how* hard policy is expressed (DB-anchored config vs role-gated L2 — the [§5.10](identity.md#510-authorship-and-responsibility-state-the-consumer-side)
+expressible-policy rung).
