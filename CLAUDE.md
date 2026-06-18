@@ -84,6 +84,21 @@ sneakernet-capable distribution plane**; the schema/extension version is a *loca
 is no lockstep fleet upgrade ([ADR-0012](docs/spec/decisions/0012-schema-evolution-event-format-and-legibility-across-time.md),
 spec §3.13 / §6.5 / §7.6).
 
+A **twelfth founding principle** — *uniform core, plural edges* — makes the anti-capture mission durable
+against UI fragmentation: the contract that makes any node interoperable with any other is the signed,
+append-only **event core** (serialization/signature, set-union sync, the identity/actor algebras,
+additive-only evolution), and *nothing above it* — no API, policy, or UI — may sit on the inter-node path.
+The safety/compatibility floor is enforced **unbypassably in the database** (validated submit functions +
+RLS + constraints), so even a client talking raw SQL cannot break it, and *"via the API vs. DB directly"*
+is a **privilege gradient, not a contradiction**; above that floor, UIs and soft policy proliferate freely.
+A bespoke UI can produce content wrong for its clinic but **never a wire-incompatible event** — *many
+front-ends, one record*. A **four-layer model** (wire core / node enforcement floor / policy+API / UI) puts
+the compatibility boundary **below the application layer**; **hard policy** is DB-anchored or role-gated,
+**soft policy** lives in the UI; the native API evolves **additively** (principle 11 applied to the
+contract), is capability-described + conformance-tested, is distinct from the FHIR interop façade, and even
+the steward's reference UI is built only on the same public API everyone else uses
+([ADR-0021](docs/spec/decisions/0021-layering-the-node-api-and-ui-pluralism.md), spec §9.5).
+
 **§11.6 (attachment strategy) is resolved** — attachments are **content-addressed blobs referenced by the signed
 event, never inlined** (append-only applied to large binaries; the digest is to a blob what the signature is to a
 body). The **reference is eager, the bytes are lazy** on a **resource-isolated byte tier** that can never starve

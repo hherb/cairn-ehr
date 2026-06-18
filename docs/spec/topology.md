@@ -16,6 +16,7 @@
 - **Every node is write-capable** (multi-master, not read replicas).
 - **The smallest *autonomous* node is a Pi-class full PostgreSQL ≥18** node (workstation / mini-PC / solar Pi). "Autonomous" = able to survive a full partition alone: read locally-relevant charts and write new clinical data with no upstream reachable.
 - **Tablets / carts / phones are thin clients**, not autonomous edge stores: they attach to a nearby autonomous node (department server, workstation, or clinic Pi) which holds the database and computes projections. An embedded store (PGlite/SQLite) may back a thin client for transient buffering, but a thin client is **not** expected to survive a partition by itself.
+- **The UI is an edge concern, not a node-identity one.** Whether it runs on the autonomous node itself or on an attached thin client, a user interface binds to *a node* through the layered API/enforcement floor ([language-substrate §9.5](language-substrate.md#95-layering-the-node-api-and-ui-pluralism-uniform-core-plural-edges)); **many UIs may front the same node**, and a node's interoperability with every other node is *independent of which UI is used* (founding principle 12 — *uniform core, plural edges*).
 
 > [!NOTE]
 > Every *computing* node being full Postgres is what makes the in-database merge/projection design

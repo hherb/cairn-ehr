@@ -1,9 +1,50 @@
 # HANDOVER — Cairn
 
-**Session date:** 2026-06-17 (spec bumped to **v0.22**)
+**Session date:** 2026-06-17 (spec bumped to **v0.23**)
 **Status of this file:** Working scaffolding, not a source of truth. Disposable — regenerate
 at the end of each working session. If this file ever disagrees with the canonical documents,
 the canonical documents win.
+
+---
+
+## Resolved 2026-06-17 — layering, the node API & UI pluralism (now spec v0.23) → ADR-0021 + founding principle 12
+
+Case-mined the **application-layer / API architecture** — the user's framing: fat-Postgres core + Rust/PL-pgSQL,
+**hard policy** in a thin Rust layer, **soft policy** in the UI, UIs reaching an API *or the DB directly*, a
+baseline "best-of-breed" reference UI — all in service of **UI diversity without ever compromising inter-node
+compatibility** ("regardless of UI/policy, any Cairn node must talk to any other"). It mostly **dissolved into
+already-fixed primitives** + one bypass-tension resolution, and **elevated a new founding principle (12).**
+→ [ADR-0021](spec/decisions/0021-layering-the-node-api-and-ui-pluralism.md), canonical home
+**[language-substrate §9.5](spec/language-substrate.md)**, principle in **[index.md](spec/index.md)** + `CLAUDE.md`,
+new resolved area in [open-questions.md](spec/open-questions.md), with a topology note + back-pointers from §9.3 /
+data-model §3.4.
+
+- **The reframe that did the work:** "any node talks to any other regardless of UI/policy" is **already
+  guaranteed** — the compatibility contract is the signed **event core** (ADR-0015 format / ADR-0001+§6 sync /
+  §5.7+§3.12 algebras / ADR-0012 additive evolution / ADR-0017 federation), all UI/policy-independent by
+  construction. So the task was to **name that core as the sole inter-node contract and forbid everything above
+  it from the inter-node path**, not to *build* compatibility.
+- **Four layers, compatibility boundary below the application layer:** L0 wire/event core (uniform) · L1 node
+  enforcement floor (fat Postgres + in-DB/pgrx, uniform, unbypassable) · L2 policy + API (thin Rust, plural) ·
+  L3 UI (plural; reference UI is one citizen).
+- **The bypass tension resolved — floor in the DB (the user's call, fork 1).** Every safety/compatibility
+  invariant is enforced in-DB (validated submit functions + RLS + constraints), so **direct DB access is safe by
+  construction**; UIs call submit-functions, never raw `INSERT` (the §9.4 grant model extended to the UI role);
+  *"via API vs DB directly" is a privilege gradient, not a contradiction* — L2 is ergonomics + deployment hard
+  policy, **never the sole wall**.
+- **Hard vs soft policy** = the §9.1 blast-radius rule applied to policy (hard = DB-anchored or role-gated;
+  soft = UI, swappable, zero blast radius).
+- **Anti-drift guarantee (the core ask):** a UI is a pure producer/consumer over a contract it can't alter (the
+  *node* owns serialization/signing), the native API evolves **additively** (principle 11 on the contract), is
+  **capability-described** (graceful degradation, the §3.13 `min()` ladder) + **conformance-tested** — so a
+  bespoke UI can produce wrong-for-its-clinic content but **never a wire-incompatible event**. **Native API ≠
+  FHIR façade** (two surfaces); the reference UI is built only on the public API (anti-capture turned inward).
+- **Founding principle 12 — *uniform core, plural edges*** (the user's call, fork 2): compatibility is a property
+  of the event core, below UI and policy; many front-ends, one record.
+- **Blast-radius (§9):** the validated submit-function surface + RLS + role/grant model are now the trusted base
+  for *external* clients too (they **are** the floor for direct-DB callers); completeness of that submit surface
+  is the bet (a gap pushes UIs to raw access and re-opens the bypass). Transport (REST/gRPC/…) deliberately left
+  open — §9 fixes the rule, not the tech. Fresh user case-mining (not a parked §11 item). Build `--strict` clean.
 
 ---
 
@@ -960,15 +1001,17 @@ on a Pi**, then the byte-tier connection-reuse throughput lever.
 - The project's founding motivation is explicitly **anti-capture / anti-vendor-lock-in**, rooted in the
   user's experience of government EHR committees being sabotaged by commercial interests. Decisions
   consistently favour the mission over convenience; treat that as the tie-breaker.
-- **Eleven founding principles** now run through everything ([index.md](spec/index.md)); the **first four**
+- **Twelve founding principles** now run through everything ([index.md](spec/index.md)); the **first four**
   are the lens checked before any new design choice: **(1)** append-only + causal ordering; **(2)**
   identity is a claim, never a fact (never merge/erase, always link/overlay); **(3)** paper-parity;
   **(4)** acknowledged uncertainty (incl. the corollary *deletion is best-effort and declared*). The
   rest: availability-over-consistency, fractal topology, vendor independence, safety-critical-logic-in-
   Rust/DB, **(9) policy-neutral infrastructure** (mechanism, never policy), **(10) authorship is
-  compositional, accountability is separable**, and **(11) legibility across time** (paper-parity along the
+  compositional, accountability is separable**, **(11) legibility across time** (paper-parity along the
   time/version axis; the mandatory plaintext twin + additive-only schema evolution; *schema is versioned data,
-  not privileged structure* — ADR-0012). Note: the §5.11 point-of-care work added **no** new
+  not privileged structure* — ADR-0012), and **(12) uniform core, plural edges** (compatibility is a property
+  of the signed event core, below UI and policy; the floor is enforced unbypassably in the DB so UIs may
+  proliferate freely; *many front-ends, one record* — ADR-0021). Note: the §5.11 point-of-care work added **no** new
   founding principle — its three operational principles (never-wait / always-a-fallback / never-redo-work)
   are corollaries of paper-parity, availability, append-only, and identity-repair. The §5.12 notification
   economy likewise added none — its rulings (salience ≠ interruptiveness; notification-as-projection;

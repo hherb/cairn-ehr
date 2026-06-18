@@ -6,7 +6,7 @@ Offline-first, vendor-independent electronic health record. Keeps working throug
 outage, runs anywhere from a Raspberry Pi to a hospital cluster, and belongs to no vendor.
 
 **Status:** Architecture / specification phase — no implementation yet.
-**Spec version:** 0.22 · **License target:** AGPL-3.0 (all components AGPL-3.0-compatible).
+**Spec version:** 0.23 · **License target:** AGPL-3.0 (all components AGPL-3.0-compatible).
 **Core constraint:** full clinical functionality must survive loss of internet *and* intranet,
 degrading gracefully down to a single workstation.
 
@@ -118,6 +118,18 @@ first four before anything else.
     regenerable ([data-model §3.13](data-model.md#313-schema-evolution-event-format-and-the-legibility-twin),
     [sync §6.5](sync.md#65-schema-evolution-two-planes-and-lossless-forwarding),
     [ADR-0012](decisions/0012-schema-evolution-event-format-and-legibility-across-time.md)).
+12. **Uniform core, plural edges** — the contract that makes any node interoperable with any other is the
+    signed, append-only **event core** (serialization/signature format, set-union sync, the
+    identity/actor algebras, additive-only evolution), and *nothing above it* — no API, policy, or UI —
+    may sit on the inter-node path. **Compatibility is a property of the core, not of the application:**
+    the safety/compatibility floor is enforced unbypassably *in the database* (a client talking raw SQL
+    still cannot break it), and above that floor UIs, soft policy, and whole application layers may
+    proliferate freely. A bespoke UI can produce content wrong for its clinic but **never a
+    wire-incompatible event** — *many front-ends, one record.* This is what lets the anti-capture mission
+    survive UI diversity: the native API evolves additively (principle 11 applied to the contract) and
+    even the steward's reference UI is built only on the same public API everyone else uses
+    ([language-substrate §9.5](language-substrate.md#95-layering-the-node-api-and-ui-pluralism-uniform-core-plural-edges),
+    [ADR-0021](decisions/0021-layering-the-node-api-and-ui-pluralism.md)).
 
 ---
 

@@ -29,7 +29,7 @@
 (Demographics are not modeled as a mutable record — see [§4](demographics.md).)
 
 ## 3.4 Interoperability
-- Internal schema is event-sourced relational; a **FHIR R4/R5 façade** provides import/export and interop. **FHIR is a façade — a boundary skin, never the storage model** (see [§3.5](#35-event-storage-model-hybrid-envelope)). Cairn's internal model is canonical (a national-scale system is the thing others integrate *against*); FHIR is generated on demand for exchange with external/legacy systems and is not allowed to dictate the schema.
+- Internal schema is event-sourced relational; a **FHIR R4/R5 façade** provides import/export and interop. **FHIR is a façade — a boundary skin, never the storage model** (see [§3.5](#35-event-storage-model-hybrid-envelope)). Cairn's internal model is canonical (a national-scale system is the thing others integrate *against*); FHIR is generated on demand for exchange with external/legacy systems and is not allowed to dictate the schema. The **native node API** that first-class Cairn UIs bind to is a separate, richer surface from this interop façade ([language-substrate §9.5](language-substrate.md#95-layering-the-node-api-and-ui-pluralism-uniform-core-plural-edges)).
 
 ## 3.5 Event storage model — hybrid envelope
 > Resolves former open question §11.2 — see [ADR-0001](decisions/0001-fat-postgres-thin-daemon.md). The concrete signature/serialization primitives (Ed25519 over deterministic-CBOR/COSE_Sign1, signing the stored bytes) are ratified in [ADR-0015](decisions/0015-event-serialization-signatures-and-content-addressing.md).

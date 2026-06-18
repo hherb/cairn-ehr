@@ -88,3 +88,26 @@ plaintext twins → court-admissible decades on), with a **policy-neutral seal l
 authority-public-key-sealed / both). It is the general mechanism behind [ADR-0005](decisions/0005-erasure-key-custody-and-crypto-shredding.md)
 rung-2's escrowed clinician copy; the erasure interaction is the intended honest ceiling. **No new founding
 principle** (refines [ADR-0007](decisions/0007-authorship-and-accountability.md)).
+
+## Resolved — application layering, the node API, and UI pluralism
+
+How a **plurality of UIs** (small teams building bespoke front-ends quickly and safely) can be facilitated
+**without ever compromising the guarantee the mission rests on — any Cairn node interoperating with any
+other, regardless of UI or policy** — is **RESOLVED** ([ADR-0021](decisions/0021-layering-the-node-api-and-ui-pluralism.md),
+[language-substrate §9.5](language-substrate.md#95-layering-the-node-api-and-ui-pluralism-uniform-core-plural-edges)):
+the inter-node contract is the **signed event core, below UI and policy** — already fixed and
+UI-independent by construction ([ADR-0015](decisions/0015-event-serialization-signatures-and-content-addressing.md)/[ADR-0001](decisions/0001-fat-postgres-thin-daemon.md)/[ADR-0012](decisions/0012-schema-evolution-event-format-and-legibility-across-time.md)/[ADR-0017](decisions/0017-federation-admission-sovereignty-peering-and-trust-anchors.md))
+— so nothing above it may sit on the inter-node path. A **four-layer model** (L0 wire core / L1 node
+enforcement floor / L2 policy + API / L3 UI) puts the compatibility boundary **below the application
+layer**. The bypass tension (*"UI → API or DB directly"*) dissolves by putting the **floor in the
+database**: safety/compatibility invariants are enforced in-DB (validated submit functions + RLS +
+constraints), so direct DB access is safe by construction and *"via API vs DB directly"* is a **privilege
+gradient, not a contradiction** — L2 is ergonomics + deployment hard policy, never the sole wall.
+**Hard vs soft policy** is the [§9.1](language-substrate.md#91-selection-rule-by-defect-blast-radius)
+blast-radius rule applied to policy. The **anti-drift guarantee:** a UI is a pure producer/consumer over a
+contract it cannot alter (the *node* owns serialization/signing), the native API evolves **additively**
+([principle 11](index.md#founding-principles-the-lens-for-every-decision) applied to the contract) and is
+**capability-described + conformance-tested**, so a bespoke UI can produce wrong content but **never a
+wire-incompatible event**. **Native API ≠ the FHIR façade** (two surfaces); the steward's reference UI is
+built only on the public API (anti-capture turned inward). Surfaced **founding principle 12 — uniform core,
+plural edges.**
