@@ -6,7 +6,7 @@ Offline-first, vendor-independent electronic health record. Keeps working throug
 outage, runs anywhere from a Raspberry Pi to a hospital cluster, and belongs to no vendor.
 
 **Status:** Architecture / specification phase — no implementation yet.
-**Spec version:** 0.25 · **License target:** AGPL-3.0 (all components AGPL-3.0-compatible).
+**Spec version:** 0.26 · **License target:** AGPL-3.0 (all components AGPL-3.0-compatible).
 **Core constraint:** full clinical functionality must survive loss of internet *and* intranet,
 degrading gracefully down to a single workstation.
 
@@ -96,7 +96,9 @@ first four before anything else.
    [ADR-0005](decisions/0005-erasure-key-custody-and-crypto-shredding.md)), confidentiality as a
    blacklist + grading-system + human-editability the policy/UI combines ([identity §5.9](identity.md#59-sensitivity-grade-the-safety-projection-and-break-glass-visibility-scope),
    [ADR-0006](decisions/0006-visibility-scope-replication-and-the-safety-projection.md)), and compliance
-   posture as configuration ([security §7](security.md)).
+   posture as configuration — an append-only policy-assertion stream + effective-policy projection
+   ([security §7.9](security.md#79-hard-policy-expression-projection-and-enforcement),
+   [ADR-0024](decisions/0024-hard-policy-expression-the-policy-assertion-stream.md)).
 10. **Authorship is compositional; accountability is separable** — the author of a clinical event is a
     *set* of contributors (human, AI agent, or device), each in a declared role. **Legal responsibility
     is a distinct attribute, orthogonal to authorship and to whether a contributor is human or machine**:

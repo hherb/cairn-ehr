@@ -138,7 +138,8 @@ The **reattribution event** — "event set E belongs to UUID-B, not UUID-A" — 
 3. **Expressible policy rung.** *"Un-vouched suppressing AI output must be attested before it takes
    effect"* is an *available* policy, never mandatory — tied to the additive-vs-suppressing distinction
    ([data-model §3.9](data-model.md#39-authorship-and-accountability)). Cairn ships the rung; the
-   deployment decides (principle 9).
+   deployment decides (principle 9). *How* such a rung is expressed — an append-only, authority-gated
+   policy-assertion stream with an effective-policy projection — is [security §7.9](security.md#79-hard-policy-expression-projection-and-enforcement).
 
 4. **Automation-complacency (the consumer-side blind spot)** ([ADR-0010](decisions/0010-additive-vs-suppressing-classification.md)).
    The structural classifier sees an output's *direct* effect, not its *second-order* effect on human

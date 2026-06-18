@@ -1,9 +1,45 @@
 # HANDOVER — Cairn
 
-**Session date:** 2026-06-17 (spec bumped to **v0.25**)
+**Session date:** 2026-06-17 (spec bumped to **v0.26**)
 **Status of this file:** Working scaffolding, not a source of truth. Disposable — regenerate
 at the end of each working session. If this file ever disagrees with the canonical documents,
 the canonical documents win.
+
+---
+
+## Resolved 2026-06-17 — hard policy expression (now spec v0.26) → ADR-0024 (refines 0021); **closes the layering/API arc**
+
+Closed the last ADR-0021 follow-on (the user's pick, "3"): *how hard policy is expressed.* It **dissolved into
+Cairn's universal shape applied to policy itself** — **no new founding principle** — and **closes the
+layering/API arc (0021 → 0022 → 0023 → 0024).** → [ADR-0024](spec/decisions/0024-hard-policy-expression-the-policy-assertion-stream.md),
+canonical home **[security §7.9](spec/security.md)**, with back-pointers from §9.5/§9.6, identity §5.10, the §7
+intro, index principle 9, and the open-questions resolved area.
+
+- **Hard policy is an append-only, signed, scoped policy-assertion stream + an effective-policy projection** —
+  the §5.9 sensitivity / §3.11 routing / §5.1 link-graph shape applied to policy; **not a mutable config
+  file**. Every policy act is an audited event (who/when/scope/authority/selection), never mutated, always
+  overlaid. Makes ADR-0010's "explicit audited configuration act" concrete.
+- **Declarative selection over a closed Cairn-shipped mechanism set, NEVER arbitrary code** (the RCE surface
+  ADR-0012 forbids on the data plane). The two-plane split applies: the *selection* is data on the event
+  plane; the *evaluation code* travels the §7.6 distribution plane.
+- **The user's "DB-anchored config vs role-gated L2" fork dissolves:** same expression, the enforcement
+  *locus* is a §9.1 blast-radius call — the effective-policy projection is in-DB and the §9.6 submit surface +
+  RLS read it (unbypassable by default); richer evaluation runs in role-gated L2. Mirrors §9.4's
+  PL/pgSQL-default / pgrx-escape-hatch split.
+- **Authority-gated authoring, bootstrapped at provisioning** (the §7.6 root authority, like the steward key /
+  §7.7 self-issued practice key); meta-policy ("changing the retention floor needs two-person authority") is
+  the same mechanism on itself. **Scoped + floor-composing:** a federation floor ratchets *stricter, never
+  weaker* (the safety-floor-never-relaxes pattern; the policy analogue of the trust anchor), local non-floor
+  policy is node-autonomous (sovereignty floor). Partition-honest (last-known policy; local reads never fail
+  closed).
+- **Unifies the scattered "expressible policy rungs"** (§5.10 attestation, ADR-0005 erasure rungs, ADR-0006
+  sensitivity, ADR-0009 routing, ADR-0010 suppression-permission, §7.5/7.6/7.7 who-may-X) under one mechanism —
+  the consolidation of an existing scatter, not a new subsystem. Closes ADR-0010's conservation-of-responsibility
+  loop.
+- **Blast-radius (§9):** the effective-policy projection + the §9.6/RLS gates that read it are safety-critical
+  (mis-enforcement → compliance breach *or* care blocked); the **policy-authority model + provisioning
+  bootstrap** are the sensitive seam (who changes policy is who can weaken a floor → authority-gated + audited +
+  floor-protected). Shipped mechanism set stays **closed + additive-only**. Build `--strict` clean.
 
 ---
 
@@ -1029,13 +1065,15 @@ case-mining (→ [ADR-0016](spec/decisions/0016-record-discovery-and-the-replica
 [security §7.7](spec/security.md)). This session (2026-06-17) was busy: promoted the **active-write model**
 cluster to canon (→ [ADR-0020](spec/decisions/0020-active-write-thin-encounters-and-the-delete-vs-erase-distinction.md)),
 then case-mined the **application-layer / API architecture** (→ [ADR-0021](spec/decisions/0021-layering-the-node-api-and-ui-pluralism.md),
-founding principle 12) and two follow-ons: the **validated submit surface** (→ [ADR-0022](spec/decisions/0022-validated-submit-surface-the-write-path.md))
-and the **native API contract** (capability description + conformance, → [ADR-0023](spec/decisions/0023-native-api-contract-capability-and-conformance.md));
-spec **v0.25**. **One ADR-0021 API follow-on remains** (the live architecture thread): **(3)** *how* hard
-policy is expressed (DB-anchored config vs role-gated L2, tying into the §5.10 expressible-policy rung). With
-that aside, the highest-signal modes are **fresh clinical case-mining** and the **build-prep threads** below. Build-prep next steps: the **easyGP
-next-week session** (port the `rx!`/`tx!` type-through + the prefetch/materialization warming daemon — the
-ADR-0020 deferred items), **Bet B on a Pi**, then the byte-tier connection-reuse throughput lever.
+founding principle 12) and **closed its entire follow-on arc** in one session: the **validated submit surface**
+(→ [ADR-0022](spec/decisions/0022-validated-submit-surface-the-write-path.md)), the **native API contract**
+(→ [ADR-0023](spec/decisions/0023-native-api-contract-capability-and-conformance.md)), and **hard policy
+expression** (→ [ADR-0024](spec/decisions/0024-hard-policy-expression-the-policy-assertion-stream.md)); spec
+**v0.26**. **The layering/API arc (0021 → 0022 → 0023 → 0024) is now complete** — no open architecture
+follow-ons from it. The highest-signal modes are now **fresh clinical case-mining** and the **build-prep
+threads** below. Build-prep next steps: the **easyGP next-week session** (port the `rx!`/`tx!` type-through +
+the prefetch/materialization warming daemon — the ADR-0020 deferred items), **Bet B on a Pi**, then the
+byte-tier connection-reuse throughput lever.
 
 **The recurring menu** when resuming (pick one):
 - More clinical **case-mining** — the most productive mode so far (the event-overlay + key-custody + actor

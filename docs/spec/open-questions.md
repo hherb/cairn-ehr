@@ -140,6 +140,20 @@ checkable, a federation admission gate) and *API* (does the L2 API honor the con
 claims; capability-partitioned, additively versioned, tests never removed). It is **self-runnable and
 self-verifiable** — open, signed, content-addressed (the [ADR-0014](decisions/0014-locale-pluggable-matcher-comparators.md)
 registry pattern), never a steward-issued certificate (anti-capture turned inward, a second time), and doubles
-as the spec's executable form (principle 11). **No new founding principle** (refines ADR-0021). **Remaining
-follow-on:** *how* hard policy is expressed (DB-anchored config vs role-gated L2 — the [§5.10](identity.md#510-authorship-and-responsibility-state-the-consumer-side)
-expressible-policy rung).
+as the spec's executable form (principle 11). **No new founding principle** (refines ADR-0021).
+
+Finally, **how hard policy is expressed** is specified ([ADR-0024](decisions/0024-hard-policy-expression-the-policy-assertion-stream.md),
+[security §7.9](security.md#79-hard-policy-expression-projection-and-enforcement)), **closing the ADR-0021
+layering/API arc** (0021 → 0022 → 0023 → 0024): hard policy is just Cairn's universal shape applied to policy
+itself — an **append-only, signed, scoped policy-assertion stream with an effective-policy projection**, a
+**declarative selection over a closed Cairn-shipped mechanism set, never arbitrary code** (the selection is
+data on the event plane; the evaluation code travels the §7.6 distribution plane). The *DB-anchored vs
+role-gated-L2* question dissolves — same expression, the enforcement *locus* is a [§9.1](language-substrate.md#91-selection-rule-by-defect-blast-radius)
+blast-radius call (the §9.6 submit surface + RLS read the projection in-DB by default). Authoring is
+authority-gated (bootstrapped at provisioning); policy is **scoped and floor-composing** (a federation floor
+ratchets stricter, never weaker; local non-floor policy is node-autonomous — the sovereignty floor), and
+partition-honest (last-known policy; local reads never fail closed). It **unifies the scattered "expressible
+policy rungs"** (§5.10, ADR-0005/0006/0009/0010, §7.5/7.6/7.7) under one mechanism and closes
+[ADR-0010](decisions/0010-additive-vs-suppressing-classification.md)'s conservation-of-responsibility loop
+(the audited config act is now a concrete policy event). **No new founding principle** — it is the mechanism
+*of* principle 9.
