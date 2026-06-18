@@ -1,9 +1,64 @@
 # HANDOVER — Cairn
 
-**Session date:** 2026-06-18 (build-prep; spec unchanged at **v0.26**)
+**Session date:** 2026-06-18 (ecosystem evaluation + build-prep; spec unchanged at **v0.26**)
 **Status of this file:** Working scaffolding, not a source of truth. Disposable — regenerate
 at the end of each working session. If this file ever disagrees with the canonical documents,
 the canonical documents win.
+
+---
+
+## Evaluated 2026-06-18 — agent & messaging plugins (kastellan, localmail) → new `docs/ecosystem/` area; spec unchanged (v0.26)
+
+Evaluated two of the user's own AGPL projects for suitability as **pluggable Cairn extensions** (the user's framing:
+infrastructure to make the EHR *flow* without compromising security needlessly):
+[kastellan](https://github.com/hherb/kastellan) (a security-first personal AI agent — Rust, AGPL-3.0) and
+[localmail](https://github.com/hherb/localmail) (a read-only IMAP→Postgres mirror — Python, AGPL-3.0). **No spec or
+ADR change** — this is an *evaluation*, captured in a **new published doc tier**
+**[`docs/ecosystem/`](ecosystem/README.md)** (analyses of external infra against the decided architecture; neither
+spec nor ADR; wired into `mkdocs.yml` nav after Spikes). Main artifact:
+**[ecosystem/0001](ecosystem/0001-agent-and-messaging-plugins-kastellan-localmail.md)**.
+
+- **The synthesis — three nested membranes, none on the inter-node path** (so neither can break interop/safety even
+  if it fails — principle 12): **localmail** = quarantined intake membrane (read-only content-addressed mirror of an
+  insecure channel; governs *what gets in*); **kastellan** = contained actor runtime (sandbox + egress + CASSANDRA
+  plan-review; governs *what the agent may do*); **Cairn** = record-integrity core (governs *what becomes truth*).
+  Both are **L2/L3**, consume the native API, write only through `submit_event` (ADR-0022), couple via the Postgres
+  boundary (§9.3).
+- **kastellan fit:** AGPL + Rust + in-Postgres (safety-critical bucket, §9.1); its dispatcher chokepoint rhymes with
+  `submit_event`; CASSANDRA (gates *agent actions*) is complementary to Cairn's record-safety model (gates *record
+  entry*), reconciled by **additive, un-attested AI authorship** (ADR-0007/0010 — raise salience, never suppress,
+  never auto-act on the irreversible; human attests by overlay — which is also how CASSANDRA's "no irreversible act
+  without a human" lands *without* tripping the principle-3 confirmation-dialog ban).
+- **The scaling reframe (the user's correction, now canon in the eval):** single-occupancy is a **feature**, not a
+  ceiling — the heavy resource is the **served models** (which scale horizontally on their own); the orchestrator is
+  thin → **N thin single-occupant instances over a shared serving fabric**. A "user" need not be a clinician: a
+  **purpose-tuned pathology-import pipeline is one registered actor** (ADR-0011) dropping advisories into Cairn → a
+  *fleet of specialist actors*. Matrix = operator surface only; clinical surface = the notification economy
+  (ADR-0009). Accountability routes via `on_behalf_of` to the deployer, never to a clinician who only saw an advisory.
+- **The one ADR-worthy nugget — PARKED:** **skill-epoch as a pinned determinant of an agent actor's identity**
+  (extends ADR-0011). Kastellan crystallises skills only when user-approved + pinned (model/harness fixed → this is
+  *toward* determinism, not drift); treating the approved skill-bundle digest as a pinned determinant keeps
+  contamination-cascade recall bounded to a skill epoch. Ratify *if/when* kastellan is actually adopted. Sibling
+  operational seam noted: the served-model version must be **pinned per-actor** (the advisory records the model digest
+  it ran against) so the shared fabric can't silently mutate a pinned identity. *Drift vs staleness* distinction
+  recorded: pinning kills drift; staleness is handled one layer up by additive + human-review + re-crystallisation.
+- **localmail fit:** license absence was an oversight, **now AGPL-3.0, deps confirmed clean**. Striking primitive
+  convergence — its `blobs/<aa>/<bb>/<sha256-hex>` store *is* ADR-0013 content-addressing, so a derived clinical event
+  can cite the exact immutable source bytes (provenance, legible across time). It is the **boundary skin** (§3.4):
+  mirror read-only → matcher (ADR-0014) proposes patient links → additive events via `submit_event`. Security payoff:
+  the agent reads a *quarantined mirror* with no send/delete path, so a mail-borne prompt-injection can't act —
+  three nesting containment layers. **Embedding model:** served placeholder is fine (fit-for-purpose, reversible);
+  the license bites at the *production fine-tune base* (Gemma ToU field-of-use **propagates to derivatives**) → keep
+  the production base Apache/MIT (Arctic 2.0 / Nomic), fine-tune with an MRL-256 objective (Postgres index-load win by
+  construction). Gemma beat Arctic on the user's *tax* corpus at matched 256-dim — out-of-domain, so low-signal for
+  clinical; plug-and-play, low priority.
+- **Next step — DRAFTED as [Spike 0002](spikes/0002-advisory-actor-write-contract.md) (Proposed, not yet run):**
+  kastellan registers as a Cairn actor and drops one synthetic triage advisory through `submit_event` as an additive,
+  un-attested event, **and a hostile/buggy agent fails to breach the in-DB floor** (the sharpest half — ADR-0021's
+  "direct DB access safe by construction" made checkable). Extends the Spike 0001 walking skeleton (adds a real actor
+  registry + contributor-set/responsibility + a minimal `submit_event` + a Python agent stand-in). Pass/fail in §5;
+  C1–C5 PASS is the trigger to ratify *two* ADRs — the parked ADR-0011 skill-epoch refinement and an advisory-actor
+  integration-contract ADR (promotes ecosystem/0001 from evaluation to decision). Still build-prep; spec unchanged.
 
 ---
 
