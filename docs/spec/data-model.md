@@ -10,7 +10,9 @@
 > idempotent (UUIDv7 PK), scoped **set union** — there are no row-level clinical conflicts to
 > resolve. All genuinely hard "merge" logic is confined to *derived* state (projections), which is
 > rebuildable and never synced. This is the pivot the whole sync/merge design turns on
-> ([ADR-0001](decisions/0001-fat-postgres-thin-daemon.md)).
+> ([ADR-0001](decisions/0001-fat-postgres-thin-daemon.md)). The *authoring* counterpart — how a write
+> validly enters the log through the one validated submit surface — is
+> [§9.6](language-substrate.md#96-the-validated-submit-surface-the-write-path) ([ADR-0022](decisions/0022-validated-submit-surface-the-write-path.md)).
 
 ## 3.2 Identity & time
 - **UUIDv7 primary keys everywhere** (native `uuidv7()` in PostgreSQL 18) — globally unique, offline-generable, time-ordered.

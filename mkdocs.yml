@@ -112,6 +112,7 @@ nav:
       - ADR-0019 · Author-scoped record export — the medico-legal copy: spec/decisions/0019-author-scoped-record-export-the-medico-legal-copy.md
       - ADR-0020 · Active-write model — thin encounters, type-through & delete-vs-erase: spec/decisions/0020-active-write-thin-encounters-and-the-delete-vs-erase-distinction.md
       - ADR-0021 · Layering, the node API & UI pluralism — uniform core, plural edges: spec/decisions/0021-layering-the-node-api-and-ui-pluralism.md
+      - ADR-0022 · The validated submit surface — the node's write path: spec/decisions/0022-validated-submit-surface-the-write-path.md
   - Spikes (build-prep):
       - spikes/README.md
       - Spike 0001 · Walking skeleton, WAN-sync & Pi cost: spikes/0001-walking-skeleton-wan-sync-and-pi-cost.md

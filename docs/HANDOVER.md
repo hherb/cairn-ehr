@@ -1,9 +1,46 @@
 # HANDOVER — Cairn
 
-**Session date:** 2026-06-17 (spec bumped to **v0.23**)
+**Session date:** 2026-06-17 (spec bumped to **v0.24**)
 **Status of this file:** Working scaffolding, not a source of truth. Disposable — regenerate
 at the end of each working session. If this file ever disagrees with the canonical documents,
 the canonical documents win.
+
+---
+
+## Resolved 2026-06-17 — the validated submit surface (now spec v0.24) → ADR-0022 (refines 0021)
+
+Pursued the sharpest ADR-0021 follow-on (the user's pick, "1"): the **validated submit-function surface**
+whose *completeness* is the bet ADR-0021's "floor in the DB" rests on. It **dissolved into already-decided
+primitives** (append-only + the accumulated write-time seams) — **no new founding principle.**
+→ [ADR-0022](spec/decisions/0022-validated-submit-surface-the-write-path.md), canonical home
+**[language-substrate §9.6](spec/language-substrate.md)** (the authoring counterpart to the §9.4 apply
+boundary), with a back-pointer from data-model §3.1 and the resolved-area note in [open-questions.md](spec/open-questions.md).
+
+- **The completeness/minimality paradox** (smallest audited surface vs every-write-expressible) dissolves
+  because the system is **append-only**: *almost every write is the same operation.* So the surface is
+  **one generic `submit_event`** (type-validated by **dispatch to additively-registered validators** — a
+  new event type adds a validator *behind the same door*, never a new function; ADR-0012 discipline) **+ a
+  small closed set of non-append operations** (erasure/key-custody ADR-0005, author-scoped export ADR-0019,
+  blob byte-tier put §6.6). Small AND complete by construction. Co-produced events (the ADR-0020 order +
+  note-line) commit atomically; drafts (§3.10) are adjacent local mutable state, never on the log.
+- **`submit_event` is the in-DB convergence of every write-time seam** the spec had named — authorship
+  stamp (ADR-0008), clash detection (ADR-0003), seal-time safety projection (§5.9), suppressing owner-gate
+  (ADR-0010), legibility-twin derivation (ADR-0012), canonicalize+sign (ADR-0011/0015) — run atomically in
+  one pipeline (attestation-token → authz → envelope+Tier-1 ceiling → body+Tier-2 clash → hard-policy gates
+  → canonicalize+twin+sign → idempotent append). **Not a new mechanism — where they all land.**
+- **A real consequence of ADR-0021's floor-in-DB, now stated:** signing **must be reachable from the in-DB
+  path** (else a direct-DB caller couldn't produce a signed event and the floor would be incomplete) → the
+  node's trusted base **includes the database process** (fat Postgres); signing is in-DB (pgrx + keystore)
+  by default or delegated to a co-located signer the in-DB submit invokes, **never L2-only**.
+- **Authoring ≠ applying:** `submit_event` mints+validates+signs+appends; the §6.1/§9.4 apply path verifies
+  peer signatures + idempotent-appends, **never re-signs**. The **author-attestation token** (ADR-0008,
+  never the DB session) is what stops a direct-DB client forging authorship.
+- **Blast-radius (§9):** that one in-DB function becomes the **most safety-critical code in the system** →
+  reviewer-legible, the prime pgrx candidate (ADR-0002); the attestation-token verification + in-DB
+  signer/keystore access are the two sub-seams; the validator-dispatch registry must itself be additive-only
+  + tamper-evident. **The bet (refining ADR-0021's):** the generic-append + closed-non-append set stays
+  complete as the clinical model grows (a future write that is neither would force a new door — itself a
+  signal worth scrutinising). Build `--strict` clean.
 
 ---
 
@@ -952,13 +989,17 @@ and **§11.7** (locale-pluggable comparators, [ADR-0014](spec/decisions/0014-loc
 finalisation; proxy/liability semantics, out of scope — Cairn records the chain). This session's record-discovery
 case-mining (→ [ADR-0016](spec/decisions/0016-record-discovery-and-the-replicated-essential-tier.md)) surfaced the
 **Custodian & Federation Admission** dependency, which was then **drafted the same session** (→ [ADR-0017](spec/decisions/0017-federation-admission-sovereignty-peering-and-trust-anchors.md),
-[security §7.7](spec/security.md)). This session (2026-06-17) promoted the **active-write model** cluster to
-canon (→ [ADR-0020](spec/decisions/0020-active-write-thin-encounters-and-the-delete-vs-erase-distinction.md),
-spec v0.22; top entry). With the architecture backlog empty again, the highest-signal modes are now **fresh
-clinical case-mining** and the **build-prep threads** below (the spec is feature-complete enough to keep
-driving the first implementation spike). Build-prep next steps: the **easyGP next-week session** (port the
-`rx!`/`tx!` type-through + the prefetch/materialization warming daemon — the ADR-0020 deferred items), **Bet B
-on a Pi**, then the byte-tier connection-reuse throughput lever.
+[security §7.7](spec/security.md)). This session (2026-06-17) was busy: promoted the **active-write model**
+cluster to canon (→ [ADR-0020](spec/decisions/0020-active-write-thin-encounters-and-the-delete-vs-erase-distinction.md)),
+then case-mined the **application-layer / API architecture** (→ [ADR-0021](spec/decisions/0021-layering-the-node-api-and-ui-pluralism.md),
+founding principle 12) and its sharpest follow-on, the **validated submit surface** (→ [ADR-0022](spec/decisions/0022-validated-submit-surface-the-write-path.md));
+spec **v0.24**. The two **remaining ADR-0021 API follow-ons** (the live architecture thread) are: **(2)** the
+native API contract specifics — capability-negotiation format + the conformance suite that makes "any node
+talks to any node" executable for small teams; and **(3)** *how* hard policy is expressed (DB-anchored config
+vs role-gated L2, tying into the §5.10 expressible-policy rung). With those aside, the highest-signal modes
+are **fresh clinical case-mining** and the **build-prep threads** below. Build-prep next steps: the **easyGP
+next-week session** (port the `rx!`/`tx!` type-through + the prefetch/materialization warming daemon — the
+ADR-0020 deferred items), **Bet B on a Pi**, then the byte-tier connection-reuse throughput lever.
 
 **The recurring menu** when resuming (pick one):
 - More clinical **case-mining** — the most productive mode so far (the event-overlay + key-custody + actor

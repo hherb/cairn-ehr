@@ -111,3 +111,16 @@ contract it cannot alter (the *node* owns serialization/signing), the native API
 wire-incompatible event**. **Native API ≠ the FHIR façade** (two surfaces); the steward's reference UI is
 built only on the public API (anti-capture turned inward). Surfaced **founding principle 12 — uniform core,
 plural edges.**
+
+The **completeness of that submit surface** (the bet ADR-0021 rests on) is then specified
+([ADR-0022](decisions/0022-validated-submit-surface-the-write-path.md),
+[language-substrate §9.6](language-substrate.md#96-the-validated-submit-surface-the-write-path)): because the
+system is append-only, *almost every write is the same operation*, so the surface is **one generic
+validated-append** (`submit_event`, type-validated by additively-registered dispatch — a new event type adds
+a validator, never a new door) **plus a small closed set of non-append operations** (erasure/key-custody,
+author-scoped export, blob byte-tier put). It is **small and complete** by construction, and is the **in-DB
+convergence of every write-time seam** the spec has named (authorship stamp, clash detection, seal-time
+safety projection, suppressing owner-gate, legibility-twin derivation, canonicalize+sign). Signing must be
+reachable from the in-DB path (else the floor would be incomplete for direct-DB callers — the database
+process is part of the node's trusted base). Authoring (`submit_event`, signs) is distinct from applying
+(verifies peer signatures, never re-signs). **No new founding principle** (refines ADR-0021/ADR-0001).
