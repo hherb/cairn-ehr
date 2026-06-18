@@ -3,7 +3,8 @@
 - **Status:** Bet A **PASS** (run 2026-06-16 over the Cape York ↔ Dorrigo WireGuard link — see §8; the run also
   surfaced and fixed a real availability-floor bug in the field `run` loop, §8.1) → **§4 primitives ratified as
   [ADR-0015](../spec/decisions/0015-event-serialization-signatures-and-content-addressing.md)** (blob-digest
-  line provisional pending Bet B); Bet B (Pi) pending
+  line provisional pending Bet B); Bet B (Pi) **prepared** — field runbook + self-describing, floor-finding
+  harness ready (§6.1), awaiting the board (Pi 5 / 16 GB + 1 TB SSD)
 - **Date:** 2026-06-16
 - **Validates:** [ADR-0001](../spec/decisions/0001-fat-postgres-thin-daemon.md) (projection cost on weak
   hardware), the [§6.2](../spec/sync.md#62-consistency-model) set-union convergence claim under a *real*
@@ -207,10 +208,12 @@ wire (A2) → a canonicalization/round-trip bug slipped past move 1; blob transf
 
 ---
 
-## 6. Bet B — projection & keystore cost on the Pi (next week)
+## 6. Bet B — projection & keystore cost on the Pi (prepared; awaiting the board)
 
 **Setup.** The *same* skeleton on a Raspberry-Pi-5-class node (rural-clinic profile, low concurrency,
-[§8](../spec/deployment.md)), on a deliberately flaky link.
+[§8](../spec/deployment.md)), on a deliberately flaky link. **Target board:** a Raspberry Pi 5 / 16 GB
+with a 1 TB SSD (the suspected realistic floor); a smaller 8 GB board (Pi 4 / Pi 5) is the follow-on
+floor experiment. The full field procedure is `poc/walking-skeleton/PI-RUNBOOK.md`.
 
 **Measure / assert:**
 
@@ -224,6 +227,33 @@ wire (A2) → a canonicalization/round-trip bug slipped past move 1; blob transf
 **Mitigation ladder if a threshold misses** (per [ADR-0002](../spec/decisions/0002-in-database-rust-pgrx-escape-hatch.md)):
 PL/pgSQL → **pgrx (in-DB Rust)** for the hot projection → external Rust as the last resort. A miss tells us
 *which rung*, not *whether the design works*.
+
+### 6.1 Preparation status — runbook + a self-describing, floor-finding harness (2026-06-18)
+
+Bet B is **prepared and waiting only on the physical board.** The harness
+(`poc/walking-skeleton/harness/bench_b.py`) and the daemon commands it drives
+(`bench-insert`, `chart`, `bench`, `gen`) were built and validated green on x86; the remaining work was to
+make the run **reproducible and its numbers trustworthy on real hardware**, which this preparation did:
+
+- **A field runbook** — `poc/walking-skeleton/PI-RUNBOOK.md`: SSD-not-SD-card (the one
+  Pi mistake that silently invalidates B1/B2), PostgreSQL 18 on arm64 via PGDG, the `performance` governor +
+  cooling + throttle check, deployment-honest PG tuning (`fsync`/`synchronous_commit` left **on** — a clinic
+  node must survive power loss), the release build on the Pi, and the prescribed run.
+- **A self-describing environment header on every run.** Bet B is a *hardware-class* bet, so a §6 number is
+  meaningless without its host — and the host matters concretely (the same release binary measured SHA-256 at
+  ~1500 MB/s on a SHA-NI host and ~200 MB/s on one without). The harness now records board, cores/RAM, kernel,
+  PG version, **which block device PGDATA sits on** (shouting if it's an SD card), CPU governor, Pi throttle
+  state (`vcgencmd get_throttled`), and the build profile — and warns on anything that would skew the result.
+  `--json-out` writes the header + thresholds + every row as a durable artifact; `--label` tags the board.
+- **The floor question is answerable from one board.** Each gated row prints its **headroom** (× under budget
+  / over floor). Big headroom on B1/B2 means the projection/chart path is nowhere near the constraint, so the
+  floor is set by the *smallest*-headroom row (expected to be **B4** raw crypto, which tracks clock/core, not
+  tuning). So the Pi 5 / 16 GB run already predicts whether a smaller board is viable, before it is plugged in.
+- **Realistic B2.** The demographic panel size is now a harness parameter (`--patients`), so the "fattest
+  patient" chart read is a realistic heavy multimorbid chart (~`count/patients` notes), not a degenerate one.
+
+The Rust safety surface was **not** touched (the §9 blast-radius discipline — all of the above is
+fit-for-purpose Python in the harness); `cargo test --release` stays green (6/6).
 
 ---
 
