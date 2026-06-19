@@ -276,16 +276,23 @@ encumbered ones — and unlike ICD/ICPC they are fully modifiable, so Cairn *can
 3. **HPO custom licence** full text (`hpo.jax.org/app/license`).
 4. **WHO crosswalk/translation separate-agreement terms** — needed before Cairn ships *any* ICD-derived map.
 
-### 8.5 ICPC-3 licence variant — verification attempt (2026-06-19): UNRESOLVED
+### 8.5 ICPC-3 licence variant — verification (2026-06-19): exact CC variant still UNNAMED, but inference sharpened
 
-A second, focused attempt to pin the exact ICPC-3 Creative Commons variant **did not succeed**. Recorded here so
-it can be finished manually.
+A second, focused attempt to pin the exact ICPC-3 Creative Commons variant **did not succeed automatically**; the
+official WONCA announcement was then supplied directly (HH, from the WONCA site, *January 2026 Working Party
+News*, published Feb 2026). **Decisive finding: even the primary source does not name the variant** — the SPDX
+identifier will live on the licence deed attached to the data/download, not in the announcement.
 
-**What is firmly established:**
-- WONCA (via the WICC) announced ICPC-3 would be **"made openly available under a Creative Commons licence,"**
-  framed as a historic policy change *"to remove barriers to adoption, implementation, and innovation
-  worldwide."* ICPC-3 was adopted Dec 2020 and endorsed 16 Apr 2021.
-- **The exact CC variant is not stated in any publicly machine-accessible source.**
+**What is firmly established (now from the primary source):**
+- WONCA (the licensor of ICPC, via the WICC) **"has now decided to make ICPC-3 openly available under a Creative
+  Commons licence,"** *"to remove barriers to adoption, implementation, and innovation worldwide"* and to
+  *"strengthen primary care documentation, research, education, and digital health development globally."*
+- ICPC-3 *"is designed to interoperate with major international classifications and terminologies such as
+  **ICD-11, ICF, and SNOMED CT**, supporting semantic interoperability"* — i.e. it is purpose-built to slot in as
+  a pluggable primary-care layer that **produces ICD-11**, exactly the [ADR-0025](../spec/decisions/0025-icd-11-canonical-interlingua-and-local-terminology-overlay.md)
+  shape. It also carries *"extensive inclusion terms and synonyms… a practical thesaurus,"* which maps neatly
+  onto the local-terminology overlay (it can bulk-populate local-term→ICD-11 bindings).
+- **The exact CC variant is not stated in the announcement or in any publicly machine-accessible source.**
 
 **What was tried, and why it failed:**
 - **WebSearch** (many phrasings): consistently returns *"a Creative Commons licence,"* never the variant.
@@ -301,10 +308,16 @@ it can be finished manually.
 - **A third-party GitHub `LICENSE`** (`Karim-53/Docs-for-ICPC`) is GPLv3 for that repo's own docs — not
   authoritative for ICPC-3.
 
-**Best current inference (LOW confidence — do not rely):** WICC's stated aim of removing barriers to
-*"implementation and innovation"* leans toward a permissive **CC BY** (commercial + derivatives allowed) rather
-than an NC/ND variant, which would contradict that aim. But one earlier search summary inferred **CC BY-NC**, and
-nothing confirms either. **Treat as unknown until read directly.**
+**Best current inference (MODERATE confidence — still confirm before relying):** the announcement's own wording
+now leans clearly toward a permissive **CC BY**:
+- *"WICC and WONCA will provide guidance and support for **translations and implementations**"* — translations
+  are *derivative works*; an actively-supported translation programme is hard to reconcile with a
+  **NoDerivatives (-ND)** clause.
+- *"remove barriers to… **innovation**… digital health development globally"* — cuts against a
+  **NonCommercial (-NC)** clause (NC is the classic barrier to commercial digital-health adoption).
+Together these point to **CC BY** (commercial + derivatives allowed). Countervailing: one earlier search summary
+inferred CC BY-NC, and WONCA has not published the SPDX identifier — so this remains an inference, not a
+confirmation. **Do not bundle until the licence deed on the data/download is read directly.**
 
 **Why it's decisive:** **CC BY / CC0 / CC BY-SA → AGPL-compatible**, and ICPC-3 becomes the natural pluggable
 primary-care layer producing ICD-11 ([ADR-0025](../spec/decisions/0025-icd-11-canonical-interlingua-and-local-terminology-overlay.md)).
