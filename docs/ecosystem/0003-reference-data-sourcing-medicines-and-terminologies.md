@@ -1,9 +1,10 @@
 # Ecosystem evaluation — external reference-data sourcing (medicines, and disease/injury terminologies)
 
 **Date:** 2026-06-19
-**Status:** Evaluation, **in progress**. Spec unchanged; no ADR minted. Captures sourcing research for the
-**reference-data service tier** — a *separable* service consumed by a Cairn node, not part of the wire core.
-Medicines sourcing (§1–§7) is complete; disease/injury concept identifiers (§8) is the open companion thread.
+**Status:** Evaluation. Spec unchanged; no ADR minted. Captures sourcing research for the **reference-data
+service tier** — a *separable* service consumed by a Cairn node, not part of the wire core. Medicines sourcing
+(§1–§7) and disease/injury concept identifiers (§8) are both written up; a short list of human-verify items
+(licence clauses behind 403 walls) remains in §7 and §8.4. To be revisited before any of this is committed to.
 **Subjects:** open/government drug-reference feeds (WHO INN, RxNorm, DailyMed/openFDA, TGA ARTG, PBS) and
 disease/injury classifications (ICD-10/11, ICPC, alternatives) — evaluated for **license compatibility with a
 freely-redistributable AGPL-3.0 node**.
@@ -182,10 +183,90 @@ key-person dependency.
 
 ---
 
-## 8. Disease & injury concept identifiers — companion thread (in progress)
+## 8. Disease & injury concept identifiers
 
-*Same requirement as medicines: solid, stable concept identifiers, never drifting free-text names, on the
-decision-making pathway. Research underway (ICD-10/11, ICPC family, open alternatives). To be written up here.*
+Medication is as central as disease, and the requirement is identical: **the decision-making pathway must key on
+solid, stable concept identifiers — never free-text names that are spelled differently across sources and drift
+over time.** This is the same discipline as the INN anchor in §1, applied to the morbidity/injury axis. SNOMED
+CT is *clinically* the richest option but is excluded on the mission: it is member/affiliate-gated, charges fees
+in non-member territories, forbids sub-licensee redistribution — a money-spinner behind a paywall, the same
+defect that put AMT (§3) out. The realistic field is the WHO ICD family, the WONCA ICPC family, and a handful of
+genuinely-open biomedical ontologies.
+
+> [!IMPORTANT]
+> **The key nuance: NoDerivatives is *not* fatal for the identifier use-case.** Cairn needs to use classification
+> codes **verbatim as stable concept anchors** — it does not need to *modify* the classification. WHO's
+> CC BY-ND licence permits exactly that: copy, redistribute, and commercial use of the codes with attribution.
+> The ND clause only bites if you ship a *modified* codelist, a *translation*, or your *own* crosswalk
+> (ICD↔SNOMED, ICD-11↔ICD-10) — each of which needs a **separate WHO agreement**. So ICD is usable as the
+> identifier substrate; the boundary to document is "verbatim codes yes, derived maps/translations no."
+
+### 8.1 The candidates
+
+| Classification | Body | Licence | Bundle verbatim codes? | Modify / own crosswalks? | Stable IDs | Fit |
+|---|---|---|---|---|---|---|
+| **ICD-11** | WHO | **CC BY-ND 3.0 IGO**; API/software royalty-free (no standalone resale) | ✅ Yes (attribution, commercial OK) | 🚩 No (ND → separate WHO agreement) | **Persistent URIs** `id.who.int/icd/entity/{id}` + stem codes | **★ Best technical fit** — see §8.2 |
+| **ICD-10** | WHO | **CC BY-ND 3.0 IGO** (historically licence-application-gated) | ✅ Yes (verbatim) | 🚩 No (ND) | Alphanumeric codes (e.g. `J18.9`) | Legacy/bridging where ICD-11 not yet adopted; effectively frozen (~2019) |
+| **ICD-10-CM** | US NCHS/CDC | **Public domain** (US gov) | ✅ Yes | ✅ Yes | Annual codes + addenda | 🚩 **US-specific, code-incompatible** with WHO ICD-10/AM — licence-cleanest but least portable |
+| **ICD-10-AM** | IHACPA (Sydney/NCCH origin) | Paid licence; free tier = **NonCommercial, AU-internal, no-redistribution** | 🚩 No | 🚩 No | Per-edition codes | 🚩 **Exclude / site-provided plug-in only** — categorically AGPL-incompatible |
+| **ICPC-3** | WONCA / WICC | **"Openly available under a Creative Commons licence"** — **exact variant UNCONFIRMED** | ⚠️ **Depends on variant** | ⚠️ Only if CC BY/CC0/CC BY-SA | Concept codes | **GP-aligned, the natural primary-care coder** — *gated on §8.4 verify #1* |
+| ICPC-2 / 2e | WONCA / WICC | WONCA copyright, licence-gated (all rights reserved) | 🚩 No | 🚩 No | Rubric codes, mapped to ICD-10 | 🚩 Encumbered — exclude |
+| **ICPC-2 PLUS** | Univ. Sydney FMRC → NCCH | **Paid annual licence** (~AUD 120–420/site, renewing as of Feb 2023) | 🚩 No | 🚩 No | Interface terms → ICPC-2 | 🚩 **Exclude** — the copyright-encumbered Australian derivative; Cairn ships only the *capability* to load it |
+| **SNOMED CT (full) / national extensions (incl. AMT)** | SNOMED International / NRCs | Member/affiliate-gated; fee in non-member territories | 🚩 No | 🚩 No | SCTIDs | 🚩 **Excluded by mission** — node-local licensed plug-in only |
+
+### 8.2 Why ICD-11 is the best technical fit for an offline-first, stable-ID record
+
+- **Persistent URIs against name-drift.** Every concept has a durable identifier rooted at
+  `https://id.who.int/icd/entity/{entityId}`, plus codeable MMS **stem codes**. A URI + entity ID is exactly the
+  "stable identifier, not a free-text name" the decision pathway needs — and it composes with principle 11
+  (*legibility across time*): the coded event carries the stable anchor, while its [plaintext legibility twin](../spec/data-model.md#313-schema-evolution-event-format-and-the-legibility-twin)
+  records the human label *as asserted at the time*, so the event stays readable even as the classification moves.
+- **Genuinely offline.** WHO ships an **official Docker container** (`whoicd/icd-api`, ARM-supported) that runs
+  the full Coding Tool + browser + API **with no internet connection**, mirroring the canonical URIs locally
+  (`id.who.int/icd/entity` → `yourserver/icd/entity`). This is a clean fit for the fractal-topology node
+  ([ADR-0001](../spec/decisions/0001-fat-postgres-thin-daemon.md)) and the availability floor — no cloud
+  dependency on the decision pathway. The API is free (cloud needs free registration; local needs
+  `acceptLicense=true`).
+- **The licence boundary to honour:** ship codes/URIs verbatim with WHO attribution; do **not** redistribute a
+  *modified* ICD, a translation, or a Cairn-built ICD↔SNOMED / cross-version map without a separate signed WHO
+  agreement. Treat any such map as a separately-licensed artifact, never folded into the AGPL corpus.
+
+### 8.3 Genuinely-open ontologies (clean AGPL-compatible enrichment substrate)
+
+Not primary-care morbidity coders, but useful as a **free, stable-ID semantic layer** that cross-maps to the
+encumbered ones — and unlike ICD/ICPC they are fully modifiable, so Cairn *can* derive from them:
+
+- **Mondo Disease Ontology** — **CC BY 4.0**, OWL/OBO, stable `MONDO:` IDs, integrates/maps across ICD, SNOMED,
+  Orphanet, OMIM. The broadest clean disease ontology. ✅
+- **ORDO (Orphanet Rare Disease Ontology)** — **CC BY 4.0**, stable ORPHAcodes; rare-disease-focused. ✅
+- **HPO (Human Phenotype Ontology)** — phenotype/sign-symptom layer, stable `HP:` IDs, but a **bespoke
+  licence** (not plain CC) — usable-pending-check (§8.4 verify #3).
+- **SNOMED CT Global Patient Set (GPS)** — the *only* free SNOMED content for non-members, stable SCTIDs; a 2026
+  source suggests the licence may have shifted to **CC BY-ND** (was CC BY 4.0) — verify (§8.4 #2). ND would still
+  permit verbatim-code use, same posture as ICD.
+- **MedDRA** — 🚩 subscription/paywalled, exclude.
+
+### 8.4 Recommendation and open verifies
+
+**Recommended disease/injury identifier stack:**
+- **Primary concept anchor: ICD-11** (CC BY-ND 3.0 IGO) — verbatim entity-URI/stem-code identifiers, free offline
+  Docker container, commercial OK with attribution. The ND boundary documented in §8.2.
+- **Bridging: ICD-10** (CC BY-ND) where ICD-11 isn't yet the local standard — same verbatim posture.
+- **Primary-care layer: ICPC-3 — *conditionally*.** If its open licence confirms as **CC BY** (not NC/ND), it
+  becomes the natural GP-aligned coder and should be adopted for the primary-care reason-for-encounter axis.
+  Until the variant is confirmed, treat as pending; **do not assume usable.**
+- **Free semantic substrate: Mondo + ORDO** (CC BY 4.0) for derivable, modifiable cross-mapping; HPO for
+  phenotype pending its licence check.
+- **Exclude / site-plug-in only:** SNOMED CT full + AMT, ICD-10-AM, ICPC-2/2e/2-PLUS — each a node-local,
+  separately-licensed dependency the deploying site supplies under its own licence; Cairn ships the load
+  capability, never the data.
+
+**Open verifies (all sites 403'd automated fetch — need a human browser read):**
+1. **ICPC-3 exact CC variant** (CC BY vs CC BY-NC vs CC BY-ND) — `icpc-3.info` licence page + the WONCA
+   "ICPC-3 to Become Openly Licensed" announcement. **Highest priority — it decides whether the GP coder is in.**
+2. **SNOMED GPS current licence** — CC BY 4.0 vs CC BY-ND 4.0.
+3. **HPO custom licence** full text (`hpo.jax.org/app/license`).
+4. **WHO crosswalk/translation separate-agreement terms** — needed before Cairn ships *any* ICD-derived map.
 
 ---
 
@@ -204,3 +285,12 @@ Use (go.drugbank.com/legal/terms_of_use) · KEGG Legal (kegg.jp/kegg/legal.html)
 MIT) · DDInter 2.0 (NAR 2025) · nsides.io.
 **Sustainability:** OSCAR drugref2 (oscaremr.atlassian.net) · Health Canada DPD (open.canada.ca) · TAIR/Phoenix
 (PMC4795935) · OpenMRS CIEL.
+**Disease/injury terminology (§8):** WHO FAQ Licensing ICD-10 (cdn.who.int/.../who-faq-licensing-icd-10.pdf) ·
+WHO Copyright policy (who.int/about/policies/publishing/copyright) · ICD-11 License (icd.who.int/en/docs/icd11-license.pdf)
+· ICD-API License + Docker container + Local Deployment (icd.who.int/icdapi/docs2/...) · ICD-10 CDN
+(icdcdn.who.int/icd10) · CDC NCHS ICD-10-CM Files (cdc.gov/nchs/icd/icd-10-cm/files.html) · IHACPA products &
+licenses (ihacpa.gov.au/health-care/products-and-licenses) · Lane Print Electronic Code Lists
+(ar-drg.laneprint.com.au) · WONCA "ICPC-3 to Become Openly Licensed" (globalfamilydoctor.com/News/ICPC-3OpenLicense.aspx)
+· icpc-3.info · WICC (wicc.one/icpc-classification) · ICPC-2 PLUS (en.wikipedia.org/wiki/ICPC-2_PLUS,
+sydney.edu.au NCCH) · Mondo (mondo.monarchinitiative.org) · ORDO (sciences.orphadata.com/ordo) · HPO
+(hpo.jax.org/app/license) · SNOMED GPS (snomed.org/gps).
