@@ -209,7 +209,7 @@ genuinely-open biomedical ontologies.
 | **ICD-10** | WHO | **CC BY-ND 3.0 IGO** (historically licence-application-gated) | ✅ Yes (verbatim) | 🚩 No (ND) | Alphanumeric codes (e.g. `J18.9`) | Legacy/bridging where ICD-11 not yet adopted; effectively frozen (~2019) |
 | **ICD-10-CM** | US NCHS/CDC | **Public domain** (US gov) | ✅ Yes | ✅ Yes | Annual codes + addenda | 🚩 **US-specific, code-incompatible** with WHO ICD-10/AM — licence-cleanest but least portable |
 | **ICD-10-AM** | IHACPA (Sydney/NCCH origin) | Paid licence; free tier = **NonCommercial, AU-internal, no-redistribution** | 🚩 No | 🚩 No | Per-edition codes | 🚩 **Exclude / site-provided plug-in only** — categorically AGPL-incompatible |
-| **ICPC-3** | WONCA / WICC | **"Openly available under a Creative Commons licence"** — **exact variant UNCONFIRMED** | ⚠️ **Depends on variant** | ⚠️ Only if CC BY/CC0/CC BY-SA | Concept codes | **GP-aligned, the natural primary-care coder** — *gated on §8.4 verify #1* |
+| **ICPC-3** | WONCA / WICC | **CC BY-ND** (free incl. commercial; confirmed `icpc-3.info`, all three licensing forms) | ✅ Yes (verbatim) | 🚩 No (ND) | Concept codes | 🚩 **Declined (§8.5)** — BY-ND adds nothing over the ICD-11 anchor, and WONCA's stated dependence on licensing income is a capture/sustainability risk |
 | ICPC-2 / 2e | WONCA / WICC | WONCA copyright, licence-gated (all rights reserved) | 🚩 No | 🚩 No | Rubric codes, mapped to ICD-10 | 🚩 Encumbered — exclude |
 | **ICPC-2 PLUS** | Univ. Sydney FMRC → NCCH | **Paid annual licence** (~AUD 120–420/site, renewing as of Feb 2023) | 🚩 No | 🚩 No | Interface terms → ICPC-2 | 🚩 **Exclude** — the copyright-encumbered Australian derivative; Cairn ships only the *capability* to load it |
 | **SNOMED CT (full) / national extensions (incl. AMT)** | SNOMED International / NRCs | Member/affiliate-gated; fee in non-member territories | 🚩 No | 🚩 No | SCTIDs | 🚩 **Excluded by mission** — node-local licensed plug-in only |
@@ -259,83 +259,58 @@ encumbered ones — and unlike ICD/ICPC they are fully modifiable, so Cairn *can
 - **Primary concept anchor: ICD-11** (CC BY-ND 3.0 IGO) — verbatim entity-URI/stem-code identifiers, free offline
   Docker container, commercial OK with attribution. The ND boundary documented in §8.2. **(Ratified — ADR-0025.)**
 - **Bridging: ICD-10** (CC BY-ND) where ICD-11 isn't yet the local standard — same verbatim posture.
-- **Primary-care layer: ICPC-3 — *conditionally*.** If its open licence confirms as **CC BY** (not NC/ND), it
-  becomes the natural GP-aligned coder and should be adopted for the primary-care reason-for-encounter axis.
-  Until the variant is confirmed, treat as pending; **do not assume usable.**
+- **Primary-care axis: served directly by ICD-11 — ICPC-3 declined (§8.5).** ICPC-3 resolved to **CC BY-ND**
+  (free incl. commercial) plus a stated WONCA dependence on licensing income — no advantage over the ICD-11
+  anchor, and a capture/sustainability risk. ICD-11 (comprehensive, episode-of-care capable; a primary-care
+  linearization exists — verify) carries the reason-for-encounter axis; a deployment may still plug ICPC-3 in
+  locally under its own BY-ND use, but Cairn does not bundle, endorse, or depend on it.
 - **Free semantic substrate: Mondo + ORDO** (CC BY 4.0) for derivable, modifiable cross-mapping; HPO for
   phenotype pending its licence check.
-- **Exclude / site-plug-in only:** SNOMED CT full + AMT, ICD-10-AM, ICPC-2/2e/2-PLUS — each a node-local,
+- **Exclude / site-plug-in only:** SNOMED CT full + AMT, ICD-10-AM, ICPC-3, ICPC-2/2e/2-PLUS — each a node-local,
   separately-licensed dependency the deploying site supplies under its own licence; Cairn ships the load
   capability, never the data.
 
 **Open verifies (all sites 403'd automated fetch — need a human browser read):**
-1. **ICPC-3 exact CC variant** (CC BY vs CC BY-NC vs CC BY-ND) — `icpc-3.info` licence page + the WONCA
-   "ICPC-3 to Become Openly Licensed" announcement. **Highest priority — it decides whether the GP coder is in.**
-   See §8.5 for a full verification-attempt log and a manual recipe.
+1. ~~**ICPC-3 exact CC variant**~~ — **RESOLVED (§8.5): CC BY-ND → declined.**
 2. **SNOMED GPS current licence** — CC BY 4.0 vs CC BY-ND 4.0.
 3. **HPO custom licence** full text (`hpo.jax.org/app/license`).
 4. **WHO crosswalk/translation separate-agreement terms** — needed before Cairn ships *any* ICD-derived map.
+5. **ICD-11 primary-care linearization** — confirm name/status as the GP-facing presentation now that ICPC-3 is out.
 
-### 8.5 ICPC-3 licence variant — verification (2026-06-19): exact CC variant still UNNAMED, but inference sharpened
+### 8.5 ICPC-3 licence variant — RESOLVED (2026-06-19): CC BY-ND → declined
 
-A second, focused attempt to pin the exact ICPC-3 Creative Commons variant **did not succeed automatically**; the
-official WONCA announcement was then supplied directly (HH, from the WONCA site, *January 2026 Working Party
-News*, published Feb 2026). **Decisive finding: even the primary source does not name the variant** — the SPDX
-identifier will live on the licence deed attached to the data/download, not in the announcement.
+**Answer (from `icpc-3.info`, confirmed by HH):** ICPC-3 is licensed **Creative Commons BY-ND**. The site states
+that *within all three forms of licensing, ICPC-3 is free to be used by any party under CC BY-ND, including free
+use by commercial parties.* So the variant is **BY-ND** — the **same posture as WHO ICD-11**: codes
+redistributable verbatim (incl. commercially) with attribution, but **NoDerivatives** (no modification,
+adaptation, or translation without permission). The earlier MODERATE-confidence inference toward plain CC BY was
+**wrong** — the supported translation programme runs through WONCA permission, not an open derivatives grant.
 
-**What is firmly established (now from the primary source):**
-- WONCA (the licensor of ICPC, via the WICC) **"has now decided to make ICPC-3 openly available under a Creative
-  Commons licence,"** *"to remove barriers to adoption, implementation, and innovation worldwide"* and to
-  *"strengthen primary care documentation, research, education, and digital health development globally."*
-- ICPC-3 *"is designed to interoperate with major international classifications and terminologies such as
-  **ICD-11, ICF, and SNOMED CT**, supporting semantic interoperability"* — i.e. it is purpose-built to slot in as
-  a pluggable primary-care layer that **produces ICD-11**, exactly the [ADR-0025](../spec/decisions/0025-icd-11-canonical-interlingua-and-local-terminology-overlay.md)
-  shape. It also carries *"extensive inclusion terms and synonyms… a practical thesaurus,"* which maps neatly
-  onto the local-terminology overlay (it can bulk-populate local-term→ICD-11 bindings).
-- **The exact CC variant is not stated in the announcement or in any publicly machine-accessible source.**
+**Decision: declined as a Cairn-adopted primary-care layer.** Two reasons:
 
-**What was tried, and why it failed:**
-- **WebSearch** (many phrasings): consistently returns *"a Creative Commons licence,"* never the variant.
-- **Authoritative pages all return HTTP 403 to automated fetch:** the WONCA announcement
-  (`globalfamilydoctor.com/News/ICPC-3OpenLicense.aspx`), `icpc-3.info` and its sub-tools
-  (`book.`/`browser.`/`claw.icpc-3.info`), `wicc.one`, and the Wikipedia ICPC page.
-- **Wayback Machine** (`web.archive.org`) is blocked from this tool.
-- **The ICPC-3 User Manual PDF was retrieved and text-extracted** (the encrypted, "not-for-extraction" Routledge
-  file — decrypted and parsed). It carries only the **book's** notice — *"Copyright Material – Provided by Taylor
-  & Francis – Not for Redistribution"* — i.e. the **commercial book's copyright, not the classification's
-  open-data licence.** (Note the split, and the irony: the *manual* is a paywalled T&F book even though the
-  *classification* is openly licensed — exactly the trap to avoid conflating.)
-- **A third-party GitHub `LICENSE`** (`Karim-53/Docs-for-ICPC`) is GPLv3 for that repo's own docs — not
-  authoritative for ICPC-3.
+1. **BY-ND adds nothing over the ICD-11 anchor.** Identical restriction (verbatim-only, no derivatives), and
+   strictly worse than the truly-open Mondo/ORDO (CC BY 4.0) for any layer Cairn would want to *derive from* or
+   extend. The hope had been a *cleanly open* GP coder; BY-ND is not it.
+2. **Licensing-income dependence is a capture/sustainability risk.** The same site states WONCA depends on income
+   from licensing — the consortium/licensing-funded model §5 flagged as *durable funding, conditional openness*. A
+   licensor structurally reliant on licensing revenue carries a standing incentive toward enclosure; anchoring
+   Cairn's primary-care axis on it cuts against the anti-capture mission, especially when the canonical ICD-11
+   anchor already covers the axis.
 
-**Best current inference (MODERATE confidence — still confirm before relying):** the announcement's own wording
-now leans clearly toward a permissive **CC BY**:
-- *"WICC and WONCA will provide guidance and support for **translations and implementations**"* — translations
-  are *derivative works*; an actively-supported translation programme is hard to reconcile with a
-  **NoDerivatives (-ND)** clause.
-- *"remove barriers to… **innovation**… digital health development globally"* — cuts against a
-  **NonCommercial (-NC)** clause (NC is the classic barrier to commercial digital-health adoption).
-Together these point to **CC BY** (commercial + derivatives allowed). Countervailing: one earlier search summary
-inferred CC BY-NC, and WONCA has not published the SPDX identifier — so this remains an inference, not a
-confirmation. **Do not bundle until the licence deed on the data/download is read directly.**
+**Consequence:** the primary-care reason-for-encounter axis is served **directly by ICD-11** (comprehensive,
+episode-of-care capable; a primary-care-oriented ICD-11 linearization exists and can be the GP-facing
+presentation — §8.4 verify #5), with **Mondo + ORDO** (CC BY 4.0) as the open, derivable enrichment substrate.
+The [ADR-0025](../spec/decisions/0025-icd-11-canonical-interlingua-and-local-terminology-overlay.md)
+pluggable-layer architecture is unchanged and still *permits* any deployment to plug ICPC-3 in locally under its
+own BY-ND use — Cairn simply does not **bundle, endorse, or depend on** it.
 
-**Why it's decisive:** **CC BY / CC0 / CC BY-SA → AGPL-compatible**, and ICPC-3 becomes the natural pluggable
-primary-care layer producing ICD-11 ([ADR-0025](../spec/decisions/0025-icd-11-canonical-interlingua-and-local-terminology-overlay.md)).
-**CC BY-NC or CC BY-ND → not freely bundleable**, usable only as a node-local plug-in the deployment licenses —
-the same posture as SNOMED/AMT.
-
-**Manual verification recipe (for HH):**
-1. Open `https://www.icpc-3.info/` in a browser → look for a **Licence / Terms / Copyright** footer; the
-   classification download and the API doc (`icpc-3.info/documents/extra/API-Calls.pdf`) usually state the data
-   licence.
-2. Read the WONCA announcement directly: `https://www.globalfamilydoctor.com/News/ICPC-3OpenLicense.aspx` — it
-   should name the variant.
-3. Check the Classification Workbench (`https://claw.icpc-3.info/`) and browser (`https://browser.icpc-3.info/`)
-   footers.
-4. If still unclear, email the WICC / ICPC-3 consortium (contact on `icpc-3.info`) and ask for the **SPDX
-   identifier** of the data licence.
-5. **The decisive question:** *"May we redistribute the ICPC-3 classification verbatim, commercially, inside an
-   AGPL-3.0 product?"* — CC BY / CC0 / CC BY-SA = yes; CC BY-NC / any-ND = no.
+> [!NOTE]
+> **Method footnote.** Automated discovery failed — every authoritative page (the WONCA announcement,
+> `icpc-3.info` and its sub-tools, `wicc.one`, Wikipedia) 403s automated fetch; Wayback is blocked; and the
+> retrieved ICPC-3 *User Manual* PDF (encrypted "not-for-extraction" Routledge file, decrypted and parsed) carries
+> only the Taylor & Francis **book** copyright (*"Not for Redistribution"*), not the classification's data licence.
+> The variant is **not** stated in WONCA's own announcement — only on the `icpc-3.info` licence page — which is why
+> search never surfaced it. The answer came from a human browser read.
 
 ---
 
