@@ -155,6 +155,13 @@ All components must be **AGPL-3.0-compatible**. The whole project is AGPL-3.0 �
 - **The mission is the tie-breaker.** The project is explicitly anti-capture / anti-vendor-lock-in.
   When convenience conflicts with the mission (open standards, no proprietary dependency, no
   mandatory cloud, data sovereignty), the mission wins.
+- **Always surface flaws early — criticism is strongly encouraged.** Where you find a flaw, risk, gap,
+  or unsound step — in a design, a proposed mechanism, the user's idea, or your own — **point it out
+  plainly and immediately, with the specific failure scenario.** Do not soften it into vagueness, bury
+  it, or wait to be asked. The user often works sleep-deprived after long hours or rushed between
+  patients, and explicitly wants you to **have their back**: catch the mistake or the not-thought-through
+  step and say so. Errors caught early beat being bitten later. If an idea survives scrutiny, say so; if
+  it has caveats, enumerate them. Applies to your own proposals too.
 - **Don't re-litigate parked decisions** (e.g. legal entity/jurisdiction, formal trademark
   registration) without new reason — see HANDOVER.md "Parked" section.
 - `docs/spec/open-questions.md` (§11) lists the open architecture questions. The
