@@ -157,3 +157,25 @@ policy rungs"** (§5.10, ADR-0005/0006/0009/0010, §7.5/7.6/7.7) under one mecha
 [ADR-0010](decisions/0010-additive-vs-suppressing-classification.md)'s conservation-of-responsibility loop
 (the audited config act is now a concrete policy event). **No new founding principle** — it is the mechanism
 *of* principle 9.
+
+## Resolved — node durability & disaster recovery
+
+How a node — especially the **solo node** with no peer (the [ADR-0017](decisions/0017-federation-admission-sovereignty-peering-and-trust-anchors.md)
+sovereignty floor) — survives total hardware loss without a backup that can resurrect an erased body is
+**RESOLVED** ([ADR-0026](decisions/0026-node-durability-and-disaster-recovery.md),
+[security §7.10](security.md#710-node-durability-and-disaster-recovery)). The spec had designed *deliberate*
+key-death ([ADR-0005](decisions/0005-erasure-key-custody-and-crypto-shredding.md)) but left *accidental*
+key-death undesigned, and the only DR answer ([sync §6.3](sync.md#63-failure-modes-designed-for)) assumed a
+parent and excluded the off-sync-plane keystore. The resolution dissolves into existing primitives:
+**clinical events back up as a cold peer** (the sync daemon's peer is a local encrypted volume; restore is
+set-union apply through the existing verify-on-apply path — self-verifying, no new integrity check);
+**non-event trust material rides a sealed local-state export** (the only private-key-touching surface);
+**recovery mints a new `supersede`-linked identity** ([§7.5](security.md#75-the-actor-registry-enrollment-version-pinning-and-key-custody)
+actor algebra) so the **private signing key never enters a backup** (a stolen backup can't resurrect the node;
+composes with non-extractable hardware keys); the **off-node recovery secret is paper-escrow at the floor**
+(printed code / QR, optional Shamir M-of-N), pluggable up to token / peer-quorum, no mandatory cloud; and
+**erasure survives DR** because crypto-shred is an append-only event the restore replays, with **shred
+completion ⊇ backup propagation** closing the post-backup-shred window (detached media = the honest ceiling).
+**Backup health is a first-class honest-assembly fact.** **No new founding principle** (principles 1/2/3/4
+applied to DR); one **day-one, can't-retrofit** requirement — the recovery-secret escrow and sealed export must
+exist at provisioning.

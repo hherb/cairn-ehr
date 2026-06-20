@@ -19,7 +19,7 @@
 
 ## 6.2 Consistency model
 - Eventual consistency with causal ordering (HLC) within a patient record.
-- Every projection displays a **freshness indicator** ("last synced with parent 4 h ago") — a first-class UI requirement.
+- Every projection displays a **freshness indicator** ("last synced with parent 4 h ago") — a first-class UI requirement. **Backup health is the same honest-assembly fact applied to durability** ("last successful backup N h ago"; medium full / detached / failing) — a node running without a recovery net must say so ([security §7.10](security.md#710-node-durability-and-disaster-recovery)).
 - **Honest assembly state.** The chart is always a best-effort assembly of currently-available parts, and must say so as a first-class clinical fact. Beyond freshness it surfaces **known-missing** parts when it can detect them (the parent advertised 5 episodes, only 3 arrived; a sibling is reachable but unsynced) and, when fully partitioned, signals that parts may exist beyond the island. Making absence *visible* is a safety gain with no paper equivalent — on paper the other ward's notes are simply, invisibly absent. See [§6.4](#64-scope-is-a-prefetch-hint-not-an-authority) and [ADR-0004](decisions/0004-dynamic-sync-scope-prefetch-not-authority.md).
 - **The notification inbox is honest-assembly applied to alerts.** A notification is a local projection over locally-available events ([identity §5.12](identity.md#512-the-notification-economy-salience-responsibility-routing-and-the-acknowledgment-floor), [data-model §3.11](data-model.md#311-notifications-as-projections-responsibility-routing-and-acknowledgment)); a trigger may still be on another node, so *"all caught up / inbox zero"* is **never** claimed across a partition. The honest ceiling mirrors the erasure ceiling: *"to this node's knowledge, you have seen everything relevant."*
 
@@ -29,7 +29,8 @@
 | Internet down | Facility operates on facility server; queues outbound |
 | Intranet down | Department server is local master for its scope |
 | Department server down | Workstations operate standalone on mirrored scope |
-| Node destroyed | Re-provision from parent; only unsync'd local events are at risk → aggressive upward sync priority |
+| Node destroyed (has a parent/peer) | Re-provision from parent; only unsync'd local events are at risk → aggressive upward sync priority |
+| Node destroyed (solo, no peer) | Restore from the sealed local backup + recovery secret; new supersede-linked identity, erasures replayed on restore — see [security §7.10](security.md#710-node-durability-and-disaster-recovery), [ADR-0026](decisions/0026-node-durability-and-disaster-recovery.md) |
 
 ## 6.4 Scope is a prefetch hint, not an authority
 > Resolves former open question §11.3 — see [ADR-0004](decisions/0004-dynamic-sync-scope-prefetch-not-authority.md).
