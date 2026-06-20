@@ -309,6 +309,39 @@ pub fn bench_hash_mbps(total_mb: usize) -> (f64, f64) {
     (sha, blake)
 }
 
+/// Recursively sort object keys so the encoding is canonical regardless of input
+/// key order, then return the value re-built with BTreeMap-ordered objects.
+fn canonicalize(v: &serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+    match v {
+        Value::Object(m) => {
+            let mut sorted = serde_json::Map::new();
+            let mut keys: Vec<&String> = m.keys().collect();
+            keys.sort();
+            for k in keys {
+                sorted.insert(k.clone(), canonicalize(&m[k]));
+            }
+            Value::Object(sorted)
+        }
+        Value::Array(a) => Value::Array(a.iter().map(canonicalize).collect()),
+        other => other.clone(),
+    }
+}
+
+/// Content-address of an arbitrary JSON value: the `0x1220` sha2-256 multihash of
+/// its canonical CBOR encoding. Used to derive an actor's identity from its pinned
+/// determinant set (Spike 0002 / ADR-0011), so identity is the *hash of what is
+/// pinned* — bumping any determinant (incl. skill_epoch) yields a new identity.
+pub fn canonical_json_address(v: &serde_json::Value) -> Vec<u8> {
+    let canon = canonicalize(v);
+    let mut cbor = Vec::new();
+    ciborium::into_writer(&canon, &mut cbor).expect("canonical json encodes to CBOR");
+    use sha2::{Digest, Sha256};
+    let mut out = SHA2_256_MULTIHASH_PREFIX.to_vec();
+    out.extend_from_slice(&Sha256::digest(&cbor));
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -429,5 +462,18 @@ mod tests {
         // Right slice, wrong root -> reject.
         let other = blake3_root_from_address(&blob_address(b"different")).unwrap();
         assert!(verify_slice(&slice, &other, start, len).is_err());
+    }
+
+    #[test]
+    fn canonical_json_address_is_stable_under_key_order() {
+        let a = canonical_json_address(&json!({"model": "m", "version": "1", "skill_epoch": "e"}));
+        let b = canonical_json_address(&json!({"version": "1", "skill_epoch": "e", "model": "m"}));
+        assert_eq!(a, b, "address must not depend on key order");
+        assert_eq!(a[0..2], SHA2_256_MULTIHASH_PREFIX);
+        assert_eq!(a.len(), 34);
+
+        // A different pinned value yields a different actor identity (the C4 supersede trigger).
+        let c = canonical_json_address(&json!({"model": "m", "version": "1", "skill_epoch": "e2"}));
+        assert_ne!(a, c);
     }
 }
