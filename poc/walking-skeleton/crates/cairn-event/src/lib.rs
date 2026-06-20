@@ -332,6 +332,9 @@ fn canonicalize(v: &serde_json::Value) -> serde_json::Value {
 /// its canonical CBOR encoding. Used to derive an actor's identity from its pinned
 /// determinant set (Spike 0002 / ADR-0011), so identity is the *hash of what is
 /// pinned* — bumping any determinant (incl. skill_epoch) yields a new identity.
+/// Determinant values are expected to be strings (model/version/skill_epoch); integer
+/// numbers encode deterministically, but float values are NOT guaranteed stable across
+/// serialization round-trips and must not be used as determinants.
 pub fn canonical_json_address(v: &serde_json::Value) -> Vec<u8> {
     let canon = canonicalize(v);
     let mut cbor = Vec::new();
@@ -462,6 +465,19 @@ mod tests {
         // Right slice, wrong root -> reject.
         let other = blake3_root_from_address(&blob_address(b"different")).unwrap();
         assert!(verify_slice(&slice, &other, start, len).is_err());
+    }
+
+    #[test]
+    fn canonical_json_address_recurses_into_nested_objects_and_arrays() {
+        let a = canonical_json_address(&json!({
+            "outer": {"z": 1, "a": 2},
+            "list": [{"y": "1", "x": "2"}]
+        }));
+        let b = canonical_json_address(&json!({
+            "list": [{"x": "2", "y": "1"}],
+            "outer": {"a": 2, "z": 1}
+        }));
+        assert_eq!(a, b, "nested object/array key order must not change the address");
     }
 
     #[test]
