@@ -83,6 +83,7 @@ Most EHRs force clinicians to commit data they cannot vouch for — a required d
 - **`null` ≠ `unknown` ≠ `refused`.** *Nobody-asked*, *asked-but-unestablished*, and *patient-declined* are clinically distinct facts the system must preserve distinctly — most EHRs collapse them into one empty cell and lose the difference.
 - **No forced precision (normative).** No required field may be satisfiable *only by fabrication*. If a workflow needs a field, that field must accept an honest uncertainty value.
 - **Monotonic refinement by overlay.** "circa 2019" today, "12 Mar 2019, confirmed from old records" as a later overlaying event ([§3.1](#31-append-only-clinical-event-log-source-of-truth)). Certainty increases over time **without erasure** — a natural fit with the append-only log.
+- **Quantities are stored in canonical SI; the unit is intrinsic to the value.** The core never stores an ambiguous bare number and never *infers* a unit (the mg/mcg, mmol/L vs mg/dL, metric/imperial confusions are a classic clinical-safety killer). A clinical quantity is held in canonical SI, encoded against an international unit standard (e.g. UCUM); locale-specific *display* and entry framing are a UI translation governed by policy — [principle 12](index.md#founding-principles-the-lens-for-every-decision) (uniform core, plural edges) applied to quantities. This is a one-line application of an existing principle, not a separate decision.
 
 > [!NOTE]
 > **Two distinct forms of acknowledged uncertainty — don't conflate them.** This section is about
