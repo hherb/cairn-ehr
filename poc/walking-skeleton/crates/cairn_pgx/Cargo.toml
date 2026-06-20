@@ -19,11 +19,11 @@ pg_test = []
 [dependencies]
 pgrx = "=0.12.9"
 cairn-event = { path = "../cairn-event" }
-serde_json = "1"
-hex = "0.4"
+serde_json = "1" # used by cairn_body (later task) in non-test code
 
 [dev-dependencies]
 pgrx-tests = "=0.12.9"
+hex = "0.4"
 
 [profile.dev]
 panic = "unwind"
