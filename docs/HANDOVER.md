@@ -1,9 +1,74 @@
 # HANDOVER — Cairn
 
-**Session date:** 2026-06-18 (ecosystem evaluation + build-prep; spec unchanged at **v0.26**)
+**Session date:** 2026-06-20 (node durability & disaster recovery → ADR-0026; units ruling; spec **v0.28**)
 **Status of this file:** Working scaffolding, not a source of truth. Disposable — regenerate
 at the end of each working session. If this file ever disagrees with the canonical documents,
 the canonical documents win.
+
+---
+
+## Resolved 2026-06-20 — node durability & disaster recovery (spec v0.28) → ADR-0026; + units ruling; + 2 open items
+
+Case-mined a **foundational gap not in the original §11 set**: the spec designed *deliberate* key-death
+(crypto-shred, [ADR-0005](spec/decisions/0005-erasure-key-custody-and-crypto-shredding.md)) but left
+*accidental* key-death and node disaster recovery undesigned. The only DR answer
+([sync §6.3](spec/sync.md)) was *"re-provision from parent"* — which assumes a parent and excludes the
+off-sync-plane keystore. The forcing case is the **solo node** (the
+[ADR-0017](spec/decisions/0017-federation-admission-sovereignty-peering-and-trust-anchors.md) sovereignty
+floor): no peer → a dead disk is total loss. → **[ADR-0026](spec/decisions/0026-node-durability-and-disaster-recovery.md)**,
+canonical home **[security §7.10](spec/security.md)**, mechanism notes in
+[data-model §3.8](spec/data-model.md) + [sync §6.2/§6.3](spec/sync.md), open-questions resolved entry,
+index version bump. **No new founding principle** (principles 1/2/3/4 applied to DR); one **day-one
+can't-retrofit** requirement (the recovery-secret escrow + sealed local-state export must exist at
+provisioning). Build `--strict` clean.
+
+- **Dissolved into existing primitives** (the recurring pattern): **clinical events back up as a cold
+  peer** (the sync daemon's peer is a local encrypted volume; restore = set-union apply through the
+  existing verify-on-apply path → **self-verifying, no separate integrity check** — a tampered/bit-rotted
+  medium fails the same ADR-0015 signature/content-address invariants as a malicious peer); **non-event
+  trust material rides a sealed local-state export** (data-at-rest keystore + config + draft store — the
+  only private-key-touching surface, the small safety-critical seam).
+- **New identity on recovery, `supersede`-linked** (the [§7.5](spec/security.md) actor algebra — `enroll/
+  supersede/revoke/suspend/rotate-key`, no new mechanism): the restored node mints a fresh, ideally
+  hardware-bound (non-extractable) keypair; the dead node's publics stay verifiable forever. **The private
+  signing key never enters a backup** → a stolen backup can't resurrect the node, and the scheme composes
+  with TPM/Secure-Enclave keys. Cost: re-peer ([§7.7](spec/security.md)) — a no-op for a solo node.
+- **Recovery secret = paper-escrow at the floor, pluggable upward** (printed code/QR sealed in the safe,
+  optional Shamir M-of-N; opt up to token / peer-quorum). No mandatory cloud; fractal. The secret's own
+  survival is the **named new single point of failure** (loss-model clause 3 — *"if the recovery secret is
+  also lost, everything; we never pretend an artifact whose key is gone is recoverable"*).
+- **Erasure survives DR**: crypto-shred is an append-only event the restore **replays** before projecting;
+  the post-backup-shred window is closed by **shred completion ⊇ backup propagation** (a shred isn't done
+  until it has reached attached node-controlled media and re-wrapped their key material). Detached/offline
+  media = the declared honest ceiling. **Backup health is a first-class honest-assembly fact**
+  (*"last successful backup N h ago"*).
+- **Brainstorming-skill design doc:** the design was developed through the brainstorming flow but captured
+  **directly as the ADR + spec weave** (Cairn's convention wins over the skill's `docs/superpowers/specs/`
+  default — every prior decision landed as an ADR). No separate design doc written.
+
+**Also this session (smaller):**
+- **Units ruling → canon, no ADR.** The user ruled: **canonical SI in the event core; UI translates to
+  locale via policy** — [principle 12](spec/index.md) (uniform core, plural edges) applied to quantities.
+  Recorded as a one-line note in [data-model §3.7](spec/data-model.md) (quantities stored in canonical SI,
+  unit intrinsic to the value, encoded against an international unit standard e.g. UCUM). Closes the
+  units/value-normalization gap without an ADR-sized fight.
+- **Two new OPEN items logged** ([open-questions §11](spec/open-questions.md)): **#13 operational
+  observability — RESOLVED as out-of-core** (separable add-on software; Postgres already supplies
+  `LISTEN`/`NOTIFY`+logical decoding+`pg_stat_*`; record-level safety facts already first-class; a central
+  dashboard is optional add-on a deployment may take or leave — the user's ruling). **#14 trusted-time
+  anchoring — OPEN, direction noted:** a pluggable, optional **RFC-3161-style timestamping notary**
+  (defaulting to a self-signed timestamp), a node role on the ADR-0017 anchor spectrum; tokens are overlaid
+  signed data, re-notarization is ADR-0015 re-attestation-as-overlay. **Critique recorded as the open
+  caveats** before it's ADR-ready: (a) bounds `t_recorded` only *from above* and only *online* → offline
+  needs deferred Merkle-batch notarization + graded clock-confidence + causal lower-bounding; (b) the
+  self-signed default proves integrity, not time (grade it self-asserted); (c) single notary =
+  trust/availability/capture/privacy point → multi + self-hostable + Merkle-root submission; (d) the real
+  hardening is the notary's own time provenance, key protection, and long-term token renewal. Load-bearing
+  core requirement: a **clock-confidence grade travels with every event**. *(Private memory only, per
+  product-neutrality: a ready candidate implementation of the notary may exist and be revived — never named
+  in public docs.)*
+- **Standing instruction memorized:** **always surface flaws/risks/issues freely; criticism is strongly
+  encouraged** — a project-wide working principle (applies to my own proposals too).
 
 ---
 
