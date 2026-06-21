@@ -1,0 +1,30 @@
+[package]
+name = "cairn-node"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+cairn-event = { path = "../cairn-event" }
+clap = { version = "4", features = ["derive", "env"] }
+tokio = { version = "1", features = ["full"] }
+tokio-postgres = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hex = "0.4"
+base64 = "0.22"
+uuid = { version = "1", features = ["v7", "serde"] }
+thiserror = "1"
+anyhow = "1"
+# mTLS transport pinned to the trust set (Task 9). aws-lc-rs is rustls's default
+# crypto provider; we install it explicitly so the verifiers can delegate
+# handshake-signature checks to it.
+rustls = "0.23"
+tokio-rustls = "0.26"
+rcgen = { version = "0.13", default-features = false, features = ["pem", "aws_lc_rs"] }
+x509-parser = "0.16"
+
+[dev-dependencies]
+# integration tests connect to a local Postgres via $CAIRN_TEST_PG
+tempfile = "3"

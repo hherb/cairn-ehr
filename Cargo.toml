@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/cairn-event",
+    "crates/cairn-sync",
+    "crates/cairn-node", # cairn-node added in Task 6
+]
+exclude = ["extensions/cairn_pgx"]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.74"
+license = "AGPL-3.0-only"
+repository = "https://github.com/cairn-ehr/cairn-ehr"
+
+[profile.release]
+opt-level = 3

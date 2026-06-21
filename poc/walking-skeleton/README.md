@@ -1,3 +1,8 @@
+> **FROZEN (2026-06-21):** the Rust crates and `db/` graduated to the repo-root
+> workspace (`/crates`, `/extensions`, `/db`). These harnesses are historical
+> spike artifacts; run them with `--bin ../../target/debug/cairn-sync` and the
+> `db/` SQL now at the repo root. Their recorded results stand; no re-run needed.
+
 # Cairn walking skeleton — Spike 0001
 
 The smallest thing that is *genuinely* Cairn's architecture rather than a mock of
