@@ -5,7 +5,7 @@
 Offline-first, vendor-independent electronic health record. Keeps working through any network
 outage, runs anywhere from a Raspberry Pi to a hospital cluster, and belongs to no vendor.
 
-**License:** AGPL-3.0 · **Status:** Architecture / specification phase · **Database:** PostgreSQL ≥ 18
+**License:** AGPL-3.0 · **Status:** Spec complete; proving viability via spikes · **Database:** PostgreSQL ≥ 18
 
 *The name:* a cairn is a hand-built stack of stones that marks the safe path — needing no power,
 no network, no infrastructure, standing alone in the wilderness and still doing its job. Cairns
@@ -163,8 +163,9 @@ failure mode from the front line is a genuine contribution.
 
 **How to contribute, and how the project is governed:** see
 **[CONTRIBUTING.md](CONTRIBUTING.md)** and the full
-**[Governance & Contributing](docs/principles/GOVERNANCE.md)** document. In short: the project is in
-its specification phase (most contribution today is design work on the spec); contributions are
+**[Governance & Contributing](docs/principles/GOVERNANCE.md)** document. In short: the architecture
+spec is complete and the code so far is proof-of-concept spikes proving viability; most contribution
+today is still design work (spec refinement and clinical case-mining) plus build-prep; contributions are
 AGPL-3.0, inbound = outbound, under the [DCO](https://developercertificate.org/) (`git commit -s`)
 with **no CLA**; and the mission is the tie-breaker.
 

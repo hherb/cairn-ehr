@@ -5,7 +5,7 @@ recorded, and how to contribute. Like the rest of `docs/principles/`, it carries
 when it conflicts with working notes it wins, and when it conflicts with the mission, the mission
 wins.*
 
-**Status:** Architecture / specification phase. The project is small and early; this document
+**Status:** Spec complete; proving viability through proof-of-concept spikes. The project is small and early; this document
 describes governance proportionate to that stage and the path it will grow along, deliberately
 avoiding premature scaffolding. It evolves by overlay (see [Amending this document](#amending-this-document)).
 
@@ -176,7 +176,8 @@ The spec is the current product, so most contribution today is design work.
 
 ### 7.4 Contributing code (when implementation begins)
 
-There is **no code, build system, or tests yet** — implementation has not started. When it does:
+The code so far is **proof-of-concept spikes** proving the architecture is viable (walking skeleton,
+WAN sync, a first federating node); the clinical product is not yet being built. As code grows:
 
 - **Match the component to its defect blast radius** ([§3](#3-how-decisions-are-made),
   [spec §9](../spec/language-substrate.md)). Safety-critical code is Rust or in-database, written

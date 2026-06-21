@@ -4,11 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repository is
 
-Cairn is an **offline-first, vendor-independent electronic health record**, currently in the
-**architecture / specification phase — there is no code, build system, or tests yet.** The
-current artifacts are design documents and the reasoning behind them. Work here is design work:
-clinical case-mining, stress-testing the data model, and writing/refining specification prose.
-Do not invent build/test/run instructions; they don't exist until implementation begins.
+Cairn is an **offline-first, vendor-independent electronic health record**. The **architecture spec is
+essentially complete** (all open questions resolved, spec v0.31); the code that exists so far is
+**proof-of-concept spikes proving the architecture is viable** (walking skeleton + WAN sync in
+`poc/walking-skeleton`, an advisory-actor write-contract spike, and a first federating node `cairn-node`
+under `/crates`) — **the clinical product is not yet being built.** So most work is still design work:
+clinical case-mining, stress-testing the data model, and writing/refining specification prose — plus
+build-prep spikes. There is a Rust/Cargo workspace (`/crates`, `/extensions`, `/db`) and an mkdocs docs
+build, but **no clinical application** yet; don't assume product build/run instructions that don't exist.
 
 ## Document hierarchy (what wins when sources disagree)
 
@@ -145,6 +148,27 @@ The spec deliberately does **not** fix languages per component (spec §9). It fi
   PostgreSQL (≥ 18); Postgres is the integration substrate. Avoid FFI coupling.
 
 All components must be **AGPL-3.0-compatible**. The whole project is AGPL-3.0 — non-negotiable.
+
+## Coding house rules (apply to all code, spikes included)
+
+These are load-bearing working agreements — hold to them on proof-of-concept spikes as well as product code.
+
+1. **Licensing is non-negotiable.** All code we produce is **AGPL-3.0**; every external dependency we pull in
+   must be **AGPL-3.0-compatible.** Check a dependency's license *before* adding it — an incompatible license is
+   a blocker, not a cleanup-later item (this is the anti-capture mission applied to the supply chain).
+2. **Test-driven development.** Write the failing test first, then the code that makes it pass. No production
+   code without a test that drove it. This is especially load-bearing for the safety-critical surface (§9), where
+   a silent defect can corrupt the record.
+3. **Document inline for a junior developer.** Every non-trivial function/module carries comments that make its
+   **flow and purpose** clear to a junior developer newly joining the team — *why* it exists and *how* it fits,
+   not just *what* the next line does. Reviewer-legibility (already the §9 rule for safety-critical code) is the
+   house default everywhere.
+4. **Prefer pure, reusable functions over clever complexity.** Readability and reusability beat "smart-looking"
+   code every time. Favour small pure functions with explicit inputs/outputs over intricate structures or
+   cleverness; if a reviewer has to puzzle out what it does, simplify it.
+5. **Fix review findings; if you can't, file an issue.** When a code review surfaces an error, **fix it.** If it
+   can't be fixed in place (out of scope, needs a decision, blocked), **open a GitHub issue** capturing it — never
+   let a known defect pass silently. (Mirrors the project's "surface flaws early" principle, made actionable.)
 
 ## Working conventions
 
