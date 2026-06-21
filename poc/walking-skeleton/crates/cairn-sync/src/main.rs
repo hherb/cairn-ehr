@@ -225,6 +225,20 @@ fn apply_signed(client: &mut postgres::Client, signed_bytes: &[u8]) -> R<bool> {
 // ---------------------------------------------------------------------------
 // Subcommands
 // ---------------------------------------------------------------------------
+
+/// Sign an EventBody supplied as JSON on stdin and emit hex COSE_Sign1 on stdout.
+/// Lets a non-Rust client (the Python agent stand-in) drive the write contract
+/// while Rust owns the canonical encoding + signature (one signer implementation).
+fn cmd_sign_stdin(key_path: &str) -> R<()> {
+    let (sk, _kid) = load_or_create_key(key_path)?;
+    let mut input = String::new();
+    io::stdin().read_to_string(&mut input)?;
+    let body: EventBody = serde_json::from_str(&input)?;
+    let signed = sign(&body, &sk)?;
+    println!("{}", hex::encode(&signed.signed_bytes));
+    Ok(())
+}
+
 fn cmd_init(conn: &str) -> R<()> {
     let mut client = postgres::Client::connect(conn, postgres::NoTls)?;
     // 004/005 call cairn_pgx functions; the extension must exist first.
@@ -1139,6 +1153,7 @@ USAGE (all take --conn <postgres-uri>):
   bench-insert --conn URI --node NAME --key PATH [--count N]   (Bet B B1: maintained-write latency)
   chart       --conn URI --patient UUID                        (Bet B B2: chart-read latency)
   bench       [--hash-mb N] [--sig-iters N] [--dek-iters N]    (Bet B B3/B4: crypto throughput, no DB)
+  sign-stdin  --key PATH    (read JSON EventBody on stdin, write hex COSE_Sign1 on stdout)
 
 Run over WireGuard; NoTls is intentional (the link is the transport)."
     );
@@ -1230,6 +1245,9 @@ fn main() -> R<()> {
             flag(&args, "--budget-ms").and_then(|s| s.parse().ok()).unwrap_or(20),
             &flag(&args, "--log").unwrap_or_else(|| "cairn-run.jsonl".into()),
             flag(&args, "--duration-s").and_then(|s| s.parse().ok()).unwrap_or(0),
+        )?,
+        "sign-stdin" => cmd_sign_stdin(
+            &flag(&args, "--key").unwrap_or_else(|| "agent.key".into()),
         )?,
         _ => usage(),
     }
