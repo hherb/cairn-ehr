@@ -17,3 +17,10 @@ packaging/pypi/dist/
 packaging/crates/target/
 packaging/crates/Cargo.lock
 packaging/npm/node_modules/
+
+# Rust workspace build output (never committed)
+/target/
+poc/walking-skeleton/target/
+
+# Subagent-driven-development scratch (ledger + briefs/reports/diffs)
+.superpowers/
