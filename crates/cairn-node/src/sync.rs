@@ -72,6 +72,10 @@ async fn write_frame<S: AsyncWriteExt + Unpin>(s: &mut S, b: &[u8]) -> std::io::
 /// Read one length-prefixed frame. `Ok(None)` on a clean EOF at a frame boundary
 /// (the sender closed after the last frame) — that is the normal stream terminator,
 /// not an error.
+/// Upper bound on a single wire frame. Node-event envelopes are small; 8 MiB is
+/// generous headroom while still capping a hostile/corrupt length prefix.
+const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
+
 async fn read_frame<S: AsyncReadExt + Unpin>(s: &mut S) -> std::io::Result<Option<Vec<u8>>> {
     let mut len = [0u8; 4];
     match s.read_exact(&mut len).await {
@@ -80,6 +84,15 @@ async fn read_frame<S: AsyncReadExt + Unpin>(s: &mut S) -> std::io::Result<Optio
         Err(e) => return Err(e),
     }
     let n = u32::from_be_bytes(len) as usize;
+    // Bound the allocation: node-event frames are tiny (a signed envelope is ~hundreds
+    // of bytes). Reject an oversized length so a malformed or compromised-but-pinned
+    // peer cannot force a multi-GiB allocation.
+    if n > MAX_FRAME_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("frame length {n} exceeds {MAX_FRAME_BYTES}-byte cap"),
+        ));
+    }
     let mut buf = vec![0u8; n];
     s.read_exact(&mut buf).await?;
     Ok(Some(buf))
