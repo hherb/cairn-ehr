@@ -5,12 +5,37 @@ spec/spikes into a top-level **implementation workspace**; [PR #28](https://gith
 **spec/ADRs unchanged at v0.30** — this is the first *implementation* of
 [ADR-0017](spec/decisions/0017-federation-admission-sovereignty-peering-and-trust-anchors.md),
 not new architecture). Prior same-day: built + ran **Spike 0002 — advisory-actor write contract**;
-C1–C5 PASS; [PR #27](https://github.com/cairn-ehr/cairn-ehr/pull/27). Prior 2026-06-20: trusted-time
+C1–C5 PASS, [PR #27](https://github.com/cairn-ehr/cairn-ehr/pull/27), then **its two follow-on ADRs ratified** — [ADR-0029](spec/decisions/0029-skill-epoch-as-pinned-actor-determinant.md) + [ADR-0030](spec/decisions/0030-advisory-actor-integration-contract.md), **spec → v0.31**. Prior 2026-06-20: trusted-time
 anchoring → ADR-0027 *closes the last open §11 architecture question*; closed-role-enum finalization
 → ADR-0028; node durability → ADR-0026; units ruling.
 **Status of this file:** Working scaffolding, not a source of truth. Disposable — regenerate
 at the end of each working session. If this file ever disagrees with the canonical documents,
 the canonical documents win.
+
+---
+
+## Ratified 2026-06-21 — Spike 0002's two follow-on ADRs (spec v0.31)
+
+Spike 0002's C1–C5 PASS triggered its §6 exit criteria — **two ADRs**, now written and woven into the spec.
+**[ADR-0029](spec/decisions/0029-skill-epoch-as-pinned-actor-determinant.md)** (refines ADR-0011; canonical home
+[security §7.5](spec/security.md)): the **crystallised-skill digest (skill epoch)** and the **served-model digest**
+are named pinned determinants of an agent actor's identity — a skill bump is an audited supersession, recall bounds
+to a skill epoch, and a shared serving fabric cannot silently mutate a pinned identity.
+**[ADR-0030](spec/decisions/0030-advisory-actor-integration-contract.md)** (refines ADR-0021/0022; new canonical
+home [language-substrate §9.8](spec/language-substrate.md)): the **advisory-actor integration contract** — an L2/L3
+actor authors only through `submit_event`, un-vouched by construction, additive-never-suppressing (suppression needs
+human attestation), provenance-anchored, recallable, enforced unbypassably at the L1 floor — promoting
+[ecosystem/0001](ecosystem/0001-agent-and-messaging-plugins-kastellan-localmail.md) from evaluation to decision.
+Both **No new founding principle**. Bumped index → **v0.31**; added the open-questions resolved area + ADR-index rows
++ nav + the CLAUDE.md pointer; `mkdocs build --strict` clean.
+
+- **Honesty note that became canon:** PR #27 review (the user) caught **two real floor holes** the spike's own
+  multi-agent review missed — `submit_event` accepted **forged authorship** (the body's `signer_key_id` was unbound to
+  the verifying key) and the `SECURITY DEFINER` door was **`PUBLIC`-executable** (bypassing the table revokes). Both
+  were fixed before merge (signer-key binding + `REVOKE EXECUTE … FROM PUBLIC` + a C5.6 impersonation test, commit
+  `0e41e37`). ADR-0030 records this: *the signature must prove the claimed author, and the privileged door must be
+  closed to PUBLIC.* The one open thread atop the contract is the **attestation success path** (a *valid* token
+  accepted — only the rejection half is exercised).
 
 ---
 
