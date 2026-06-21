@@ -1,0 +1,14 @@
+/Users/hherb/src/cairn-ehr/.claude/worktrees/happy-volhard-24f06a/target/debug/deps/serde-c29aa1942089249c.d: /Users/hherb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/hherb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/hherb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/hherb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/hherb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/hherb/src/cairn-ehr/.claude/worktrees/happy-volhard-24f06a/target/debug/build/serde-40bf98eaf0675dd1/out/private.rs
+
+/Users/hherb/src/cairn-ehr/.claude/worktrees/happy-volhard-24f06a/target/debug/deps/libserde-c29aa1942089249c.rlib: /Users/hherb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/hherb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/hherb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/hherb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/hherb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/hherb/src/cairn-ehr/.claude/worktrees/happy-volhard-24f06a/target/debug/build/serde-40bf98eaf0675dd1/out/private.rs
+
+/Users/hherb/src/cairn-ehr/.claude/worktrees/happy-volhard-24f06a/target/debug/deps/libserde-c29aa1942089249c.rmeta: /Users/hherb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/hherb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/hherb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/hherb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/hherb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/hherb/src/cairn-ehr/.claude/worktrees/happy-volhard-24f06a/target/debug/build/serde-40bf98eaf0675dd1/out/private.rs
+
+/Users/hherb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs:
+/Users/hherb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs:
+/Users/hherb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs:
+/Users/hherb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs:
+/Users/hherb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs:
+/Users/hherb/src/cairn-ehr/.claude/worktrees/happy-volhard-24f06a/target/debug/build/serde-40bf98eaf0675dd1/out/private.rs:
+
+# env-dep:OUT_DIR=/Users/hherb/src/cairn-ehr/.claude/worktrees/happy-volhard-24f06a/target/debug/build/serde-40bf98eaf0675dd1/out
