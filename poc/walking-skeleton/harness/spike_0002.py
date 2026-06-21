@@ -48,7 +48,9 @@ def main():
         for t in ["recall_overlay","event_type_class","blob_chunk","blob_store",
                   "patient_chart","actor_event","event_log","hlc_state","sync_state"]:
             db.execute(f"DROP TABLE IF EXISTS {t} CASCADE")
-    sh(args.bin, "init", "--conn", args.conn)
+    rc, out, err = sh(args.bin, "init", "--conn", args.conn)
+    if rc != 0:
+        sys.exit(f"cairn-sync init failed: {err}")
 
     results = {}
     pid = str(uuid.uuid4())
@@ -94,7 +96,8 @@ def main():
         aid_b = db.execute("SELECT cairn_actor_id(%s)",
                           (json.dumps({"model":"triage-stub","version":"1","skill_epoch":"epoch-b"}),)).fetchone()[0]
         results["C4 version-pinned + recallable (overlay, no erase)"] = (
-            any(str(f[0]) == str(eid) for f in found) and n_after == n_before and aid_a != aid_b)
+            len(found) == 1 and str(found[0][0]) == str(eid)
+            and n_after == n_before and aid_a != aid_b)
 
         # ---- C5: the five hostile attacks all fail closed with legible reasons.
         c5_checks = []
@@ -166,6 +169,8 @@ def _raw_insert_denied(db):
             return False, "C5.4 raw INSERT: NOT denied (floor breached)"
         except psycopg.errors.InsufficientPrivilege as e:
             return True, f"C5.4 raw INSERT denied — {str(e).splitlines()[0]}"
+        except psycopg.Error as e:
+            return False, f"C5.4 raw INSERT: WRONG error (not a privilege denial) — {str(e).splitlines()[0]}"
     finally:
         try:
             db.execute("RESET ROLE")
