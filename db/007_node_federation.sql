@@ -123,6 +123,11 @@ BEGIN
     IF v_signer <> v_local_key THEN
         RAISE EXCEPTION 'submit_node_event: peering may be authored only by this node (signer % != local %)', v_signer, v_local_key;
     END IF;
+    -- subject_node_id is NOT NULL; a missing peer_node_id_hex would otherwise surface
+    -- as an opaque constraint error rather than a legible rejection.
+    IF v_payload ->> 'peer_node_id_hex' IS NULL THEN
+        RAISE EXCEPTION 'submit_node_event: % missing peer_node_id_hex in payload', v_type;
+    END IF;
 
     INSERT INTO node_event (node_event_id, op, author_node_id, subject_node_id,
         signer_key_id, peer_pubkey, fingerprint, role, scope_hint, target_event_id,
