@@ -43,8 +43,12 @@ DROP TRIGGER IF EXISTS node_event_no_update ON node_event;
 CREATE TRIGGER node_event_no_update BEFORE UPDATE OR DELETE ON node_event
     FOR EACH ROW EXECUTE FUNCTION node_event_is_append_only();
 
--- Map a node's CURRENT signing key to its genesis node_id (latest enroll per node,
--- no later revoke of that node). For v1 there is exactly one enroll per node_id.
+-- Map a node's CURRENT signing key to its genesis node_id (latest enroll per node).
+-- This is identity RESOLUTION, deliberately independent of peer TRUST: the `revoke`
+-- op is a *peer-trust* revocation (subject = an un-trusted peer), NOT a node
+-- decommission, so node_current intentionally still resolves an unpeered node's key
+-- to its node_id; whether that node is an active peer is trust_peer's job, checked
+-- separately by the admission gate. For v1 there is exactly one enroll per node_id.
 CREATE OR REPLACE VIEW node_current AS
 SELECT DISTINCT ON (ne.subject_node_id)
        ne.subject_node_id AS node_id, ne.signer_key_id, ne.recorded_at
