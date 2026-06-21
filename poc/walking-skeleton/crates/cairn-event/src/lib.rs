@@ -37,6 +37,8 @@ pub enum EventError {
     BadSignature,
     #[error("malformed key id (expected 32-byte Ed25519 public key)")]
     BadKeyId,
+    #[error("body signer_key_id does not match the key the signature verified against")]
+    SignerKeyMismatch,
     #[error("missing COSE payload")]
     NoPayload,
     #[error("entropy: {0}")]
@@ -242,7 +244,18 @@ pub fn verify_self_described(signed_bytes: &[u8]) -> Result<EventBody, EventErro
     let kid = key_id(signed_bytes)?;
     let bytes: [u8; 32] = kid.try_into().map_err(|_| EventError::BadKeyId)?;
     let vk = VerifyingKey::from_bytes(&bytes).map_err(|_| EventError::BadKeyId)?;
-    verify_with(signed_bytes, &vk)
+    let body = verify_with(signed_bytes, &vk)?;
+    // Bind the body's claimed signer to the key the signature actually verified
+    // against. The COSE header key is what the signature *proves*; body.signer_key_id
+    // is what the registry resolves and what the projection records as the author.
+    // If they may disagree, a holder of ANY (even unenrolled) key can author events
+    // that verify yet are ATTRIBUTED to an enrolled victim — forged authorship that
+    // also leaves signed_bytes (header key) inconsistent with the signer_key_id
+    // column. The signature must prove the claimed origin (founding principle 2).
+    if body.signer_key_id != hex::encode(bytes) {
+        return Err(EventError::SignerKeyMismatch);
+    }
+    Ok(body)
 }
 
 /// Mechanically derive the §3.13 plaintext legibility twin from a body. Crude on
@@ -309,6 +322,129 @@ pub fn bench_hash_mbps(total_mb: usize) -> (f64, f64) {
     (sha, blake)
 }
 
+/// A §3.9 contributor: who contributed, in what role, and — only when an
+/// attestation token backs it — whether they bear responsibility. The agent
+/// authors with role `triaged` and `responsibility = None`, so "AI-generated /
+/// un-vouched" is emergent (C1): there is no `is_ai` flag anywhere.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Contributor {
+    pub actor_id: String,
+    // TODO: a closed ContributorRole enum (ADR-0028) — String for the spike
+    pub role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub responsibility: Option<String>,
+}
+
+/// Render a contributor set as the JSON that rides in the signed body's
+/// `contributors` field (and lands in `event_log.contributors`).
+pub fn contributors_json(set: &[Contributor]) -> serde_json::Value {
+    serde_json::to_value(set).expect("contributor set serializes")
+}
+
+/// The payload of an attestation token: a human (or attesting actor) binds their
+/// key and a responsibility-bearing role to a specific event's content-address.
+/// Signed as a COSE_Sign1, verified in-DB by cairn_pgx (ADR-0008: the token, never
+/// the DB session, is what confers responsibility / stops a forged human author).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AttestationBody {
+    pub content_address_hex: String,
+    pub attester_key_id: String,
+    pub role: String,
+}
+
+/// Sign an attestation token over `content_address` (a COSE_Sign1, Ed25519).
+pub fn sign_attestation(
+    content_address: &[u8],
+    attester_key_id: &str,
+    role: &str,
+    sk: &SigningKey,
+) -> Result<Vec<u8>, EventError> {
+    use coset::{iana, CborSerializable, CoseSign1Builder, HeaderBuilder};
+    let body = AttestationBody {
+        content_address_hex: hex::encode(content_address),
+        attester_key_id: attester_key_id.to_string(),
+        role: role.to_string(),
+    };
+    let mut payload = Vec::new();
+    ciborium::into_writer(&body, &mut payload).map_err(|e| EventError::Cbor(e.to_string()))?;
+    let kid = sk.verifying_key().to_bytes().to_vec();
+    let protected = HeaderBuilder::new()
+        .algorithm(iana::Algorithm::EdDSA)
+        .key_id(kid)
+        .build();
+    let sign1 = CoseSign1Builder::new()
+        .protected(protected)
+        .payload(payload)
+        .create_signature(b"", |tbs| sk.sign(tbs).to_bytes().to_vec())
+        .build();
+    sign1.to_vec().map_err(|e| EventError::Cose(e.to_string()))
+}
+
+/// Verify an attestation token against `vk` and confirm it binds `content_address`.
+pub fn verify_attestation(token: &[u8], content_address: &[u8], vk: &VerifyingKey) -> bool {
+    use coset::{CborSerializable, CoseSign1};
+    let sign1 = match CoseSign1::from_slice(token) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let verified = sign1
+        .verify_signature(b"", |sig, tbs| {
+            let signature =
+                ed25519_dalek::Signature::from_slice(sig).map_err(|_| EventError::BadSignature)?;
+            vk.verify(tbs, &signature).map_err(|_| EventError::BadSignature)
+        })
+        .is_ok();
+    if !verified {
+        return false;
+    }
+    // COSE_Sign1 signs over the payload in its TBS structure, so the payload read below is exactly the bytes that were verified above.
+    let payload = match sign1.payload {
+        Some(p) => p,
+        None => return false,
+    };
+    let body: AttestationBody = match ciborium::from_reader(&payload[..]) {
+        Ok(b) => b,
+        Err(_) => return false,
+    };
+    body.content_address_hex == hex::encode(content_address)
+}
+
+/// Recursively sort object keys so the encoding is canonical regardless of input
+/// key order, then return the value re-built with BTreeMap-ordered objects.
+fn canonicalize(v: &serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+    match v {
+        Value::Object(m) => {
+            let mut sorted = serde_json::Map::new();
+            let mut keys: Vec<&String> = m.keys().collect();
+            keys.sort();
+            for k in keys {
+                sorted.insert(k.clone(), canonicalize(&m[k]));
+            }
+            Value::Object(sorted)
+        }
+        Value::Array(a) => Value::Array(a.iter().map(canonicalize).collect()),
+        other => other.clone(),
+    }
+}
+
+/// Content-address of an arbitrary JSON value: the `0x1220` sha2-256 multihash of
+/// its canonical CBOR encoding. Used to derive an actor's identity from its pinned
+/// determinant set (Spike 0002 / ADR-0011), so identity is the *hash of what is
+/// pinned* — bumping any determinant (incl. skill_epoch) yields a new identity.
+/// Determinant values are expected to be strings (model/version/skill_epoch); integer
+/// numbers encode deterministically, but float values are NOT guaranteed stable across
+/// serialization round-trips and must not be used as determinants.
+pub fn canonical_json_address(v: &serde_json::Value) -> Vec<u8> {
+    let canon = canonicalize(v);
+    let mut cbor = Vec::new();
+    ciborium::into_writer(&canon, &mut cbor).expect("canonical json encodes to CBOR");
+    use sha2::{Digest, Sha256};
+    let mut out = SHA2_256_MULTIHASH_PREFIX.to_vec();
+    out.extend_from_slice(&Sha256::digest(&cbor));
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -357,6 +493,23 @@ mod tests {
         let mid = tampered.len() / 2;
         tampered[mid] ^= 0x01;
         assert!(verify_self_described(&tampered).is_err());
+    }
+
+    // Spike 0002 review (attribution forgery): signing with one key while claiming
+    // another's signer_key_id must be rejected. The registry resolves the actor and
+    // the projection records the author from signer_key_id, so it has to be bound to
+    // the key the signature actually verified against.
+    #[test]
+    fn verify_rejects_body_claiming_a_different_signer_key() {
+        let (sk, _kid) = generate_key().unwrap();
+        let (_victim_sk, victim_kid) = generate_key().unwrap();
+        let mut body = sample();
+        body.signer_key_id = victim_kid; // claim the victim's key id...
+        let signed = sign(&body, &sk).unwrap(); // ...but sign with our own key
+        match verify_self_described(&signed.signed_bytes) {
+            Err(EventError::SignerKeyMismatch) => {}
+            other => panic!("expected SignerKeyMismatch, got {other:?}"),
+        }
     }
 
     #[test]
@@ -429,5 +582,81 @@ mod tests {
         // Right slice, wrong root -> reject.
         let other = blake3_root_from_address(&blob_address(b"different")).unwrap();
         assert!(verify_slice(&slice, &other, start, len).is_err());
+    }
+
+    #[test]
+    fn canonical_json_address_recurses_into_nested_objects_and_arrays() {
+        let a = canonical_json_address(&json!({
+            "outer": {"z": 1, "a": 2},
+            "list": [{"y": "1", "x": "2"}]
+        }));
+        let b = canonical_json_address(&json!({
+            "list": [{"x": "2", "y": "1"}],
+            "outer": {"a": 2, "z": 1}
+        }));
+        assert_eq!(a, b, "nested object/array key order must not change the address");
+    }
+
+    #[test]
+    fn canonical_json_address_is_stable_under_key_order() {
+        let a = canonical_json_address(&json!({"model": "m", "version": "1", "skill_epoch": "e"}));
+        let b = canonical_json_address(&json!({"version": "1", "skill_epoch": "e", "model": "m"}));
+        assert_eq!(a, b, "address must not depend on key order");
+        assert_eq!(a[0..2], SHA2_256_MULTIHASH_PREFIX);
+        assert_eq!(a.len(), 34);
+
+        // A different pinned value yields a different actor identity (the C4 supersede trigger).
+        let c = canonical_json_address(&json!({"model": "m", "version": "1", "skill_epoch": "e2"}));
+        assert_ne!(a, c);
+    }
+
+    #[test]
+    fn attestation_binds_key_and_content_address() {
+        let (sk, kid) = generate_key().unwrap();
+        let vk = sk.verifying_key();
+        let ca = event_address(b"some signed event bytes");
+
+        let token = sign_attestation(&ca, &kid, "attested", &sk).unwrap();
+        assert!(verify_attestation(&token, &ca, &vk), "valid token for right key + address");
+
+        // Wrong content-address -> reject (a token cannot be replayed onto another event).
+        let other = event_address(b"a different event");
+        assert!(!verify_attestation(&token, &other, &vk));
+
+        // Wrong key -> reject (a forged attester does not verify).
+        let other_vk = SigningKey::from_bytes(&[5u8; 32]).verifying_key();
+        assert!(!verify_attestation(&token, &ca, &other_vk));
+
+        // Tampered token bytes -> reject.
+        let mut bad = token.clone();
+        let m = bad.len() / 2;
+        bad[m] ^= 0x01;
+        assert!(!verify_attestation(&bad, &ca, &vk));
+    }
+
+    #[test]
+    fn agent_contributor_is_unvouched_by_construction() {
+        let set = vec![Contributor {
+            actor_id: "agent-aid".into(),
+            role: "triaged".into(),
+            responsibility: None,
+        }];
+        let v = contributors_json(&set);
+        // role present, NO responsibility key, NO is_ai flag anywhere (C1).
+        assert_eq!(v[0]["role"], json!("triaged"));
+        assert!(v[0].get("responsibility").is_none());
+        assert!(v[0].get("is_ai").is_none());
+    }
+
+    #[test]
+    fn attested_contributor_serializes_responsibility_key() {
+        let set = vec![Contributor {
+            actor_id: "clinician-aid".into(),
+            role: "attested".into(),
+            responsibility: Some("authored".into()),
+        }];
+        let v = contributors_json(&set);
+        assert_eq!(v[0]["role"], json!("attested"));
+        assert_eq!(v[0]["responsibility"], json!("authored"));
     }
 }

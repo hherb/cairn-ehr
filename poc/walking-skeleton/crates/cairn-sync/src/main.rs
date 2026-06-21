@@ -25,10 +25,13 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use cairn_event::{blob_address, plaintext_twin, sign, verify_self_described, EventBody, Hlc, SigningKey};
 use serde::{Deserialize, Serialize};
 
-const SCHEMA: [(&str, &str); 3] = [
+const SCHEMA: [(&str, &str); 6] = [
     ("001_envelope", include_str!("../../../db/001_envelope.sql")),
     ("002_projection", include_str!("../../../db/002_projection.sql")),
     ("003_blobs", include_str!("../../../db/003_blobs.sql")),
+    ("004_actors", include_str!("../../../db/004_actors.sql")),
+    ("005_submit", include_str!("../../../db/005_submit.sql")),
+    ("006_recall", include_str!("../../../db/006_recall.sql")),
 ];
 
 const SLICE_BYTES: usize = 256 * 1024; // window/slice granularity (tuned; amortizes bao tree overhead)
@@ -223,8 +226,37 @@ fn apply_signed(client: &mut postgres::Client, signed_bytes: &[u8]) -> R<bool> {
 // ---------------------------------------------------------------------------
 // Subcommands
 // ---------------------------------------------------------------------------
+
+/// Sign an EventBody supplied as JSON on stdin and emit hex COSE_Sign1 on stdout.
+/// Lets a non-Rust client (the Python agent stand-in) drive the write contract
+/// while Rust owns the canonical encoding + signature (one signer implementation).
+fn cmd_sign_stdin(key_path: &str) -> R<()> {
+    let (sk, _kid) = load_or_create_key(key_path)?;
+    let mut input = String::new();
+    io::stdin().read_to_string(&mut input)?;
+    let body: EventBody = serde_json::from_str(&input)?;
+    // Sign exactly what we were given — including a body.signer_key_id that may NOT
+    // match this key. That is deliberate: the helper is a dumb signer so the hostile
+    // C5.6 (impersonation) case can produce a mismatched event; the in-DB binding
+    // gate (verify_self_described) is the floor that rejects it.
+    let signed = sign(&body, &sk)?;
+    println!("{}", hex::encode(&signed.signed_bytes));
+    Ok(())
+}
+
+/// Print the hex Ed25519 public key (the kid) for `key_path`, creating the key if
+/// it does not yet exist. Lets a non-Rust client set body.signer_key_id correctly
+/// (it must match the signing key — see the binding gate in verify_self_described).
+fn cmd_key_id(key_path: &str) -> R<()> {
+    let (_sk, kid) = load_or_create_key(key_path)?;
+    println!("{kid}");
+    Ok(())
+}
+
 fn cmd_init(conn: &str) -> R<()> {
     let mut client = postgres::Client::connect(conn, postgres::NoTls)?;
+    // 004/005 call cairn_pgx functions; the extension must exist first.
+    client.batch_execute("CREATE EXTENSION IF NOT EXISTS cairn_pgx;")?;
     for (name, sql) in SCHEMA {
         client.batch_execute(sql)?;
         eprintln!("applied {name}");
@@ -1135,6 +1167,8 @@ USAGE (all take --conn <postgres-uri>):
   bench-insert --conn URI --node NAME --key PATH [--count N]   (Bet B B1: maintained-write latency)
   chart       --conn URI --patient UUID                        (Bet B B2: chart-read latency)
   bench       [--hash-mb N] [--sig-iters N] [--dek-iters N]    (Bet B B3/B4: crypto throughput, no DB)
+  sign-stdin  --key PATH    (read JSON EventBody on stdin, write hex COSE_Sign1 on stdout)
+  key-id      --key PATH    (print the hex Ed25519 public key / kid for the key file)
 
 Run over WireGuard; NoTls is intentional (the link is the transport)."
     );
@@ -1226,6 +1260,12 @@ fn main() -> R<()> {
             flag(&args, "--budget-ms").and_then(|s| s.parse().ok()).unwrap_or(20),
             &flag(&args, "--log").unwrap_or_else(|| "cairn-run.jsonl".into()),
             flag(&args, "--duration-s").and_then(|s| s.parse().ok()).unwrap_or(0),
+        )?,
+        "sign-stdin" => cmd_sign_stdin(
+            &flag(&args, "--key").unwrap_or_else(|| "agent.key".into()),
+        )?,
+        "key-id" => cmd_key_id(
+            &flag(&args, "--key").unwrap_or_else(|| "agent.key".into()),
         )?,
         _ => usage(),
     }
