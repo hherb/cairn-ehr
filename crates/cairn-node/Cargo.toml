@@ -17,6 +17,13 @@ base64 = "0.22"
 uuid = { version = "1", features = ["v7"] }
 thiserror = "1"
 anyhow = "1"
+# mTLS transport pinned to the trust set (Task 9). aws-lc-rs is rustls's default
+# crypto provider; we install it explicitly so the verifiers can delegate
+# handshake-signature checks to it.
+rustls = "0.23"
+tokio-rustls = "0.26"
+rcgen = { version = "0.13", default-features = false, features = ["pem", "aws_lc_rs"] }
+x509-parser = "0.16"
 
 [dev-dependencies]
 # integration tests connect to a local Postgres via $CAIRN_TEST_PG
