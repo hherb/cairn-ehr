@@ -6,6 +6,7 @@ fn cs() -> Option<String> { std::env::var("CAIRN_TEST_PG").ok() }
 #[tokio::test]
 async fn status_reports_peers_and_keystore_health() {
     let Some(base) = cs() else { eprintln!("skipped: set CAIRN_TEST_PG"); return; };
+    let _guard = db::test_serial_guard(&base).await.unwrap(); // serialize shared-DB tests
     let db = db::connect_and_load_schema(&base).await.unwrap();
     // Re-runnable: truncate before provisioning.
     db.batch_execute("TRUNCATE node_event, local_node").await.ok();

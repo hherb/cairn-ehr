@@ -20,15 +20,11 @@ fn cs_a() -> Option<String> { std::env::var("CAIRN_TEST_PG").ok() }
 fn cs_b() -> Option<String> { std::env::var("CAIRN_TEST_PG2").ok() }
 fn cs_c() -> Option<String> { std::env::var("CAIRN_TEST_PG3").ok() }
 
-/// Both DB-gated tests in this file share node A's (`CAIRN_TEST_PG`) and node B's
-/// (`CAIRN_TEST_PG2`) databases and each begins by TRUNCATEing them, so they must
-/// not interleave under the default parallel test runner. This file-scoped async
-/// mutex serializes them; the run command in the brief therefore needs no
-/// `--test-threads=1`.
-fn db_guard() -> &'static tokio::sync::Mutex<()> {
-    static GUARD: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
-    GUARD.get_or_init(|| tokio::sync::Mutex::new(()))
-}
+// Both DB-gated tests in this file share node A's (`CAIRN_TEST_PG`) database (and
+// B's/C's) and each begins by TRUNCATEing, so they must not interleave with each
+// other OR with the other shared-DB test binaries. `db::test_serial_guard` (a
+// Postgres advisory lock on CAIRN_TEST_PG) serializes them cluster-wide, so the run
+// command needs no `--test-threads=1`.
 
 /// Hand-build a `PairingBundle` for `peer` (node X) so node Y can author
 /// `peer.added(X)` from X's real node_id + pubkey + fingerprint.
@@ -49,7 +45,7 @@ async fn b_pulls_and_admits_a_genesis_over_mtls() {
         eprintln!("skipped: set CAIRN_TEST_PG and CAIRN_TEST_PG2");
         return;
     };
-    let _serial = db_guard().lock().await; // serialize with the E2E test (shared DBs A/B)
+    let _guard = db::test_serial_guard(&base_a).await.unwrap(); // serialize shared-DB tests
 
     // --- provision both nodes in their own fresh DBs ---
     let a = db::connect_and_load_schema(&base_a).await.unwrap();
@@ -130,7 +126,7 @@ async fn two_nodes_converge_then_unpeer_and_a_stranger_is_rejected() {
         eprintln!("skipped: set CAIRN_TEST_PG, CAIRN_TEST_PG2 and CAIRN_TEST_PG3");
         return;
     };
-    let _serial = db_guard().lock().await; // serialize with the Task 10 test (shared DBs A/B)
+    let _guard = db::test_serial_guard(&base_a).await.unwrap(); // serialize shared-DB tests
 
     // --- 1. provision A, B, C in their own fresh DBs ---
     let a = db::connect_and_load_schema(&base_a).await.unwrap();

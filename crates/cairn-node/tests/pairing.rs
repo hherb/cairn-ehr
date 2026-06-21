@@ -5,6 +5,7 @@ fn conn_str() -> Option<String> { std::env::var("CAIRN_TEST_PG").ok() }
 #[tokio::test]
 async fn pairing_records_an_active_peer_and_unpeer_revokes_it() {
     let Some(cs) = conn_str() else { eprintln!("skipped: set CAIRN_TEST_PG"); return; };
+    let _guard = db::test_serial_guard(&cs).await.unwrap(); // serialize shared-DB tests
     // Node A in this DB; "node B" is just a second keypair + a hand-built offer.
     let a = db::connect_and_load_schema(&cs).await.unwrap();
     // Re-runnable: truncate before provisioning.

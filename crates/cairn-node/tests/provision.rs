@@ -7,6 +7,7 @@ fn conn_str() -> Option<String> { std::env::var("CAIRN_TEST_PG").ok() }
 #[tokio::test]
 async fn provision_writes_genesis_identity() {
     let Some(cs) = conn_str() else { eprintln!("skipped: set CAIRN_TEST_PG"); return; };
+    let _guard = db::test_serial_guard(&cs).await.unwrap(); // serialize shared-DB tests
     let client = db::connect_and_load_schema(&cs).await.unwrap();
 
     // Reset state so the test is re-runnable. The append-only trigger blocks DELETE

@@ -23,3 +23,21 @@ pub async fn connect_and_load_schema(conn: &str) -> anyhow::Result<Client> {
     }
     Ok(client)
 }
+
+/// Test-support: a serialization guard for the DB-gated integration tests. They
+/// share Postgres databases and each `TRUNCATE`s its tables on entry, so running
+/// them concurrently — across test binaries OR within one binary — races. This
+/// acquires a SESSION-level advisory lock on a fixed key; the returned `Client`
+/// holds the lock until it is dropped at the end of the test (a panic still drops
+/// it, releasing the lock). Every caller must lock against the SAME database
+/// (`CAIRN_TEST_PG`) so the guard serializes regardless of whether the server
+/// scopes advisory locks per-cluster or per-database. (PR #28 review follow-up.)
+pub async fn test_serial_guard(conn: &str) -> anyhow::Result<Client> {
+    let client = connect(conn).await?;
+    // 0x4341524E = "CARN": a fixed project-specific key shared by every guard.
+    client
+        .execute("SELECT pg_advisory_lock($1)", &[&0x4341524E_i64])
+        .await
+        .map_err(|e| anyhow::anyhow!("acquiring test serialization lock: {e}"))?;
+    Ok(client)
+}

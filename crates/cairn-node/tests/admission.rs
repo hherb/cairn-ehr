@@ -6,6 +6,7 @@ fn cs() -> Option<String> { std::env::var("CAIRN_TEST_PG").ok() }
 #[tokio::test]
 async fn admission_admits_trusted_peer_genesis_and_rejects_strangers() {
     let Some(base) = cs() else { eprintln!("skipped"); return; };
+    let _guard = db::test_serial_guard(&base).await.unwrap(); // serialize shared-DB tests
     let a = db::connect_and_load_schema(&base).await.unwrap();
     // Re-runnable: truncate before provisioning.
     a.batch_execute("TRUNCATE node_event, local_node").await.ok();
@@ -65,6 +66,7 @@ async fn admission_admits_trusted_peer_genesis_and_rejects_strangers() {
 #[tokio::test]
 async fn admission_rejects_peer_event_from_an_unknown_signer() {
     let Some(base) = cs() else { eprintln!("skipped"); return; };
+    let _guard = db::test_serial_guard(&base).await.unwrap(); // serialize shared-DB tests
     let a = db::connect_and_load_schema(&base).await.unwrap();
     a.batch_execute("TRUNCATE node_event, local_node").await.ok();
 
@@ -114,6 +116,7 @@ async fn admission_rejects_peer_event_from_an_unknown_signer() {
 #[tokio::test]
 async fn admission_rejects_genesis_when_pinned_pubkey_mismatches_signer() {
     let Some(base) = cs() else { eprintln!("skipped"); return; };
+    let _guard = db::test_serial_guard(&base).await.unwrap(); // serialize shared-DB tests
     let a = db::connect_and_load_schema(&base).await.unwrap();
     a.batch_execute("TRUNCATE node_event, local_node").await.ok();
 
