@@ -172,4 +172,70 @@ ORDER BY ne.subject_node_id, ne.hlc_wall DESC, ne.hlc_counter DESC, ne.recorded_
 
 GRANT SELECT ON trust_peer TO cairn_node;
 
+-- The federation admission seam (ADR-0017 §8): the one safety-critical gate. An
+-- inbound, peer-authored node event enters the log only if it verifies AND its
+-- author is an out-of-band-confirmed, currently-active peer. Reject is legible.
+CREATE OR REPLACE FUNCTION apply_remote_node_event(p_signed BYTEA)
+RETURNS UUID
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    b JSONB; v_type TEXT; v_op TEXT; v_ca BYTEA; v_eid UUID; v_signer TEXT;
+    v_payload JSONB; v_author_node BYTEA;
+BEGIN
+    IF NOT cairn_verify(p_signed) THEN
+        RAISE EXCEPTION 'apply_remote_node_event: signature verification failed';
+    END IF;
+    b := cairn_body(p_signed);
+    v_type := b ->> 'event_type'; v_eid := (b ->> 'event_id')::uuid;
+    v_signer := b ->> 'signer_key_id'; v_payload := b -> 'payload';
+    v_ca := '\x1220'::bytea || digest(p_signed, 'sha256');
+    v_op := CASE v_type WHEN 'node.enrolled' THEN 'enroll' WHEN 'peer.added' THEN 'peer'
+                        WHEN 'peer.revoked' THEN 'revoke' ELSE NULL END;
+    IF v_op IS NULL THEN
+        RAISE EXCEPTION 'apply_remote_node_event: unknown node event_type % (fail closed)', v_type;
+    END IF;
+
+    IF v_op = 'enroll' THEN
+        -- The genesis must match an active, out-of-band-confirmed peer: its
+        -- content-address is the node_id we trust, and its key is the pubkey we pinned.
+        IF NOT EXISTS (SELECT 1 FROM trust_peer
+                       WHERE peer_node_id = v_ca AND status = 'active' AND peer_pubkey = v_signer) THEN
+            RAISE EXCEPTION 'apply_remote_node_event: genesis from an un-trusted or mismatched node (deny-all default)';
+        END IF;
+        INSERT INTO node_event (node_event_id, op, author_node_id, subject_node_id,
+            signer_key_id, hlc_wall, hlc_counter, node_origin, signed_bytes, content_address)
+        VALUES (v_eid, 'enroll', v_ca, v_ca, v_signer,
+            (b -> 'hlc' ->> 'wall')::bigint, (b -> 'hlc' ->> 'counter')::int,
+            b -> 'hlc' ->> 'node_origin', p_signed, v_ca)
+        ON CONFLICT (node_event_id) DO NOTHING;
+        RETURN v_eid;
+    END IF;
+
+    -- peer/revoke: the author must be a currently-trusted peer (resolved by key).
+    SELECT node_id INTO v_author_node FROM node_current WHERE signer_key_id = v_signer;
+    IF v_author_node IS NULL THEN
+        RAISE EXCEPTION 'apply_remote_node_event: author key % maps to no known node', v_signer;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM trust_peer WHERE peer_node_id = v_author_node AND status = 'active') THEN
+        RAISE EXCEPTION 'apply_remote_node_event: author % is not an active peer (deny-all)', encode(v_author_node,'hex');
+    END IF;
+    INSERT INTO node_event (node_event_id, op, author_node_id, subject_node_id,
+        signer_key_id, peer_pubkey, fingerprint, role, scope_hint, target_event_id,
+        hlc_wall, hlc_counter, node_origin, signed_bytes, content_address)
+    VALUES (v_eid, v_op, v_author_node,
+        decode(COALESCE(v_payload ->> 'peer_node_id_hex','00'),'hex'),
+        v_signer, v_payload ->> 'peer_pubkey', v_payload ->> 'fingerprint',
+        v_payload ->> 'role', v_payload ->> 'scope_hint',
+        NULLIF(v_payload ->> 'target_event_id','')::uuid,
+        (b -> 'hlc' ->> 'wall')::bigint, (b -> 'hlc' ->> 'counter')::int,
+        b -> 'hlc' ->> 'node_origin', p_signed, v_ca)
+    ON CONFLICT (node_event_id) DO NOTHING;
+    RETURN v_eid;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION apply_remote_node_event(bytea) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION apply_remote_node_event(bytea) TO cairn_node;
+
 COMMIT;

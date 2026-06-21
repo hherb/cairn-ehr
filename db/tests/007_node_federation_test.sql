@@ -68,4 +68,15 @@ VALUES (gen_random_uuid(),'revoke', '\x1220'||digest('SELF','sha256'), '\x1220'|
     'selfkey',2,0,'SELF','p2','\x1220'||digest('p2','sha256'));
 SELECT (status = 'revoked') AS peer_is_revoked FROM trust_peer WHERE peer_node_id = '\x1220'||digest('P','sha256');
 
+-- A well-formed but UNSIGNED blob is rejected by the admission gate (fail closed).
+DO $$ BEGIN
+    BEGIN
+        PERFORM apply_remote_node_event('\xdeadbeef'::bytea);
+        RAISE EXCEPTION 'admission FAILED: malformed remote event accepted';
+    EXCEPTION WHEN others THEN
+        IF SQLERRM LIKE '%verify%' OR SQLERRM LIKE '%signature%'
+            THEN RAISE NOTICE 'admission fail-closed OK'; ELSE RAISE; END IF;
+    END;
+END $$;
+
 ROLLBACK;
