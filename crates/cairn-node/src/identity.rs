@@ -1,4 +1,5 @@
 use cairn_event::{event_address, short_fingerprint, sign, EventBody, Hlc, PairingBundle, SigningKey};
+use std::path::Path;
 use tokio_postgres::Client;
 
 pub const NIL_PATIENT: &str = "00000000-0000-0000-0000-000000000000";
@@ -103,6 +104,61 @@ pub async fn author_unpeer(
     let bytes = signed.signed_bytes.clone();
     db.execute("SELECT submit_node_event($1)", &[&bytes]).await?;
     Ok(hex::encode(event_address(&signed.signed_bytes)))
+}
+
+// ---------------------------------------------------------------------------
+// Node status
+// ---------------------------------------------------------------------------
+
+/// A snapshot of this node's assembly state, suitable for one-per-line display.
+#[derive(Debug)]
+pub struct Status {
+    pub node_id_hex: String,
+    pub peers_active: i64,
+    pub peers_revoked: i64,
+    /// `true` iff the key file exists and loads as a valid 32-byte Ed25519 seed.
+    /// Missing or unreadable key: `false` — honest degradation, not an error.
+    pub keystore_ok: bool,
+    /// Hard-coded stub (ADR-0026): no recovery escrow in v1.
+    pub dr_escrow: String,
+}
+
+/// Assemble the node's current status without erroring on a missing keystore.
+///
+/// `key_path` is the path to the node's signing-key file.  If the file is
+/// absent or corrupt, `keystore_ok` is set to `false` and the rest of the
+/// struct is still populated (honest degradation).
+pub async fn status(db: &Client, key_path: &Path) -> anyhow::Result<Status> {
+    // Load the local node identity for the node_id.
+    let id = load_local(db).await?;
+
+    // Count peers by status from trust_peer.
+    let rows = db.query(
+        "SELECT status, count(*) AS cnt FROM trust_peer GROUP BY status",
+        &[],
+    ).await?;
+    let mut peers_active: i64 = 0;
+    let mut peers_revoked: i64 = 0;
+    for row in &rows {
+        let s: String = row.get("status");
+        let cnt: i64 = row.get("cnt");
+        match s.as_str() {
+            "active"  => peers_active  = cnt,
+            "revoked" => peers_revoked = cnt,
+            _         => {}
+        }
+    }
+
+    // Keystore health: try to load the key; a missing/invalid file is not an error.
+    let keystore_ok = crate::keystore::load(key_path, None).is_ok();
+
+    Ok(Status {
+        node_id_hex: id.node_id_hex,
+        peers_active,
+        peers_revoked,
+        keystore_ok,
+        dr_escrow: "STUBBED (ADR-0026): no recovery escrow; key loss = node loss".into(),
+    })
 }
 
 /// Query the `trust_peer` view and return the current peer set.

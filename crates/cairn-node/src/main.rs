@@ -31,6 +31,8 @@ enum Cmd {
     Peers,
     /// Revoke trust for a peer node.
     Unpeer { node_id: String },
+    /// Print this node's honest assembly state (peers, keystore health, DR escrow stub).
+    Status,
     /// Serve this node's `node_event` log to pinned-mTLS peers (federation sync).
     Serve {
         #[arg(long, default_value = "0.0.0.0:7843")]
@@ -119,6 +121,18 @@ async fn main() -> anyhow::Result<()> {
                 &db, &sk, &kid, &id.node_id_hex, &node_id,
             ).await?;
             println!("unpeered {node_id}");
+        }
+        Cmd::Status => {
+            let db = cairn_node::db::connect(&cli.conn).await?;
+            let st = cairn_node::identity::status(&db, &cli.key).await?;
+            println!("node_id       {}", st.node_id_hex);
+            println!("peers_active  {}", st.peers_active);
+            println!("peers_revoked {}", st.peers_revoked);
+            println!("keystore_ok   {}", st.keystore_ok);
+            if !st.keystore_ok {
+                println!("              (cannot author: keystore unreadable)");
+            }
+            println!("dr_escrow     {}", st.dr_escrow);
         }
         Cmd::Serve { listen } => {
             use cairn_node::sync;
