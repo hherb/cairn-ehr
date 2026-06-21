@@ -64,9 +64,15 @@ def author(conn_str, bin_path, key_path, blob_addr_hex, patient_id):
 
 
 if __name__ == "__main__":
-    # CLI: author --conn … --bin … --key … --blob-addr … --patient …
-    args = dict(zip(sys.argv[2::2], sys.argv[3::2])) if len(sys.argv) > 2 else {}
-    if sys.argv[1] == "author":
-        eid = author(args["--conn"], args["--bin"], args["--key"],
-                     args["--blob-addr"], args["--patient"])
-        print(eid)
+    USAGE = ("usage: agent_standin.py author --conn CONN --bin PATH "
+             "--key PATH --blob-addr HEX --patient UUID")
+    if len(sys.argv) < 2 or sys.argv[1] != "author":
+        sys.exit(USAGE)
+    args = dict(zip(sys.argv[2::2], sys.argv[3::2]))
+    required = ["--conn", "--bin", "--key", "--blob-addr", "--patient"]
+    missing = [k for k in required if k not in args]
+    if missing:
+        sys.exit(f"missing required args: {', '.join(missing)}\n{USAGE}")
+    eid = author(args["--conn"], args["--bin"], args["--key"],
+                 args["--blob-addr"], args["--patient"])
+    print(eid)
