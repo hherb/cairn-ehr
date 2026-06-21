@@ -309,6 +309,24 @@ pub fn bench_hash_mbps(total_mb: usize) -> (f64, f64) {
     (sha, blake)
 }
 
+/// A §3.9 contributor: who contributed, in what role, and — only when an
+/// attestation token backs it — whether they bear responsibility. The agent
+/// authors with role `triaged` and `responsibility = None`, so "AI-generated /
+/// un-vouched" is emergent (C1): there is no `is_ai` flag anywhere.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Contributor {
+    pub actor_id: String,
+    pub role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub responsibility: Option<String>,
+}
+
+/// Render a contributor set as the JSON that rides in the signed body's
+/// `contributors` field (and lands in `event_log.contributors`).
+pub fn contributors_json(set: &[Contributor]) -> serde_json::Value {
+    serde_json::to_value(set).expect("contributor set serializes")
+}
+
 /// The payload of an attestation token: a human (or attesting actor) binds their
 /// key and a responsibility-bearing role to a specific event's content-address.
 /// Signed as a COSE_Sign1, verified in-DB by cairn_pgx (ADR-0008: the token, never
@@ -583,5 +601,19 @@ mod tests {
         let m = bad.len() / 2;
         bad[m] ^= 0x01;
         assert!(!verify_attestation(&bad, &ca, &vk));
+    }
+
+    #[test]
+    fn agent_contributor_is_unvouched_by_construction() {
+        let set = vec![Contributor {
+            actor_id: "agent-aid".into(),
+            role: "triaged".into(),
+            responsibility: None,
+        }];
+        let v = contributors_json(&set);
+        // role present, NO responsibility key, NO is_ai flag anywhere (C1).
+        assert_eq!(v[0]["role"], json!("triaged"));
+        assert!(v[0].get("responsibility").is_none());
+        assert!(v[0].get("is_ai").is_none());
     }
 }
