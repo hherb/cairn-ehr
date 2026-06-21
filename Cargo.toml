@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "crates/cairn-event",
     "crates/cairn-sync",
-    # cairn-node added in Task 6
+    "crates/cairn-node", # cairn-node added in Task 6
 ]
 exclude = ["extensions/cairn_pgx"]
 

@@ -60,7 +60,8 @@ ORDER BY ne.subject_node_id, ne.recorded_at DESC;
 CREATE TABLE IF NOT EXISTS local_node (
     id       BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (id),
     node_id  BYTEA NOT NULL,
-    signer_key_id TEXT NOT NULL
+    signer_key_id TEXT NOT NULL,
+    address  TEXT
 );
 
 DO $$ BEGIN
@@ -112,7 +113,7 @@ BEGIN
         VALUES (v_eid, 'enroll', v_ca, v_ca, v_signer,
             (b -> 'hlc' ->> 'wall')::bigint, (b -> 'hlc' ->> 'counter')::int,
             b -> 'hlc' ->> 'node_origin', p_signed, v_ca);
-        INSERT INTO local_node (id, node_id, signer_key_id) VALUES (TRUE, v_ca, v_signer);
+        INSERT INTO local_node (id, node_id, signer_key_id, address) VALUES (TRUE, v_ca, v_signer, v_payload ->> 'address');
         RETURN v_eid;
     END IF;
 
