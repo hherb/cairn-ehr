@@ -284,8 +284,23 @@ pub async fn client_config(
 /// the in-DB admission gate. Per-event rejections are **non-fatal** (logged with the
 /// legible DB reason) — deny-all for an un-trusted author is the expected case, so
 /// one rejected event must never abort the pull.
+///
+/// Opens its own short-lived DB connection. The `run` loop instead calls
+/// [`pull_into`] with the connection it already opened for the trust refresh, so a
+/// cycle uses ONE connection rather than two (PR #28 review follow-up).
 pub async fn pull_once(peer: SocketAddr, cfg: PullConfig) -> anyhow::Result<PullStats> {
-    let connector = TlsConnector::from(cfg.tls);
+    let db = db::connect(&cfg.db_conn).await.context("pull: connecting to DB")?;
+    pull_into(peer, cfg.tls, &db).await
+}
+
+/// The pull itself, applying admitted events into an already-open `db`. Factored
+/// out so the caller controls the connection lifetime (one per `run` cycle).
+pub async fn pull_into(
+    peer: SocketAddr,
+    tls: Arc<ClientConfig>,
+    db: &Client,
+) -> anyhow::Result<PullStats> {
+    let connector = TlsConnector::from(tls);
     let tcp = TcpStream::connect(peer).await.with_context(|| format!("connecting to {peer}"))?;
     // The pinned server cert's SAN is "cairn-node" (see transport::node_cert); the
     // ServerName is cosmetic here because the custom verifier pins on the key, not
@@ -297,7 +312,6 @@ pub async fn pull_once(peer: SocketAddr, cfg: PullConfig) -> anyhow::Result<Pull
     let req = Request::NodeEventsAfter { after_id: None };
     write_frame(&mut tls, &serde_json::to_vec(&req)?).await.context("sending request")?;
 
-    let db = db::connect(&cfg.db_conn).await.context("pull: connecting to DB")?;
     let mut stats = PullStats::default();
     while let Some(frame) = read_frame(&mut tls).await.context("reading a response frame")? {
         stats.received += 1;
@@ -352,25 +366,34 @@ pub async fn run(
     let mut ticker = tokio::time::interval(std::time::Duration::from_secs(interval_secs.max(1)));
     loop {
         ticker.tick().await;
+        // ONE DB connection per cycle, used for BOTH the trust refresh and applying
+        // the pull's admitted events (previously this opened two short-lived
+        // connections per cycle — PR #28 review follow-up). It is dropped at the end
+        // of the iteration, so the loop never accumulates connections and a DB
+        // restart is picked up by the next cycle's reconnect.
+        let cycle_db = match db::connect(&db_conn).await {
+            Ok(c) => c,
+            // No DB this cycle: the serve side keeps running on the last-known trust
+            // set (availability over consistency), and there is no point pulling
+            // events we could not apply, so skip the pull until the DB is back.
+            Err(e) => {
+                eprintln!("run: DB unreachable, serving last-known set, skipping pull: {e}");
+                if serve_handle.is_finished() {
+                    anyhow::bail!("run: serve task exited unexpectedly");
+                }
+                continue;
+            }
+        };
         // Re-snapshot the live set so peering changes since the last cycle apply to
         // serve AND pull. A failed refresh is non-fatal: the last-known set stays in
-        // force and we still attempt the pull. During a DB outage a pending
-        // revocation therefore lands only once the DB is reachable again — the
-        // deliberate availability-over-consistency trade (we never halt federation
-        // on a transient DB blip), and the still-pinned mTLS + in-DB admission gate
-        // remain the hard floor regardless.
-        match db::connect(&db_conn).await {
-            Ok(c) => {
-                if let Err(e) = refresh_trust_set(&c, &trust_set).await {
-                    eprintln!("run: trust refresh failed, serving last-known set: {e}");
-                }
-            }
-            Err(e) => {
-                eprintln!("run: DB unreachable for trust refresh, serving last-known set: {e}")
-            }
+        // force. During a DB outage a pending revocation therefore lands only once
+        // the DB is reachable again — the deliberate availability-over-consistency
+        // trade (we never halt federation on a transient DB blip); the still-pinned
+        // mTLS + in-DB admission gate remain the hard floor regardless.
+        if let Err(e) = refresh_trust_set(&cycle_db, &trust_set).await {
+            eprintln!("run: trust refresh failed, serving last-known set: {e}");
         }
-        let cfg = PullConfig { tls: client_tls.clone(), db_conn: db_conn.clone() };
-        match pull_once(peer, cfg).await {
+        match pull_into(peer, client_tls.clone(), &cycle_db).await {
             Ok(s) => eprintln!(
                 "run: pull {peer}: received={} admitted={} rejected={}",
                 s.received, s.admitted, s.rejected

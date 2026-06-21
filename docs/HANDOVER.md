@@ -68,8 +68,10 @@ verifiers got adversarial opus reviews; final whole-branch review = *ready to me
   the runtime should connect as a login role granted `cairn_node` (NOLOGIN); `status` now reports
   `db_floor ENFORCED`/`BYPASSABLE` for the connected role, and key-at-rest as plaintext-0600 (ADR-0026 seal
   pending). Build-prep tooling note: the DB-gated tests
-  need a local PG with `cairn_pgx` installed (`cargo pgrx install` against PG16) and run serialized
-  (several integration files share databases).
+  need a local PG with `cairn_pgx` installed (`cargo pgrx install` against PG16); they share databases
+  but now self-serialize cluster-wide via a Postgres advisory lock (`db::test_serial_guard`), so a plain
+  parallel `cargo test --workspace` is reliable — no `--test-threads=1` needed. `run` also opens one DB
+  connection per cycle (refresh + pull) instead of two.
 - **Still build-prep beyond this slice:** the **Bet B Pi compute-cost run** (awaiting the board) and
   continued **clinical case-mining**. Two ADRs remain unblocked from Spike 0002 (skill-epoch refinement
   to ADR-0011; advisory-actor integration contract) — natural next generative steps.
