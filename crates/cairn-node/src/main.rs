@@ -15,6 +15,21 @@ enum Cmd {
     Init { #[arg(long)] name: String, #[arg(long)] address: String },
     /// Print this node's identity (node_id, pubkey, fingerprint, address).
     Identity,
+    /// Generate a signed pairing offer (base64) for out-of-band exchange.
+    PairOffer {
+        #[arg(long, default_value = "cairn")]
+        nonce: String,
+    },
+    /// Accept a peer's pairing offer (base64).  Prints the peer fingerprint and
+    /// requires a typed YES confirmation before authoring the peer.added event.
+    PairAccept {
+        offer: String,
+        #[arg(long)] role: Option<String>,
+    },
+    /// List all peers (active and revoked).
+    Peers,
+    /// Revoke trust for a peer node.
+    Unpeer { node_id: String },
 }
 
 #[tokio::main]
@@ -32,6 +47,59 @@ async fn main() -> anyhow::Result<()> {
             let id = cairn_node::identity::load_local(&db).await?;
             println!("node_id     {}\npubkey      {}\nfingerprint {}\naddress     {}",
                 id.node_id_hex, id.pubkey_hex, id.fingerprint, id.address);
+        }
+        Cmd::PairOffer { nonce } => {
+            let sk = cairn_node::keystore::load(&cli.key, None)?;
+            let db = cairn_node::db::connect(&cli.conn).await?;
+            let id = cairn_node::identity::load_local(&db).await?;
+            let offer = cairn_node::pairing::make_offer(&id, &sk, &nonce)?;
+            println!("{offer}");
+        }
+        Cmd::PairAccept { offer, role } => {
+            let bundle = cairn_node::pairing::read_offer(&offer)?;
+            eprintln!(
+                "Peer fingerprint: {}\nConfirm it matches what the peer displays, then type YES:",
+                bundle.fingerprint
+            );
+            let mut line = String::new();
+            std::io::stdin().read_line(&mut line)?;
+            if line.trim() != "YES" {
+                anyhow::bail!("pairing aborted: fingerprint not confirmed");
+            }
+            let sk = cairn_node::keystore::load(&cli.key, None)?;
+            let db = cairn_node::db::connect(&cli.conn).await?;
+            let id = cairn_node::identity::load_local(&db).await?;
+            let kid = id.pubkey_hex.clone();
+            cairn_node::identity::author_peer(
+                &db, &sk, &kid, &id.node_id_hex, &bundle, role.as_deref(),
+            ).await?;
+            println!("peered with {}", bundle.node_id_hex);
+        }
+        Cmd::Peers => {
+            let db = cairn_node::db::connect(&cli.conn).await?;
+            let peers = cairn_node::identity::list_peers(&db).await?;
+            if peers.is_empty() {
+                println!("no peers");
+            } else {
+                for p in &peers {
+                    println!(
+                        "{} fp={} role={} status={}",
+                        p.peer_node_id_hex,
+                        p.fingerprint,
+                        p.role.as_deref().unwrap_or("-"),
+                        p.status,
+                    );
+                }
+            }
+        }
+        Cmd::Unpeer { node_id } => {
+            let sk = cairn_node::keystore::load(&cli.key, None)?;
+            let db = cairn_node::db::connect(&cli.conn).await?;
+            let id = cairn_node::identity::load_local(&db).await?;
+            cairn_node::identity::author_unpeer(
+                &db, &sk, &id.pubkey_hex, &id.node_id_hex, &node_id,
+            ).await?;
+            println!("unpeered {node_id}");
         }
     }
     Ok(())

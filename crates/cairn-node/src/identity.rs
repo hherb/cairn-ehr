@@ -1,4 +1,4 @@
-use cairn_event::{event_address, short_fingerprint, sign, EventBody, Hlc, SigningKey};
+use cairn_event::{event_address, short_fingerprint, sign, EventBody, Hlc, PairingBundle, SigningKey};
 use tokio_postgres::Client;
 
 pub const NIL_PATIENT: &str = "00000000-0000-0000-0000-000000000000";
@@ -48,4 +48,74 @@ pub async fn load_local(db: &Client) -> anyhow::Result<Identity> {
         pubkey_hex,
         address: row.get("address"),
     })
+}
+
+// ---------------------------------------------------------------------------
+// Peering authorship
+// ---------------------------------------------------------------------------
+
+/// A row from the `trust_peer` view.
+pub struct PeerRow {
+    pub peer_node_id_hex: String,
+    pub fingerprint: String,
+    pub role: Option<String>,
+    pub status: String,
+}
+
+/// Author a `peer.added` event and submit it.
+///
+/// The payload includes `peer_node_id_hex` (required by the submit door),
+/// `peer_pubkey`, `fingerprint`, and the optional `role`.
+pub async fn author_peer(
+    db: &Client,
+    sk: &SigningKey,
+    key_id: &str,
+    node_origin: &str,
+    peer: &PairingBundle,
+    role: Option<&str>,
+) -> anyhow::Result<String> {
+    let body = node_event_body("peer.added", key_id, node_origin, 0, 0, serde_json::json!({
+        "peer_node_id_hex": peer.node_id_hex,
+        "peer_pubkey":      peer.pubkey_hex,
+        "fingerprint":      peer.fingerprint,
+        "role":             role,
+    }));
+    let signed = sign(&body, sk)?;
+    let bytes = signed.signed_bytes.clone();
+    db.execute("SELECT submit_node_event($1)", &[&bytes]).await?;
+    Ok(hex::encode(event_address(&signed.signed_bytes)))
+}
+
+/// Author a `peer.revoked` event and submit it.
+///
+/// The payload includes `peer_node_id_hex` (required by the submit door).
+pub async fn author_unpeer(
+    db: &Client,
+    sk: &SigningKey,
+    key_id: &str,
+    node_origin: &str,
+    peer_node_id_hex: &str,
+) -> anyhow::Result<String> {
+    let body = node_event_body("peer.revoked", key_id, node_origin, 0, 0, serde_json::json!({
+        "peer_node_id_hex": peer_node_id_hex,
+    }));
+    let signed = sign(&body, sk)?;
+    let bytes = signed.signed_bytes.clone();
+    db.execute("SELECT submit_node_event($1)", &[&bytes]).await?;
+    Ok(hex::encode(event_address(&signed.signed_bytes)))
+}
+
+/// Query the `trust_peer` view and return the current peer set.
+pub async fn list_peers(db: &Client) -> anyhow::Result<Vec<PeerRow>> {
+    let rows = db.query(
+        "SELECT encode(peer_node_id,'hex') AS pid, COALESCE(fingerprint,'') AS fp, role, status
+         FROM trust_peer ORDER BY pid",
+        &[],
+    ).await?;
+    Ok(rows.iter().map(|r| PeerRow {
+        peer_node_id_hex: r.get("pid"),
+        fingerprint:      r.get("fp"),
+        role:             r.get("role"),
+        status:           r.get("status"),
+    }).collect())
 }
