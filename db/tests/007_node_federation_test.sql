@@ -31,4 +31,26 @@ DO $$ BEGIN
     END;
 END $$;
 
+-- C7.1: cairn_node may not raw-INSERT into node_event (grant floor).
+DO $$ BEGIN
+    SET LOCAL ROLE cairn_node;
+    BEGIN
+        INSERT INTO node_event (node_event_id, op, author_node_id, subject_node_id,
+            signer_key_id, hlc_wall, hlc_counter, node_origin, signed_bytes, content_address)
+        VALUES (gen_random_uuid(),'enroll','\x00','\x00','k',0,0,'X','b','\x1220'||digest('b','sha256'));
+        RESET ROLE; RAISE EXCEPTION 'grant-floor FAILED: raw INSERT succeeded';
+    EXCEPTION WHEN insufficient_privilege THEN RESET ROLE; RAISE NOTICE 'grant-floor OK'; END;
+END $$;
+
+-- C7.2: submit_node_event rejects unsigned/malformed bytes with a legible reason (fail closed).
+DO $$ BEGIN
+    BEGIN
+        PERFORM submit_node_event('\xdeadbeef'::bytea);
+        RAISE EXCEPTION 'fail-closed FAILED: malformed node event accepted';
+    EXCEPTION WHEN others THEN
+        IF SQLERRM LIKE '%signature%' OR SQLERRM LIKE '%verify%'
+            THEN RAISE NOTICE 'fail-closed OK: %', SQLERRM; ELSE RAISE; END IF;
+    END;
+END $$;
+
 ROLLBACK;

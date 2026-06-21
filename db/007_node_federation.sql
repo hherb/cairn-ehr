@@ -63,4 +63,87 @@ CREATE TABLE IF NOT EXISTS local_node (
     signer_key_id TEXT NOT NULL
 );
 
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'cairn_node') THEN
+        CREATE ROLE cairn_node NOLOGIN;
+    END IF;
+END $$;
+
+-- The ONE local authoring door for node/peering events. Verifies in-DB, derives
+-- op from event_type, and enforces: enroll is once-only and self; peer/revoke are
+-- authored only by THIS node's current key. Every rejection is legible.
+CREATE OR REPLACE FUNCTION submit_node_event(p_signed BYTEA)
+RETURNS UUID
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    b JSONB; v_type TEXT; v_op TEXT; v_ca BYTEA; v_eid UUID;
+    v_local_node BYTEA; v_local_key TEXT; v_signer TEXT; v_payload JSONB;
+BEGIN
+    IF NOT cairn_verify(p_signed) THEN
+        RAISE EXCEPTION 'submit_node_event: signature verification failed (unsigned or malformed)';
+    END IF;
+    b := cairn_body(p_signed);
+    IF b IS NULL THEN
+        RAISE EXCEPTION 'submit_node_event: body could not be parsed after verify';
+    END IF;
+    v_type   := b ->> 'event_type';
+    v_eid    := (b ->> 'event_id')::uuid;
+    v_signer := b ->> 'signer_key_id';
+    v_payload := b -> 'payload';
+    v_ca     := '\x1220'::bytea || digest(p_signed, 'sha256');
+    v_op := CASE v_type
+        WHEN 'node.enrolled' THEN 'enroll'
+        WHEN 'peer.added'    THEN 'peer'
+        WHEN 'peer.revoked'  THEN 'revoke'
+        ELSE NULL END;
+    IF v_op IS NULL THEN
+        RAISE EXCEPTION 'submit_node_event: unknown node event_type % (fail closed)', v_type;
+    END IF;
+
+    SELECT node_id, signer_key_id INTO v_local_node, v_local_key FROM local_node WHERE id;
+
+    IF v_op = 'enroll' THEN
+        IF v_local_node IS NOT NULL THEN
+            RAISE EXCEPTION 'submit_node_event: this node is already enrolled (genesis is once-only)';
+        END IF;
+        INSERT INTO node_event (node_event_id, op, author_node_id, subject_node_id,
+            signer_key_id, hlc_wall, hlc_counter, node_origin, signed_bytes, content_address)
+        VALUES (v_eid, 'enroll', v_ca, v_ca, v_signer,
+            (b -> 'hlc' ->> 'wall')::bigint, (b -> 'hlc' ->> 'counter')::int,
+            b -> 'hlc' ->> 'node_origin', p_signed, v_ca);
+        INSERT INTO local_node (id, node_id, signer_key_id) VALUES (TRUE, v_ca, v_signer);
+        RETURN v_eid;
+    END IF;
+
+    -- peer / revoke: authored only by this node's own current key.
+    IF v_local_node IS NULL THEN
+        RAISE EXCEPTION 'submit_node_event: node not yet enrolled; cannot author peering';
+    END IF;
+    IF v_signer <> v_local_key THEN
+        RAISE EXCEPTION 'submit_node_event: peering may be authored only by this node (signer % != local %)', v_signer, v_local_key;
+    END IF;
+
+    INSERT INTO node_event (node_event_id, op, author_node_id, subject_node_id,
+        signer_key_id, peer_pubkey, fingerprint, role, scope_hint, target_event_id,
+        hlc_wall, hlc_counter, node_origin, signed_bytes, content_address)
+    VALUES (v_eid, v_op, v_local_node,
+        decode(v_payload ->> 'peer_node_id_hex','hex'),
+        v_signer, v_payload ->> 'peer_pubkey', v_payload ->> 'fingerprint',
+        v_payload ->> 'role', v_payload ->> 'scope_hint',
+        NULLIF(v_payload ->> 'target_event_id','')::uuid,
+        (b -> 'hlc' ->> 'wall')::bigint, (b -> 'hlc' ->> 'counter')::int,
+        b -> 'hlc' ->> 'node_origin', p_signed, v_ca)
+    ON CONFLICT (node_event_id) DO NOTHING;
+    RETURN v_eid;
+END;
+$$;
+
+REVOKE INSERT, UPDATE, DELETE ON node_event FROM PUBLIC;
+REVOKE INSERT, UPDATE, DELETE ON node_event FROM cairn_node;
+REVOKE INSERT, UPDATE, DELETE ON local_node FROM PUBLIC, cairn_node;
+REVOKE EXECUTE ON FUNCTION submit_node_event(bytea) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION submit_node_event(bytea) TO cairn_node;
+GRANT SELECT ON node_event, node_current, local_node TO cairn_node;
+
 COMMIT;
