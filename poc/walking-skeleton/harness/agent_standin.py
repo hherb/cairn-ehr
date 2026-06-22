@@ -44,6 +44,8 @@ def attest(bin_path, key_path, content_address_hex, role="attested"):
     Like _sign, this is a dumb signer: it attests whatever address it is handed, so a
     test can build a wrong-address token. The in-DB floor is what rejects a mis-binding.
     """
+    # attest-stdin needs the attester's kid for the AttestationBody (unlike sign-stdin,
+    # which derives the signer kid from the key itself).
     kid = key_id(bin_path, key_path)
     body = {"content_address_hex": content_address_hex, "attester_key_id": kid, "role": role}
     p = subprocess.run([bin_path, "attest-stdin", "--key", key_path],

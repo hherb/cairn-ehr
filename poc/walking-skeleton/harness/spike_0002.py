@@ -25,6 +25,9 @@ def sh(bin_path, *a, stdin=None):
 
 def expect_raises(db, sql, params, needle, label):
     """Return True iff `sql` raises an error whose message contains `needle`."""
+    # Relies on the caller's connection being autocommit=True (it is, in main): a
+    # submit_event RAISE aborts the tx, so without autocommit the next statement
+    # would fail with InFailedSqlTransaction rather than the needle we check for.
     try:
         db.execute(sql, params)
         return False, f"{label}: NO error raised (floor breached)"
@@ -156,7 +159,7 @@ def main():
             "SELECT submit_event(decode(%s,'hex'),decode(%s,'hex'),decode(%s,'hex'))",
             (supp2_signed, token2, human_key)).fetchone()
         accept_ok = row is not None and row[0] is not None
-        print("    P  suppress + valid human token accepted:", accept_ok)
+        print("   ", f"P  suppress + valid human token accepted: {accept_ok}")
 
         # A fresh suppress event with a WRONG-address token -> rejected.
         supp3 = _agent_body("salience.downgrade", pid, {"target_event_id": str(eid)}, [], agent_key)
