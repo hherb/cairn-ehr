@@ -1,6 +1,6 @@
 # HANDOVER — Cairn
 
-**Session date:** 2026-06-22 · **Spec/ADRs:** v0.31 · **Phase:** architecture complete; proving viability
+**Session date:** 2026-06-22 · **Spec/ADRs:** v0.32 · **Phase:** architecture complete; proving viability
 through proof-of-concept spikes (walking skeleton, advisory-actor contract, a first federating node) — no
 clinical implementation yet. (Status lines across spec/README/GOVERNANCE were realigned to this framing this session.)
 
@@ -41,6 +41,23 @@ current build state, open threads, and time-sensitive items.
 
 ## Where the build actually is (the live, in-progress state)
 
+### Dual-identifier discipline — 2026-06-22, [ADR-0031](spec/decisions/0031-canonical-identifiers-and-node-local-surrogate-keys.md) ([PR #33](https://github.com/cairn-ehr/cairn-ehr/pull/33), merged) + B5/leakage guard ([PR #34](https://github.com/cairn-ehr/cairn-ehr/pull/34), open)
+**ADR-0031 (merged, spec → v0.32):** canonical identity stays global (UUIDv7/multihash on the wire/signed
+plane); the **projection plane may intern** it to a node-local `bigint` surrogate as the physical join key,
+which **never escapes the projection**. Bind UUID↔ref **once per entity at its anchor row**; referencing rows
+carry only the ref, rehydrated to the UUID by a join at egress. Scope (wide random `BYTEA` refs first, then
+high-fan-out `patient_id`; `event_id` PKs stay UUIDv7) is **measured on Spike 0001 Bet B5**, like ADR-0001's
+compute bet. Canonical home: [data-model §3.18](spec/data-model.md#318-canonical-identifiers-and-node-local-surrogate-keys-the-dual-identifier-discipline).
+
+**B5 + leakage guard (PR #34, open, CI green, no review comments yet):** pure-SQL build-prep (no pgrx) —
+`db/008_surrogate_projection.sql` (the `local_ref` domain, `patient_ref` interning dictionary/anchor,
+`intern_patient`/`patient_uuid` chokepoints, `chart_note_u` vs `chart_note_s` A/B); `db/tests/008_surrogate_test.sql`
+(the **leakage guard** G1–G6: surrogate never on the signed plane, `local_ref` a real two-way type barrier,
+egress rehydrates the UUID); `db/bench/b5_surrogate.sql` + `run_b5.sh` (size/read A/B). x86 sanity: guard ALL
+PASS, FK-index shrink ≈1.3× at 100k rows (a *floor* on the win — real verdict is the ARM/Pi run).
+**Deliberately NOT wired into the default `init`** (a second always-on trigger would conflate B1's
+projection-maintenance number); B5 is an opt-in bench. §9 Rust surface untouched; `cargo test --workspace` unaffected.
+
 ### First federating node — built 2026-06-21, [PR #28](https://github.com/cairn-ehr/cairn-ehr/pull/28)
 First *implementation* of [ADR-0017](spec/decisions/0017-federation-admission-sovereignty-peering-and-trust-anchors.md)
 (federation admission), scoped to **direct-pairwise trust, no clinical surface** — only the federation
@@ -78,11 +95,39 @@ before production; no FK on `recall_overlay.target_event_id`; plaintext twin is 
 
 ---
 
+## Case-mining log (captured results)
+
+Confirmed-absorbed cases live here so they aren't re-mined cold. The point of recording an *absorbed* case
+is the **mechanism + the explicitly-rejected non-solution**, not just "it's fine."
+
+- **Mislabeled specimen, acted upon before the mislabel is caught — large-hospital case, 2026-06-22.**
+  A POC/lab result is filed to the wrong patient and treated (e.g. K⁺ 6.8 → wrong chart → treated + transcribed
+  into a note the receiving team reads); the true patient goes untreated. **Absorbed, no new architecture:**
+  event-granular `reattribute` ([§5.5](spec/identity.md), tier 2/3 for a cross-patient datum) moves the result;
+  the **mandatory contamination cascade** notifies everyone who *viewed or acted on* it → humans re-decide
+  (never an auto-retract of downstream orders — that would be a dangerous auto-merge).
+  **Explicitly rejected as not-worth-building:** back-linking every note that quotes a result to its source
+  event — friction enormous and ~all wasted, would be defeated the way mandatory fields get fabricated. The
+  residual (a *transcribed* value escaping the source event's cascade, e.g. "6.8" copied into a note) is
+  **paper-parity-neutral** (paper shares it exactly), so it forces nothing.
+  **Where safety actually comes from:** *clinical corroboration* (POC repeat, corroborating ECG, "out of
+  character for this patient's trajectory" — the mutual-recognition net small/remote hospitals have and large
+  ones lose to scale). Cairn's job is **cheap forensic repair + data preservation, not prevention.**
+  **Forward note (still no new architecture):** an "implausible result" flag is the *existing* additive advisory —
+  authored `{implausibility-classifier | AI, graded | triaged}` ([ADR-0010](spec/decisions/0010-additive-vs-suppressing-classification.md)/§3.9)
+  via the [ADR-0030](spec/decisions/0030-advisory-actor-integration-contract.md) advisory-actor path.
+  **Load-bearing guardrail:** it may only *raise* "corroborate me" salience, **never demote/suppress** the
+  result's own critical-value alert — else a *true* critical value that merely looks implausible (the real 6.8)
+  gets buried. The ADR-0010 *demotion-can-never-silently-become-a-hide* floor already forbids this.
+
+---
+
 ## Open threads — pick one (today's-work menu)
 
 **Desk-doable now (no external dependency):**
 - **Clinical case-mining** — historically the highest-signal generative mode; the event-overlay + key-custody +
-  actor primitives have absorbed every case so far without new architecture. Bring a real ED/hospital failure mode.
+  actor primitives have absorbed every case so far without new architecture. Bring a real ED/hospital failure
+  mode (absorbed cases recorded in the **Case-mining log** above, so they aren't re-mined cold).
 - **Harden the first federating node** — close the declared gaps above (status-before-init crash; runtime login
   role for the in-DB floor; incremental sync watermark; genesis HLC).
 - **Spike 0002 attestation success-path** — the one un-exercised half of the ADR-0030 contract (`attest-stdin`
@@ -170,9 +215,11 @@ ADR before reopening any of these.
 | [0028](spec/decisions/0028-finalized-closed-contributor-role-enum.md) | Finalized closed contributor-role enum | §3.9 |
 | [0029](spec/decisions/0029-skill-epoch-as-pinned-actor-determinant.md) | Skill-epoch + served-model digest as pinned actor determinants | §7.5 |
 | [0030](spec/decisions/0030-advisory-actor-integration-contract.md) | Advisory-actor integration contract | §9.8 |
+| [0031](spec/decisions/0031-canonical-identifiers-and-node-local-surrogate-keys.md) | Canonical UUIDs + node-local `bigint` surrogate join keys (dual-identifier discipline) | §3.18 · **principle 3** |
 
 **Ecosystem evals** (`docs/ecosystem/`, neither spec nor ADR): 0001 (kastellan/localmail plugins), 0003
 (reference-data sourcing — medicines/terminologies, fed ADR-0025).
 
-**Spikes:** 0001 (walking skeleton — Bet A ✓ → ADR-0015; Bet B prepared); 0002 (advisory-actor — ran, C1–C5 ✓
+**Spikes:** 0001 (walking skeleton — Bet A ✓ → ADR-0015; Bet B prepared, **B5 surrogate-interning artifacts +
+leakage guard built** 2026-06-22 → PR #34, awaiting the Pi for ARM numbers); 0002 (advisory-actor — ran, C1–C5 ✓
 → ADR-0029/0030); 0003 (Postgres on Android — Proposed).
