@@ -1,0 +1,30 @@
+name: Check docs build
+
+# Strict MkDocs build on every PR that touches the docs, so a broken build
+# (dead link, nav typo, bad config) blocks the merge button instead of only
+# surfacing after merge when the "Deploy docs" workflow fails to publish.
+# Mirrors the build step in docs.yml exactly — same command, same --strict.
+
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - ".github/workflows/docs-check.yml"
+
+permissions:
+  contents: read
+
+# A newer push to the same PR cancels an in-flight check — no point building stale commits.
+concurrency:
+  group: docs-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8.2.0
+      - name: Build site (strict)
+        run: uv run --with-requirements docs/requirements.txt -- mkdocs build --strict
