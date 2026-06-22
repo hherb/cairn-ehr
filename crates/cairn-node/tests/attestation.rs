@@ -110,6 +110,10 @@ async fn accepts_suppressing_event_with_valid_human_token() {
 
     let r = c.execute(SUBMIT3, &[&supp_signed.signed_bytes, &token, &vk_h]).await;
     assert!(r.is_ok(), "valid human-attested suppress must be accepted: {r:?}");
+    let n: i64 = c
+        .query_one("SELECT count(*) FROM event_log WHERE event_type='salience.downgrade'", &[])
+        .await.unwrap().get(0);
+    assert_eq!(n, 1, "the suppressing event is appended");
 }
 
 #[tokio::test]
