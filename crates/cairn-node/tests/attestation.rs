@@ -142,6 +142,10 @@ async fn rejects_bad_attestations_and_keeps_the_floor() {
     assert!(e.contains("not bound to this event"), "N1 wrong-address: {e}");
 
     // N2: a valid token with one byte flipped (signature no longer verifies).
+    // N1 and N2 deliberately assert the SAME needle: the gate (db/005:88) emits one
+    // message — "invalid or not bound to this event" — for both a bad signature and a
+    // wrong binding, since cairn_attestation_ok conflates them into a single bool. The
+    // two cases are therefore distinguished by construction here, not by the error.
     let good = sign_attestation(&ca, &kid_h, "attested", &sk_h).unwrap();
     let mut tampered = good.clone();
     let m = tampered.len() / 2;

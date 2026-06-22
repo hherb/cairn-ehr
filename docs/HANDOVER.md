@@ -69,7 +69,7 @@ door, **and the floor rejected all five hostile-agent attacks** with legible rea
 caught two real floor holes the spike's own review missed — forged authorship (unbound `signer_key_id`) and a
 `PUBLIC`-executable `SECURITY DEFINER` door — both fixed before merge (recorded in ADR-0030).
 
-**Honest gap — **(closed 2026-06-22)**:** the attestation **success** path (a *valid*, correctly-bound
+**Honest gap (closed 2026-06-22):** the attestation **success** path (a *valid*, correctly-bound
 token accepted) was never exercised E2E — now closed by `cairn-sync attest-stdin` (the token minter),
 `crates/cairn-node/tests/attestation.rs` (accept for responsibility-bearing + suppressing events; reject for
 wrong-address, tampered, and non-human-attester), and `spike_0002.py` selftest (external-actor accept +

@@ -41,6 +41,11 @@ def _content_address_hex(signed_hex):
     """The event's content address = 0x1220 (sha2-256 multihash prefix) + sha256 of
     the signed wire bytes — identical to event_address() in cairn-event and v_ca in
     db/005. Attestation tokens bind to THIS value.
+
+    NOTE: this is the THIRD home of that encoding (Rust event_address, SQL v_ca, here).
+    The three must move together — if the multihash prefix ever changes, update all
+    three or this harness will silently mint wrong-address tokens. This copy exists
+    only so the Python stand-in stays zero-dependency (no Rust call to derive the CA).
     """
     return "1220" + hashlib.sha256(bytes.fromhex(signed_hex)).hexdigest()
 
