@@ -87,7 +87,7 @@ async fn b_pulls_and_admits_a_genesis_over_mtls() {
 
     // --- B pulls from A over mTLS ---
     let client_cfg = sync::client_config(&base_b, &sk_b, trust_b).await.unwrap();
-    let stats = sync::pull_once(addr, client_cfg).await.unwrap();
+    let stats = sync::pull_once(addr, client_cfg, false).await.unwrap();
     eprintln!("pull stats: {stats:?}");
     assert!(stats.received >= 1, "B must receive at least A's genesis frame");
 
@@ -182,11 +182,11 @@ async fn two_nodes_converge_then_unpeer_and_a_stranger_is_rejected() {
     // --- 3. bidirectional pull: A←B and B←A ---
     // B pulls from A.
     let cfg = sync::client_config(&base_b, &sk_b, trust_b.clone()).await.unwrap();
-    let s_ba = sync::pull_once(addr_a, cfg).await.unwrap();
+    let s_ba = sync::pull_once(addr_a, cfg, false).await.unwrap();
     eprintln!("B<-A pull: {s_ba:?}");
     // A pulls from B.
     let cfg = sync::client_config(&base_a, &sk_a, trust_a.clone()).await.unwrap();
-    let s_ab = sync::pull_once(addr_b, cfg).await.unwrap();
+    let s_ab = sync::pull_once(addr_b, cfg, false).await.unwrap();
     eprintln!("A<-B pull: {s_ab:?}");
 
     // Convergence: BOTH DBs hold 2 enroll + 2 peer rows (set-union). Assert on each
@@ -217,7 +217,7 @@ async fn two_nodes_converge_then_unpeer_and_a_stranger_is_rejected() {
     let b_peer_before   = count_op(&b, "peer").await;
 
     let cfg = sync::client_config(&base_b, &sk_b, trust_b.clone()).await.unwrap();
-    match sync::pull_once(addr_c, cfg).await {
+    match sync::pull_once(addr_c, cfg, false).await {
         Ok(s) => {
             eprintln!("B<-C pull (stranger) unexpectedly returned Ok: {s:?}");
             // If the handshake somehow completed, the in-DB gate must still admit
@@ -256,7 +256,7 @@ async fn two_nodes_converge_then_unpeer_and_a_stranger_is_rejected() {
     // the DB, not only at the transport.
     let a_peer_before = count_op(&a, "peer").await;
     let cfg = sync::client_config(&base_a, &sk_a, trust_a.clone()).await.unwrap();
-    let s_unpeer = sync::pull_once(addr_b, cfg).await.unwrap();
+    let s_unpeer = sync::pull_once(addr_b, cfg, false).await.unwrap();
     eprintln!("A<-B post-unpeer pull: {s_unpeer:?}");
     assert!(
         s_unpeer.rejected >= 1,
