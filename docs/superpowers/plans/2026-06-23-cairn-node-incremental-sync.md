@@ -28,7 +28,7 @@
 - `db/007_node_federation.sql` — **modify.** Add `node_event.seq` + index; `sync_cursor` table + `checkpoint_sync_cursor` door + grants; `hlc_state` table + `node_hlc_tick()` + merge-forward in `apply_remote_node_event` + grants.
 - `crates/cairn-node/src/identity.rs` — **modify.** `provision`/`author_peer`/`author_unpeer` tick the real HLC before signing (replace the hardcoded `0,0`).
 - `crates/cairn-node/src/sync.rs` — **modify.** `Request::NodeEventsAfterSeq`; `stream_node_events(after_seq)` with seq-prefixed frames; `pull_into`/`pull_once` gain `full_sweep` + cursor read/checkpoint; `run` full-sweep cadence + trust-change trigger.
-- `crates/cairn-node/src/main.rs` — **modify (small).** Update the `pull_once` call site in the `Serve`/`Run`/pull CLI path to pass `full_sweep`.
+- `crates/cairn-node/src/main.rs` — **(no change needed.)** Originally planned as a small edit to a `pull_once` call site, but `main.rs` only drives `sync::run` (which owns the `pull_into` call internally), so it has no `pull_once` call to update. See Task 5 Step 4's grep caveat — it correctly skipped.
 - `crates/cairn-node/tests/sync_watermark.rs` — **create.** Incremental-only-new + the out-of-order-skip-reconciled-by-full-sweep acceptance test + wire-seq-not-in-core + cursor-door advance-only / no-raw-DML.
 - `crates/cairn-node/tests/genesis_hlc.rs` — **create.** Genesis HLC non-zero + advances across events + trust_peer orders by real HLC.
 - `crates/cairn-node/tests/federation.rs` — **modify.** TRUNCATE `sync_cursor`; update `pull_once` call sites to pass `full_sweep`; extend convergence to a second incremental pull.

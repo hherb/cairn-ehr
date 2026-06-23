@@ -12,7 +12,7 @@ async fn node_event_seq_is_monotonic_on_insert() {
     let Some(base) = cs() else { eprintln!("skipped: set CAIRN_TEST_PG"); return };
     let _guard = db::test_serial_guard(&base).await.unwrap();
     let a = db::connect_and_load_schema(&base).await.unwrap();
-    a.batch_execute("TRUNCATE node_event, local_node").await.ok();
+    db::reset_node_federation_tables(&a).await.ok();
 
     let tmp = tempfile::tempdir().unwrap();
     let (sk, kid) = keystore::generate_and_seal(&tmp.path().join("a.key"), None).unwrap();
@@ -36,7 +36,7 @@ async fn checkpoint_sync_cursor_is_advance_only() {
     let Some(base) = cs() else { eprintln!("skipped: set CAIRN_TEST_PG"); return };
     let _guard = db::test_serial_guard(&base).await.unwrap();
     let a = db::connect_and_load_schema(&base).await.unwrap();
-    a.batch_execute("TRUNCATE node_event, local_node, sync_cursor").await.ok();
+    db::reset_node_federation_tables(&a).await.ok();
 
     let peer = "127.0.0.1:7901";
     let s1: i64 = a.query_one("SELECT checkpoint_sync_cursor($1,$2)", &[&peer, &10_i64])
@@ -65,7 +65,7 @@ async fn runtime_role_cannot_raw_write_sync_cursor_but_door_works() {
     let Some(base) = cs() else { eprintln!("skipped: set CAIRN_TEST_PG"); return };
     let _guard = db::test_serial_guard(&base).await.unwrap();
     let owner = db::connect_and_load_schema(&base).await.unwrap();
-    owner.batch_execute("TRUNCATE node_event, local_node, sync_cursor").await.ok();
+    db::reset_node_federation_tables(&owner).await.ok();
 
     let role = "cairn_runtime_cursor_test";
     db::provision_runtime_role(&owner, role).await.unwrap();
@@ -102,8 +102,7 @@ async fn wire_seq_prefix_does_not_touch_signed_core() {
     let Some(base) = cs() else { eprintln!("skipped: set CAIRN_TEST_PG"); return };
     let _guard = db::test_serial_guard(&base).await.unwrap();
     let a = db::connect_and_load_schema(&base).await.unwrap();
-    a.batch_execute("TRUNCATE node_event, local_node, sync_cursor, hlc_state").await.ok();
-    a.batch_execute("INSERT INTO hlc_state (id) VALUES (TRUE) ON CONFLICT DO NOTHING").await.ok();
+    db::reset_node_federation_tables(&a).await.ok();
 
     let tmp = tempfile::tempdir().unwrap();
     let (sk, kid) = keystore::generate_and_seal(&tmp.path().join("a.key"), None).unwrap();
@@ -155,11 +154,9 @@ async fn out_of_order_skip_is_reconciled_by_full_sweep() {
     let _guard = db::test_serial_guard(&base_a).await.unwrap();
 
     let a = db::connect_and_load_schema(&base_a).await.unwrap();
-    a.batch_execute("TRUNCATE node_event, local_node, sync_cursor, hlc_state").await.ok();
-    a.batch_execute("INSERT INTO hlc_state (id) VALUES (TRUE) ON CONFLICT DO NOTHING").await.ok();
+    db::reset_node_federation_tables(&a).await.ok();
     let b = db::connect_and_load_schema(&base_b).await.unwrap();
-    b.batch_execute("TRUNCATE node_event, local_node, sync_cursor, hlc_state").await.ok();
-    b.batch_execute("INSERT INTO hlc_state (id) VALUES (TRUE) ON CONFLICT DO NOTHING").await.ok();
+    db::reset_node_federation_tables(&b).await.ok();
 
     let tmp = tempfile::tempdir().unwrap();
     let (sk_a, kid_a) = keystore::generate_and_seal(&tmp.path().join("a.key"), None).unwrap();
@@ -217,11 +214,9 @@ async fn incremental_pull_ships_only_new_events() {
     let _guard = db::test_serial_guard(&base_a).await.unwrap();
 
     let a = db::connect_and_load_schema(&base_a).await.unwrap();
-    a.batch_execute("TRUNCATE node_event, local_node, sync_cursor, hlc_state").await.ok();
-    a.batch_execute("INSERT INTO hlc_state (id) VALUES (TRUE) ON CONFLICT DO NOTHING").await.ok();
+    db::reset_node_federation_tables(&a).await.ok();
     let b = db::connect_and_load_schema(&base_b).await.unwrap();
-    b.batch_execute("TRUNCATE node_event, local_node, sync_cursor, hlc_state").await.ok();
-    b.batch_execute("INSERT INTO hlc_state (id) VALUES (TRUE) ON CONFLICT DO NOTHING").await.ok();
+    db::reset_node_federation_tables(&b).await.ok();
 
     let tmp = tempfile::tempdir().unwrap();
     let (sk_a, kid_a) = keystore::generate_and_seal(&tmp.path().join("a.key"), None).unwrap();

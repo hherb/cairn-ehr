@@ -50,11 +50,9 @@ async fn b_pulls_and_admits_a_genesis_over_mtls() {
 
     // --- provision both nodes in their own fresh DBs ---
     let a = db::connect_and_load_schema(&base_a).await.unwrap();
-    a.batch_execute("TRUNCATE node_event, local_node, sync_cursor, hlc_state").await.ok();
-    a.batch_execute("INSERT INTO hlc_state (id) VALUES (TRUE) ON CONFLICT DO NOTHING").await.ok();
+    db::reset_node_federation_tables(&a).await.ok();
     let b = db::connect_and_load_schema(&base_b).await.unwrap();
-    b.batch_execute("TRUNCATE node_event, local_node, sync_cursor, hlc_state").await.ok();
-    b.batch_execute("INSERT INTO hlc_state (id) VALUES (TRUE) ON CONFLICT DO NOTHING").await.ok();
+    db::reset_node_federation_tables(&b).await.ok();
 
     let tmp = tempfile::tempdir().unwrap();
     let (sk_a, kid_a) = keystore::generate_and_seal(&tmp.path().join("a.key"), None).unwrap();
@@ -133,14 +131,11 @@ async fn two_nodes_converge_then_unpeer_and_a_stranger_is_rejected() {
 
     // --- 1. provision A, B, C in their own fresh DBs ---
     let a = db::connect_and_load_schema(&base_a).await.unwrap();
-    a.batch_execute("TRUNCATE node_event, local_node, sync_cursor, hlc_state").await.ok();
-    a.batch_execute("INSERT INTO hlc_state (id) VALUES (TRUE) ON CONFLICT DO NOTHING").await.ok();
+    db::reset_node_federation_tables(&a).await.ok();
     let b = db::connect_and_load_schema(&base_b).await.unwrap();
-    b.batch_execute("TRUNCATE node_event, local_node, sync_cursor, hlc_state").await.ok();
-    b.batch_execute("INSERT INTO hlc_state (id) VALUES (TRUE) ON CONFLICT DO NOTHING").await.ok();
+    db::reset_node_federation_tables(&b).await.ok();
     let c = db::connect_and_load_schema(&base_c).await.unwrap();
-    c.batch_execute("TRUNCATE node_event, local_node, sync_cursor, hlc_state").await.ok();
-    c.batch_execute("INSERT INTO hlc_state (id) VALUES (TRUE) ON CONFLICT DO NOTHING").await.ok();
+    db::reset_node_federation_tables(&c).await.ok();
 
     let tmp = tempfile::tempdir().unwrap();
     let (sk_a, kid_a) = keystore::generate_and_seal(&tmp.path().join("a.key"), None).unwrap();

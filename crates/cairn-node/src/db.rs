@@ -99,6 +99,26 @@ pub async fn connect_and_load_schema(conn: &str) -> anyhow::Result<Client> {
     Ok(client)
 }
 
+/// Test-support: reset the node-federation tables to a clean slate between tests.
+///
+/// `TRUNCATE hlc_state` drops the singleton row the HLC door (`node_hlc_tick`) reads,
+/// so every reset MUST re-seat it — otherwise the next authored event silently mints a
+/// `0/0` HLC again (the very placeholder issue #38 removed, and `node_hlc_tick`'s
+/// `UPDATE ... WHERE id` would no-op against the missing row). Folding the
+/// truncate+reseed into one helper removes the copy-paste foot-gun where a test
+/// truncates `hlc_state` but forgets the re-insert. Idempotent and safe to call after
+/// `connect_and_load_schema`.
+pub async fn reset_node_federation_tables(client: &Client) -> anyhow::Result<()> {
+    client
+        .batch_execute(
+            "TRUNCATE node_event, local_node, sync_cursor, hlc_state;
+             INSERT INTO hlc_state (id) VALUES (TRUE) ON CONFLICT DO NOTHING;",
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("resetting node-federation tables: {e}"))?;
+    Ok(())
+}
+
 /// Test-support: a serialization guard for the DB-gated integration tests. They
 /// share Postgres databases and each `TRUNCATE`s its tables on entry, so running
 /// them concurrently — across test binaries OR within one binary — races. This

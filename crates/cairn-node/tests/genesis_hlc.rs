@@ -13,8 +13,7 @@ async fn genesis_hlc_is_nonzero_and_advances() {
     let Some(base) = cs() else { eprintln!("skipped: set CAIRN_TEST_PG"); return };
     let _guard = db::test_serial_guard(&base).await.unwrap();
     let a = db::connect_and_load_schema(&base).await.unwrap();
-    a.batch_execute("TRUNCATE node_event, local_node, sync_cursor, hlc_state").await.ok();
-    a.batch_execute("INSERT INTO hlc_state (id) VALUES (TRUE) ON CONFLICT DO NOTHING").await.ok();
+    db::reset_node_federation_tables(&a).await.ok();
 
     let tmp = tempfile::tempdir().unwrap();
     let (sk, kid) = keystore::generate_and_seal(&tmp.path().join("a.key"), None).unwrap();
