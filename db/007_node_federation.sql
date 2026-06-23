@@ -33,6 +33,17 @@ CREATE TABLE IF NOT EXISTS node_event (
 CREATE INDEX IF NOT EXISTS node_event_signer_idx  ON node_event (signer_key_id);
 CREATE INDEX IF NOT EXISTS node_event_subject_idx ON node_event (subject_node_id);
 
+-- Issue #38: a monotonic, node-LOCAL insertion-order key for incremental sync.
+-- This is the watermark the puller cursors on (NOT the HLC and NOT recorded_at):
+-- a node that newly LEARNS an event inserts it with a fresh high `seq`, so new
+-- knowledge always sorts above any puller's cursor and can never be silently
+-- skipped. `seq` is sync transport metadata only — never signed, never on the wire
+-- core. Additive (ADR-0012): ADD COLUMN IF NOT EXISTS does not fire the append-only
+-- row trigger (that fires on UPDATE/DELETE), and IDENTITY is assigned at INSERT so
+-- the existing INSERT column lists need no change.
+ALTER TABLE node_event ADD COLUMN IF NOT EXISTS seq BIGINT GENERATED ALWAYS AS IDENTITY;
+CREATE INDEX IF NOT EXISTS node_event_seq_idx ON node_event (seq);
+
 CREATE OR REPLACE FUNCTION node_event_is_append_only()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
