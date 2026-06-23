@@ -406,6 +406,11 @@ pub async fn run(
     loop {
         ticker.tick().await;
         cycle += 1;
+        // ONE DB connection per cycle, used for BOTH the trust refresh and applying
+        // the pull's admitted events (previously this opened two short-lived
+        // connections per cycle — PR #28 review follow-up). It is dropped at the end
+        // of the iteration, so the loop never accumulates connections and a DB
+        // restart is picked up by the next cycle's reconnect.
         let cycle_db = match db::connect(&db_conn).await {
             Ok(c) => c,
             Err(e) => {
@@ -416,6 +421,12 @@ pub async fn run(
                 continue;
             }
         };
+        // Re-snapshot the live set so peering changes since the last cycle apply to
+        // serve AND pull. A failed refresh is non-fatal: the last-known set stays in
+        // force. During a DB outage a pending revocation therefore lands only once
+        // the DB is reachable again — the deliberate availability-over-consistency
+        // trade (we never halt federation on a transient DB blip); the still-pinned
+        // mTLS + in-DB admission gate remain the hard floor regardless.
         if let Err(e) = refresh_trust_set(&cycle_db, &trust_set).await {
             eprintln!("run: trust refresh failed, serving last-known set: {e}");
         }
@@ -425,13 +436,18 @@ pub async fn run(
             trust_set.read().map(|s| s.clone()).unwrap_or_default();
         let trust_changed = now_trust != prev_trust;
         prev_trust = now_trust;
-        let full_sweep = trust_changed || cycle.is_multiple_of(FULL_SWEEP_EVERY);
+        // `% == 0` (not `is_multiple_of`, stabilized only in Rust 1.87) keeps this
+        // within the workspace MSRV (rust-version = "1.74"); the clippy lint that
+        // prefers the newer method is therefore allowed here.
+        #[allow(clippy::manual_is_multiple_of)]
+        let full_sweep = trust_changed || cycle % FULL_SWEEP_EVERY == 0;
 
         match pull_into(peer, client_tls.clone(), &cycle_db, full_sweep).await {
             Ok(s) => eprintln!(
                 "run: pull {peer}: full_sweep={full_sweep} received={} admitted={} rejected={}",
                 s.received, s.admitted, s.rejected
             ),
+            // A sustained outage = a partition. Logged, never fatal.
             Err(e) => eprintln!("run: PARTITION pulling {peer}: {e}"),
         }
         if serve_handle.is_finished() {
