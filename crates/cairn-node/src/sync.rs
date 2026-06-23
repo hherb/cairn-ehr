@@ -35,6 +35,13 @@ use cairn_event::SigningKey;
 use crate::db;
 use crate::transport::{self, TrustStore};
 
+/// Full-sweep cadence: the puller does an incremental `seq`-cursor pull each cycle and a
+/// full sweep (cursor reset to 0) every `FULL_SWEEP_EVERY` cycles. The sweep is the
+/// correctness floor (issue #38): it reconciles any event a residual hazard (commit-order
+/// race, a rejected-then-later-trusted author, an address remap) caused incremental to
+/// skip. `node_event` is low-volume, so a frequent sweep is cheap.
+const FULL_SWEEP_EVERY: u64 = 10;
+
 /// A request on the clinical-federation plane. JSON, one per connection.
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "op")]
@@ -392,18 +399,15 @@ pub async fn run(
     let client_tls = transport::client_config(sk, trust_store_from_set(trust_set.clone()))?;
     let db_conn = db_conn.to_string();
     let mut ticker = tokio::time::interval(std::time::Duration::from_secs(interval_secs.max(1)));
+    let mut cycle: u64 = 0;
+    // Snapshot of the trust set as of the previous cycle, to detect peering changes.
+    let mut prev_trust: HashSet<String> =
+        trust_set.read().map(|s| s.clone()).unwrap_or_default();
     loop {
         ticker.tick().await;
-        // ONE DB connection per cycle, used for BOTH the trust refresh and applying
-        // the pull's admitted events (previously this opened two short-lived
-        // connections per cycle — PR #28 review follow-up). It is dropped at the end
-        // of the iteration, so the loop never accumulates connections and a DB
-        // restart is picked up by the next cycle's reconnect.
+        cycle += 1;
         let cycle_db = match db::connect(&db_conn).await {
             Ok(c) => c,
-            // No DB this cycle: the serve side keeps running on the last-known trust
-            // set (availability over consistency), and there is no point pulling
-            // events we could not apply, so skip the pull until the DB is back.
             Err(e) => {
                 eprintln!("run: DB unreachable, serving last-known set, skipping pull: {e}");
                 if serve_handle.is_finished() {
@@ -412,21 +416,22 @@ pub async fn run(
                 continue;
             }
         };
-        // Re-snapshot the live set so peering changes since the last cycle apply to
-        // serve AND pull. A failed refresh is non-fatal: the last-known set stays in
-        // force. During a DB outage a pending revocation therefore lands only once
-        // the DB is reachable again — the deliberate availability-over-consistency
-        // trade (we never halt federation on a transient DB blip); the still-pinned
-        // mTLS + in-DB admission gate remain the hard floor regardless.
         if let Err(e) = refresh_trust_set(&cycle_db, &trust_set).await {
             eprintln!("run: trust refresh failed, serving last-known set: {e}");
         }
-        match pull_into(peer, client_tls.clone(), &cycle_db, false).await {
+        // Full sweep on cadence OR whenever the active peer set changed this cycle (so a
+        // freshly-peered node's backlog is pulled at once, not after FULL_SWEEP_EVERY).
+        let now_trust: HashSet<String> =
+            trust_set.read().map(|s| s.clone()).unwrap_or_default();
+        let trust_changed = now_trust != prev_trust;
+        prev_trust = now_trust;
+        let full_sweep = trust_changed || cycle.is_multiple_of(FULL_SWEEP_EVERY);
+
+        match pull_into(peer, client_tls.clone(), &cycle_db, full_sweep).await {
             Ok(s) => eprintln!(
-                "run: pull {peer}: received={} admitted={} rejected={}",
+                "run: pull {peer}: full_sweep={full_sweep} received={} admitted={} rejected={}",
                 s.received, s.admitted, s.rejected
             ),
-            // A sustained outage = a partition. Logged, never fatal.
             Err(e) => eprintln!("run: PARTITION pulling {peer}: {e}"),
         }
         if serve_handle.is_finished() {
