@@ -17,6 +17,9 @@ current build state, open threads, and time-sensitive items.
   One file per aspect; cross-refs like *§5.7* stay valid inside the aspect file.
 - **`docs/spec/decisions/`** — the **ADR log** (the *why*). Numbered, dated, **immutable** (a reversal is a
   new superseding ADR). **Read the relevant ADR before reopening a settled question.** Index below.
+- **`docs/ROADMAP.md`** — the foundation build order (wire core → in-DB floor → sync → identity →
+  security → federation → blobs → native API), *below* the policy/GUI line. Disposable scaffolding like
+  this file; the spec/ADRs win on any disagreement.
 - **`docs/spikes/`** — build-prep records (*what we tried, on what, what we learned*). Not spec, not ADR.
 - **`docs/principles/`** — mission/governance; **`GOVERNANCE.md`** + `STEWARDSHIP-OF-THE-NAME.md`.
 - Root **`README.md`** — mission + founding principles (same prose as `index.md`).
