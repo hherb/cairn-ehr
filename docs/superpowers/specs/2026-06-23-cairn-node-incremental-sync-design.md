@@ -32,13 +32,17 @@ never returned. The `node_origin` is only a sort tiebreaker, not in the predicat
 collapse onto one global scalar — once the watermark passes a low-HLC origin, its events are excluded
 permanently. **cairn-node must not inherit this.**
 
-### A correction to the issue's own reasoning
+### The full-sweep floor is spec-mandated but unimplemented
 
-Issue #38 suggests *"lean on the spec's already-mandated background full-sweep as the miss safety-net."*
-There is **no such mandate for `node_event`.** The only background sweep in the spec is the **matcher's
-advisory duplicate sweep** ([ADR-0014](../../spec/decisions/0014-locale-pluggable-matcher-comparators.md)),
-a different layer (identity matching, not event reconciliation). This design therefore **introduces** an
-explicit `node_event` full-sweep as the correctness floor; it is not reusing an existing one.
+[sync.md §6.1–6.2](../../spec/sync.md) mandates the sync model as idempotent, INSERT-only **set-union**
+with **honest-assembly known-missing detection** (*"the parent advertised 5 episodes, only 3 arrived"*).
+That advertised-vs-received reconciliation **is** the full-sweep backstop at the spec level — the
+correctness floor below the incremental optimization. It has simply **never been implemented for
+`node_event`** (today's full-pull-every-cycle is the degenerate always-sweep case). This design therefore
+implements that mandated floor explicitly; it is not inventing a new mechanism. (Note: this is distinct
+from the matcher's advisory **duplicate sweep**,
+[ADR-0014](../../spec/decisions/0014-locale-pluggable-matcher-comparators.md), which is an identity-layer
+concern, not event reconciliation.)
 
 ## Approach (chosen: local-insertion `seq` cursor + full-sweep floor)
 
@@ -87,10 +91,19 @@ legitimate event* until the next sweep, never *admit an illegitimate one*.
   irrelevant for fresh PoC databases; noted for honesty.
 - **`sync_cursor(peer_addr TEXT PRIMARY KEY, last_seq BIGINT NOT NULL DEFAULT 0, updated_at TIMESTAMPTZ
   NOT NULL DEFAULT clock_timestamp())`** — per-peer pull checkpoint. **Mutable node-local operational
-  state**, not signed content: it sits *outside* the append-only trigger, and the runtime `cairn_node`
-  role is granted `SELECT/INSERT/UPDATE` on it. This does not weaken the in-DB floor — the floor protects
-  the signed append-only log; a corrupted cursor can only cause a re-pull or a transient skip (healed by
-  the sweep), never the admission of an unauthorized event. (Mirrors cairn-sync's writable `sync_state`.)
+  state**, not signed content, so it sits *outside* the append-only trigger.
+  - **Written only through a validated door, never raw DML** — preserving the floor invariant PR #39
+    hardened (the `cairn_node` runtime role has zero raw `INSERT/UPDATE/DELETE`; it only `EXECUTE`s
+    `SECURITY DEFINER` doors and `SELECT`s). The door is **`checkpoint_sync_cursor(p_peer_addr TEXT,
+    p_observed_seq BIGINT)`** (`SECURITY DEFINER`, granted `EXECUTE` to `cairn_node`), which owns the
+    upsert and enforces **advance-only** semantics server-side (`last_seq = GREATEST(last_seq,
+    p_observed_seq)`) so a buggy/hostile caller cannot rewind the cursor and thrash re-pulls. The runtime
+    role also gets `SELECT` on the table (for `status`/debug) but **no** raw DML. This is the same
+    "validated door, not raw write" pattern as `submit_node_event` / `apply_remote_node_event`.
+  - A corrupted or forward-jumped cursor can only *delay* a legitimate event (healed by the sweep), never
+    admit an unauthorized one — identical to the residual hazards already accepted below. (Rejected
+    alternative: granting the runtime raw `INSERT/UPDATE` on the table, as cairn-sync's `sync_state` does —
+    benign for that table but it punctures the no-raw-DML invariant for no benefit over the door.)
 
 ### 2. Genesis HLC — real local clock (separable second phase, same PR)
 
@@ -126,8 +139,8 @@ commit so it stays separable and could be split to its own PR without affecting 
 - `pull_into` gains `full_sweep: bool`. It reads `sync_cursor` by **peer address** (known *before*
   connecting, so the existing request-first protocol shape is preserved — no greeting/reorder needed),
   sends `after_seq = full_sweep ? 0 : last_seq`, applies each event via the unchanged gate, tracks the max
-  `seq` received, and **only at a clean EOF** upserts `last_seq = GREATEST(last_seq, max_seq)` (advance-only;
-  a mid-stream failure never advances the cursor past un-applied events).
+  `seq` received, and **only at a clean EOF** calls `checkpoint_sync_cursor(peer_addr, max_seq)` (the
+  advance-only door; a mid-stream failure never advances the cursor past un-applied events).
   - The cursor advances over *received* frames (the stream is `seq`-ordered), including rejected ones;
     rejections are re-evaluated on the next full-sweep (hazard 2 above).
 - `run` chooses `full_sweep = (cycle % FULL_SWEEP_EVERY == 0) || trust_set_changed_this_cycle`. The
@@ -151,7 +164,7 @@ run: cycle++ ; full_sweep = (cycle % N == 0) || trust_changed
     server: SELECT seq, signed_bytes FROM node_event WHERE seq > after_seq ORDER BY seq
             → stream [seq][bytes] frames, EOF
     for each frame: apply_remote_node_event(bytes) ; max_seq := max(max_seq, seq)
-    on clean EOF: UPSERT sync_cursor SET last_seq = GREATEST(last_seq, max_seq)
+    on clean EOF: SELECT checkpoint_sync_cursor(<addr>, max_seq)   -- advance-only door
 ```
 
 ## Error handling
@@ -173,7 +186,11 @@ run: cycle++ ; full_sweep = (cycle % N == 0) || trust_changed
    subsequent `peer.added` carries a strictly higher HLC; `trust_peer` orders by real HLC.
 4. **`wire_seq_not_in_signed_core`** — the streamed `signed_bytes` are byte-identical to the stored event
    regardless of the `seq` prefix (principle-12 guard).
-5. **two-node E2E still converges** under incremental + sweep (extend the existing convergence test).
+5. **`cursor_door_is_advance_only_and_runtime_cannot_raw_write`** — `checkpoint_sync_cursor` never rewinds
+   `last_seq` (a lower `observed_seq` is a no-op); and, over the `cairn_node`-granted runtime role, a raw
+   `INSERT/UPDATE` into `sync_cursor` is denied (`42501`) while the door call succeeds — the floor
+   invariant from PR #39 extended to the new table.
+6. **two-node E2E still converges** under incremental + sweep (extend the existing convergence test).
 
 DB-gated tests follow the existing harness (`CAIRN_TEST_PG`, `db::test_serial_guard` advisory lock,
 PG16 + `cairn_pgx`). Pure units (frame seq-prefix split; the tick arithmetic if extractable) run under
