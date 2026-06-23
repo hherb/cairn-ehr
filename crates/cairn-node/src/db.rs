@@ -16,6 +16,21 @@ pub async fn connect(conn: &str) -> anyhow::Result<Client> {
     Ok(client)
 }
 
+/// Is `role` a conservative, safe-to-interpolate PostgreSQL identifier?
+///
+/// Identifiers cannot be bind parameters, so a runtime role name is interpolated
+/// directly into DDL — this is the SQL-injection floor for [`provision_runtime_role`].
+/// We accept only lowercase ASCII letters, digits, and underscores, starting with a
+/// letter or underscore, length 1..=63 (PostgreSQL identifiers are <= 63 bytes).
+/// Lowercase-only keeps the charset tight and matches Postgres' unquoted-identifier
+/// folding, so there is never a quoting ambiguity. Pure (no DB) so it is unit-testable.
+pub fn is_safe_role_ident(role: &str) -> bool {
+    !role.is_empty()
+        && role.len() <= 63
+        && role.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        && role.starts_with(|c: char| c.is_ascii_lowercase() || c == '_')
+}
+
 /// Provision the unprivileged runtime login role and grant it `cairn_node`.
 ///
 /// The in-DB submit/admission floor (`db/007`) only *binds* a connection that is
@@ -30,19 +45,33 @@ pub async fn connect(conn: &str) -> anyhow::Result<Client> {
 /// GRANT is harmless to repeat). The role is created with LOGIN and NO password —
 /// fine for a local-socket/trust deployment; a networked deployment should `ALTER
 /// ROLE … PASSWORD` afterwards (we never embed a secret here).
+///
+/// Precondition: the schema must already be loaded (the `cairn_node` group role is
+/// created by `db/007`). Run this *after* `init` / `connect_and_load_schema`; on a
+/// fresh database it fails with a legible "load the schema first" error rather than a
+/// raw catalog error from the GRANT.
 pub async fn provision_runtime_role(client: &Client, role: &str) -> anyhow::Result<()> {
     // Identifiers cannot be passed as bind parameters, so this name is interpolated
     // into DDL. Reject anything but a conservative identifier charset to close the
     // SQL-injection door rather than trusting the caller (defence in depth — the
     // CLI also constrains it). PostgreSQL identifiers are <= 63 bytes.
-    if role.is_empty()
-        || role.len() > 63
-        || !role.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
-        || !role.starts_with(|c: char| c.is_ascii_lowercase() || c == '_')
-    {
+    if !is_safe_role_ident(role) {
         anyhow::bail!(
             "invalid runtime role name {role:?}: use lowercase letters, digits, and underscores \
              (starting with a letter or underscore), max 63 chars"
+        );
+    }
+    // Precondition: the `cairn_node` group role must exist (created by the schema
+    // load). Without it the GRANT below fails with an opaque catalog error; check
+    // first so the operator gets an actionable message ("load the schema / run init").
+    let cairn_node_exists: bool = client
+        .query_one("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'cairn_node')", &[])
+        .await?
+        .get(0);
+    if !cairn_node_exists {
+        anyhow::bail!(
+            "the `cairn_node` group role does not exist: load the schema first \
+             (run `cairn-node init`, or connect_and_load_schema) before provisioning a runtime role"
         );
     }
     // CREATE ROLE has no IF NOT EXISTS, so guard with a catalog check; the name is

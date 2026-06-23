@@ -16,6 +16,10 @@ fn cs() -> Option<String> { std::env::var("CAIRN_TEST_PG").ok() }
 /// Rewrite a `host=… dbname=…` conn string to connect as a different role. The
 /// test base string sets `user=…`; we replace it so the same DB is reached as the
 /// unprivileged runtime role.
+///
+/// Assumes the libpq **keyword/value** conn-string format (space-separated
+/// `key=value` pairs), which is what `CAIRN_TEST_PG` carries throughout this suite —
+/// NOT a `postgres://` URI. A URI base would need URL rewriting instead.
 fn conn_as_role(base: &str, role: &str) -> String {
     let kept: Vec<&str> = base
         .split_whitespace()
@@ -91,25 +95,38 @@ async fn floor_binds_the_unprivileged_runtime_role() {
     let peers = identity::list_peers(&runtime).await.unwrap();
     assert_eq!(peers.len(), 1, "the peer authored via the door must be visible");
     assert_eq!(peers[0].status, "active");
+
+    // Cleanup: don't leave a login role dangling in the shared test cluster. Close
+    // the runtime session first (so it is no longer the current role), then drop it
+    // from the owner connection. `IF EXISTS` keeps this a no-op on partial failures.
+    drop(runtime);
+    owner
+        .batch_execute(&format!("DROP ROLE IF EXISTS {role}"))
+        .await
+        .ok();
 }
 
 /// The role-name charset gate must reject anything that could break out of the
 /// interpolated DDL — this is the SQL-injection floor for `provision_runtime_role`.
-/// (No DB needed: the validation happens before any query.)
-#[tokio::test]
-async fn provision_runtime_role_rejects_unsafe_names() {
-    let Some(base) = cs() else { eprintln!("skipped: set CAIRN_TEST_PG"); return; };
-    let _guard = db::test_serial_guard(&base).await.unwrap();
-    let owner = db::connect(&base).await.unwrap();
+///
+/// This is the most security-relevant assertion in the file, so it must run on EVERY
+/// `cargo test`, not only when a DB is configured. The gate is the pure
+/// `db::is_safe_role_ident`, so no connection is needed: assert on it directly.
+#[test]
+fn provision_runtime_role_rejects_unsafe_names() {
     for bad in [
         "cairn; DROP ROLE postgres",
         "role with spaces",
         "Mixed_Case",      // we constrain to lowercase to keep the charset tight
         "1leading_digit",
         "has-hyphen",
+        "drop\"--",        // quote/comment breakout attempt
+        "café",            // non-ASCII
         "",
     ] {
-        let res = db::provision_runtime_role(&owner, bad).await;
-        assert!(res.is_err(), "unsafe role name {bad:?} must be rejected");
+        assert!(!db::is_safe_role_ident(bad), "unsafe role name {bad:?} must be rejected");
+    }
+    for good in ["cairn_runtime", "cairn_runtime_test", "_under", "r2d2"] {
+        assert!(db::is_safe_role_ident(good), "valid role name {good:?} must be accepted");
     }
 }
