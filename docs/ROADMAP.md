@@ -1,0 +1,99 @@
+# ROADMAP — Cairn
+
+> **Disposable working scaffolding, not a source of truth.** The canonical *what* is the
+> [spec](spec/index.md); the *why* is the [ADR log](spec/decisions/README.md). This file only
+> orders the build. If it disagrees with the canonical docs, the canonical docs win.
+
+**Scope:** the **foundation** that must exist before the policy and GUI layers. Ordered bottom-up by
+the four-layer model ([ADR-0021](spec/decisions/0021-layering-the-node-api-and-ui-pluralism.md)):
+**wire core → in-DB enforcement floor → sync → identity → security → federation → blobs → native
+API**. Policy and UI sit *above* this line and are deliberately out of scope here.
+
+## Cross-cutting (applies to every phase)
+
+- **TDD** — failing test first, then code (load-bearing on the §9 safety-critical surface).
+- **Language by defect blast radius** ([§9](spec/language-substrate.md)) — safety-critical = Rust or
+  in-DB (SQL/PL-pgSQL/pgrx), optimized for reviewer-legibility; advisory/cosmetic = fit-for-purpose
+  (Python/ML). The integration boundary is the **PostgreSQL boundary** (≥ 18); avoid FFI coupling.
+- **AGPL-3.0** for all code; every dependency AGPL-3.0-compatible (checked *before* adding).
+- Each phase takes the relevant **spike → production-grade**; close honest gaps, don't re-spike.
+
+## Phase 0 — Proven foundations (done, as spikes)
+
+- Event serialization + signatures — COSE_Sign1 + Ed25519 + SHA-256 ([ADR-0015](spec/decisions/0015-event-serialization-signatures-and-content-addressing.md)); `cairn-event`, Bet A ✓.
+- In-DB floor spiked — validated `submit_event` door + recall, holds against a hostile agent (Spike 0002, C1–C5 ✓); `db/001`–`008`, `cairn_pgx` verify.
+- First federating node — admission/pairing/mTLS/set-union `node_event` sync ([ADR-0017](spec/decisions/0017-federation-admission-sovereignty-peering-and-trust-anchors.md)); `cairn-node`, floor ENFORCED proof.
+- Walking skeleton + WAN sync + replication/failover PoC.
+
+## Phase 1 — Event core to production (the wire contract)
+
+- **HLC ordering + incremental sync watermark** — replace genesis HLC 0/0 placeholder and full-pull; resolve the convergence-safety subtlety ([issue #38](https://github.com/cairn-ehr/cairn-ehr/issues/38)).
+- **Legibility twin** — mandatory signed mechanically-derived plaintext twin on every event; promote from skeletal ([ADR-0012](spec/decisions/0012-schema-evolution-event-format-and-legibility-across-time.md), [§3.13](spec/data-model.md)).
+- **Canonical identifiers + node-local surrogate keys** ([ADR-0031](spec/decisions/0031-canonical-identifiers-and-node-local-surrogate-keys.md)).
+- **Additive-only schema evolution** discipline baked into the event format ([ADR-0012](spec/decisions/0012-schema-evolution-event-format-and-legibility-across-time.md)).
+
+## Phase 2 — In-DB enforcement floor (unbypassable safety floor)
+
+- **`submit_event` validated write surface** hardened to production ([ADR-0022](spec/decisions/0022-validated-submit-surface-the-write-path.md)); RLS + constraints + append-only envelope; raw-SQL clients still cannot break the floor (principle 12).
+- **Actor registry + version-pinning + key custody** ([ADR-0011](spec/decisions/0011-actor-registry-version-pinning-and-key-custody.md)); skill-epoch + served-model digest as pinned actor determinants ([ADR-0029](spec/decisions/0029-skill-epoch-as-pinned-actor-determinant.md)).
+- **Authorship + attestation** — compositional author set, separable responsibility; closed contributor-role enum ([ADR-0007](spec/decisions/0007-authorship-and-accountability.md), [ADR-0028](spec/decisions/0028-finalized-closed-contributor-role-enum.md)); additive-vs-suppressing derived, not declared ([ADR-0010](spec/decisions/0010-additive-vs-suppressing-classification.md)).
+- **Advisory-actor integration contract** — L2/L3 attachment through the floor ([ADR-0030](spec/decisions/0030-advisory-actor-integration-contract.md)).
+- **Bitemporal time** — `t_recorded` (HLC ceiling) vs freely-backdatable `t_effective`; clashes flagged, never auto-resolved ([ADR-0003](spec/decisions/0003-bitemporal-time-and-acknowledged-uncertainty.md)).
+- **Acknowledged-uncertainty value types** — first-class unknown / not-yet-asked / refused / ranges ([§3.7](spec/data-model.md)).
+
+## Phase 3 — Sync engine (set-union + the two planes)
+
+- **Set-union sync with scope as prefetch hint, not authority** ([ADR-0004](spec/decisions/0004-dynamic-sync-scope-prefetch-not-authority.md)).
+- **Two-plane schema/code evolution** — events sync forward-compatibly; code/DDL/pgrx travel a separate signed, per-architecture, sneakernet-capable distribution plane; version is a local node property ([ADR-0012](spec/decisions/0012-schema-evolution-event-format-and-legibility-across-time.md), [§6.5](spec/sync.md)).
+- **Record discovery + replicated essential tier** ([ADR-0016](spec/decisions/0016-record-discovery-and-the-replicated-essential-tier.md)).
+
+## Phase 4 — Identity & demographics subsystem
+
+- **Identity event algebra** — closed link/unlink/reattribute/repudiate/identify/dispute set; immortal UUIDs; never merge/erase ([§5.7](spec/identity.md), principle 2).
+- **Demographics assertion stream** — per-field projection policy ([§4](spec/demographics.md)).
+- **Point-of-care identity, possession semantics, `sign-as` salvage** ([ADR-0008](spec/decisions/0008-point-of-care-identity-possession-and-salvage.md)).
+- **Locale-pluggable matcher comparators** — *advisory only* (Python/ML); comparator-profile tag travels with each demographic assertion, degrades honestly to human review ([ADR-0014](spec/decisions/0014-locale-pluggable-matcher-comparators.md)).
+
+## Phase 5 — Security & compliance core
+
+- **Erasure = key-custody redistribution / crypto-shred** on the severity ladder ([ADR-0005](spec/decisions/0005-erasure-key-custody-and-crypto-shredding.md), principle 9).
+- **Visibility-scope ≠ replication; the safety projection** — sealed bodies emit de-identified, severity-graded safety projection; sensitivity is a graded append-only stream ([ADR-0006](spec/decisions/0006-visibility-scope-replication-and-the-safety-projection.md)).
+- **At-rest seal** — replace plaintext-0600 keystore ([ADR-0026](spec/decisions/0026-node-durability-and-disaster-recovery.md)).
+- **Trusted-time anchoring** — graded-interval `t_recorded` with clock-confidence grade; transparency-log multi-anchor existence proof ([ADR-0027](spec/decisions/0027-trusted-time-anchoring.md)).
+- **Audit-log integrity, offline auth, mTLS** ([§7](spec/security.md)).
+
+## Phase 6 — Federation hardening
+
+- **Revocation cascade; anchor-as-power** ([ADR-0018](spec/decisions/0018-federation-revocation-cascade-and-the-anchor-as-power.md)).
+- **DR / recovery escrow** — promote the `dr_escrow: STUBBED` cold-peer backup ([ADR-0026](spec/decisions/0026-node-durability-and-disaster-recovery.md)).
+- **Key rotation / `supersede`** — currently reserved, not built.
+
+## Phase 7 — Attachments / byte tier
+
+- **Content-addressed lazy blobs** referenced by the signed event, never inlined; day-one attachment-reference shape ([ADR-0013](spec/decisions/0013-attachments-content-addressed-lazy-blob-tier.md)).
+- **Resource-isolated byte tier** — chunked/preemptible/separately-budgeted; can never starve clinical sync; opt-in byte replication; self-verifying swarm fetch.
+- **Rendition set** — the binary's legibility twin (retrievability axis); per-blob DEK crypto-shred inherits.
+
+## Phase 8 — Native API contract (the boundary below the application)
+
+- **Native API: capability-described + conformance-tested, evolves additively** ([ADR-0023](spec/decisions/0023-native-api-contract-capability-and-conformance.md)); the four-layer boundary sits *below* policy/UI ([ADR-0021](spec/decisions/0021-layering-the-node-api-and-ui-pluralism.md)).
+- **Author-scoped export** — the medico-legal copy ([ADR-0019](spec/decisions/0019-author-scoped-record-export-the-medico-legal-copy.md)).
+- **FHIR interop façade** — distinct from the native API ([§9.7](spec/language-substrate.md)).
+
+## Phase 9 — Terminology services
+
+- **ICD-11 canonical interlingua + local-terminology overlay** ([ADR-0025](spec/decisions/0025-icd-11-canonical-interlingua-and-local-terminology-overlay.md)).
+
+---
+
+## Above the foundation line (NOT in this roadmap)
+
+- **Policy layer** — hard policy as a signed policy-assertion stream + effective-policy projection ([ADR-0024](spec/decisions/0024-hard-policy-expression-the-policy-assertion-stream.md)); soft policy in UI.
+- **GUI / reference UI** — built only on the same public native API everyone else uses (principle 12); paper-parity is the governing law, **no confirmation dialogs as a safety mechanism**.
+- **Active-write thin encounters** and clinical workflow surfaces ([ADR-0020](spec/decisions/0020-active-write-thin-encounters-and-the-delete-vs-erase-distinction.md)).
+
+## Parallel build-prep (not blocking the critical path)
+
+- **Bet B — Pi compute-cost run** — the [ADR-0001](spec/decisions/0001-fat-postgres-thin-daemon.md) projection/keystore go/no-go; also settles ARM SHA-256-vs-BLAKE3 (ADR-0015 provisional default). Awaiting Pi 5 hardware.
+- **Spike 0003 — Postgres on Android** — validates the fractal-topology invariant at the phone tier; pgrx cross-compile is the one unproven step.
+- **Continued clinical case-mining** — the highest-signal mode for stress-testing the primitives before product build.
