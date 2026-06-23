@@ -119,6 +119,41 @@ DO $$ BEGIN
     END IF;
 END $$;
 
+-- Issue #38 (Gap 4): the node's local Hybrid Logical Clock. Mirrors cairn-sync's
+-- hlc_state: a singleton row advanced on every authored event and merged forward on
+-- every applied remote event, so the clock never falls behind anything in the log.
+-- Replaces the 0/0 genesis placeholder, making trust_peer's HLC ordering real.
+CREATE TABLE IF NOT EXISTS hlc_state (
+    id          BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (id),
+    hlc_wall    BIGINT  NOT NULL DEFAULT 0,
+    hlc_counter INTEGER NOT NULL DEFAULT 0
+);
+INSERT INTO hlc_state (id) VALUES (TRUE) ON CONFLICT DO NOTHING;
+
+-- Advance the local clock and return the new stamp. wall = max(prev_wall, now_ms);
+-- counter resets to 0 when wall advances on wall-clock time, else increments (the
+-- standard HLC tick). SECURITY DEFINER so the unprivileged runtime can tick via the
+-- door without direct write to hlc_state.
+CREATE OR REPLACE FUNCTION node_hlc_tick()
+RETURNS TABLE(wall BIGINT, counter INTEGER)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    v_now  BIGINT := (extract(epoch FROM clock_timestamp()) * 1000)::bigint;
+    v_wall BIGINT; v_counter INTEGER;
+BEGIN
+    SELECT hlc_wall, hlc_counter INTO v_wall, v_counter FROM hlc_state WHERE id FOR UPDATE;
+    IF v_now > v_wall THEN
+        v_wall := v_now; v_counter := 0;
+    ELSE
+        v_counter := v_counter + 1;
+    END IF;
+    UPDATE hlc_state SET hlc_wall = v_wall, hlc_counter = v_counter WHERE id;
+    wall := v_wall; counter := v_counter;
+    RETURN NEXT;
+END;
+$$;
+
 -- The ONE local authoring door for node/peering events. Verifies in-DB, derives
 -- op from event_type, and enforces: enroll is once-only and self; peer/revoke are
 -- authored only by THIS node's current key. Every rejection is legible.
@@ -214,6 +249,10 @@ REVOKE INSERT, UPDATE, DELETE ON sync_cursor FROM PUBLIC, cairn_node;
 REVOKE EXECUTE ON FUNCTION checkpoint_sync_cursor(text, bigint) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION checkpoint_sync_cursor(text, bigint) TO cairn_node;
 
+-- hlc_state: the runtime ticks via the door only — never raw DML on the table.
+REVOKE EXECUTE ON FUNCTION node_hlc_tick() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION node_hlc_tick() TO cairn_node;
+
 -- The local node's trust set: peer assertions IT authored, graded active/revoked by
 -- the latest op per subject. Read by the admission gate (Task 8) and the mTLS
 -- cert-pin verifier (Task 9). A revoked peer is retained, never deleted (principle 2).
@@ -267,6 +306,14 @@ BEGIN
             (b -> 'hlc' ->> 'wall')::bigint, (b -> 'hlc' ->> 'counter')::int,
             b -> 'hlc' ->> 'node_origin', p_signed, v_ca)
         ON CONFLICT (node_event_id) DO NOTHING;
+        -- Clock never falls behind an event we accepted (HLC invariant A3, mirrors cairn-sync).
+        UPDATE hlc_state SET
+            hlc_wall    = GREATEST(hlc_wall, (b -> 'hlc' ->> 'wall')::bigint),
+            hlc_counter = CASE
+                WHEN (b -> 'hlc' ->> 'wall')::bigint > hlc_wall THEN (b -> 'hlc' ->> 'counter')::int
+                WHEN (b -> 'hlc' ->> 'wall')::bigint = hlc_wall THEN GREATEST(hlc_counter, (b -> 'hlc' ->> 'counter')::int)
+                ELSE hlc_counter END
+            WHERE id;
         RETURN v_eid;
     END IF;
 
@@ -294,6 +341,14 @@ BEGIN
         (b -> 'hlc' ->> 'wall')::bigint, (b -> 'hlc' ->> 'counter')::int,
         b -> 'hlc' ->> 'node_origin', p_signed, v_ca)
     ON CONFLICT (node_event_id) DO NOTHING;
+    -- Clock never falls behind an event we accepted (HLC invariant A3, mirrors cairn-sync).
+    UPDATE hlc_state SET
+        hlc_wall    = GREATEST(hlc_wall, (b -> 'hlc' ->> 'wall')::bigint),
+        hlc_counter = CASE
+            WHEN (b -> 'hlc' ->> 'wall')::bigint > hlc_wall THEN (b -> 'hlc' ->> 'counter')::int
+            WHEN (b -> 'hlc' ->> 'wall')::bigint = hlc_wall THEN GREATEST(hlc_counter, (b -> 'hlc' ->> 'counter')::int)
+            ELSE hlc_counter END
+        WHERE id;
     RETURN v_eid;
 END;
 $$;
