@@ -27,10 +27,30 @@ fn node_event_body(event_type: &str, signer_key_id: &str, node_origin: &str,
     }
 }
 
+/// Advance this node's local HLC in the DB and return the new (wall, counter). The
+/// clock lives in Postgres (fat-Postgres, ADR-0001) so a single authority orders all
+/// authored events; the Rust side just reads the next stamp before it signs (the HLC
+/// is inside the signed body, so it MUST be obtained before `sign`).
+///
+/// INVARIANT — authoring is single-threaded on a node. The tick → `sign` → `submit`
+/// here are three separate DB round-trips, NOT one transaction: the `FOR UPDATE` in
+/// `node_hlc_tick` serializes the tick itself, but it does not bind the resulting
+/// stamp to the later `submit` (and hence to the `node_event.seq` assigned at INSERT).
+/// So if two authors ran concurrently on one node, HLC order and seq order could
+/// diverge. This is harmless for set-union convergence today (seq is the sync cursor;
+/// HLC is the displayed clock), and node authoring IS effectively single-threaded —
+/// but do NOT parallelize authoring without making tick+submit one transaction first,
+/// or the HLC↔seq correspondence silently breaks.
+async fn next_hlc(db: &Client) -> anyhow::Result<(i64, i32)> {
+    let row = db.query_one("SELECT wall, counter FROM node_hlc_tick()", &[]).await?;
+    Ok((row.get("wall"), row.get("counter")))
+}
+
 /// Author the genesis node.enrolled, submit it, return node_id (hex of its content-address).
 pub async fn provision(db: &Client, sk: &SigningKey, key_id: &str, display_name: &str, address: &str)
     -> anyhow::Result<String> {
-    let body = node_event_body("node.enrolled", key_id, display_name, 0, 0,
+    let (wall, counter) = next_hlc(db).await?;
+    let body = node_event_body("node.enrolled", key_id, display_name, wall, counter,
         serde_json::json!({"display_name": display_name, "address": address}));
     let signed = sign(&body, sk)?;
     let signed_bytes = signed.signed_bytes.clone();
@@ -88,7 +108,8 @@ pub async fn author_peer(
     peer: &PairingBundle,
     role: Option<&str>,
 ) -> anyhow::Result<String> {
-    let body = node_event_body("peer.added", key_id, node_origin, 0, 0, serde_json::json!({
+    let (wall, counter) = next_hlc(db).await?;
+    let body = node_event_body("peer.added", key_id, node_origin, wall, counter, serde_json::json!({
         "peer_node_id_hex": peer.node_id_hex,
         "peer_pubkey":      peer.pubkey_hex,
         "fingerprint":      peer.fingerprint,
@@ -110,7 +131,8 @@ pub async fn author_unpeer(
     node_origin: &str,
     peer_node_id_hex: &str,
 ) -> anyhow::Result<String> {
-    let body = node_event_body("peer.revoked", key_id, node_origin, 0, 0, serde_json::json!({
+    let (wall, counter) = next_hlc(db).await?;
+    let body = node_event_body("peer.revoked", key_id, node_origin, wall, counter, serde_json::json!({
         "peer_node_id_hex": peer_node_id_hex,
     }));
     let signed = sign(&body, sk)?;

@@ -30,22 +30,29 @@ use tokio_postgres::Client;
 use tokio_rustls::rustls::pki_types::ServerName;
 use tokio_rustls::rustls::{ClientConfig, ServerConfig};
 use tokio_rustls::{TlsAcceptor, TlsConnector};
-use uuid::Uuid;
-
 use cairn_event::SigningKey;
 
 use crate::db;
 use crate::transport::{self, TrustStore};
 
+/// Full-sweep cadence: the puller does an incremental `seq`-cursor pull each cycle and a
+/// full sweep (cursor reset to 0) every `FULL_SWEEP_EVERY` cycles. The sweep is the
+/// correctness floor (issue #38): it reconciles any event a residual hazard (commit-order
+/// race, a rejected-then-later-trusted author, an address remap) caused incremental to
+/// skip. `node_event` is low-volume, so a frequent sweep is cheap.
+const FULL_SWEEP_EVERY: u64 = 10;
+
 /// A request on the clinical-federation plane. JSON, one per connection.
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "op")]
 pub enum Request {
-    /// Every `node_event` whose `(recorded_at, node_event_id)` orders after the
-    /// given watermark; `after_id: None` means "from the beginning" (full set).
-    /// (Task 10 always pulls the full set; the watermark field is the day-one shape
-    /// the incremental pull in a later task will populate.)
-    NodeEventsAfter { after_id: Option<Uuid> },
+    /// Every `node_event` whose serving-node `seq` is strictly greater than
+    /// `after_seq`, in `seq` order. `after_seq = 0` returns the full set (the
+    /// full-sweep path). `seq` is the server's LOCAL insertion order — the only
+    /// ordering where newly-learned events always sort above a puller's cursor, so
+    /// incremental can never silently skip (issue #38). This enum is versioned;
+    /// future changes are additive (principle 12).
+    NodeEventsAfterSeq { after_seq: i64 },
 }
 
 /// What one `pull_once` did. `received` = frames read off the wire; `admitted` =
@@ -216,8 +223,8 @@ async fn serve_conn(acceptor: TlsAcceptor, tcp: TcpStream, db_conn: &str) -> any
 
     let db = db::connect(db_conn).await.context("serve: connecting to DB")?;
     match req {
-        Request::NodeEventsAfter { after_id } => {
-            stream_node_events(&mut tls, &db, after_id).await?;
+        Request::NodeEventsAfterSeq { after_seq } => {
+            stream_node_events(&mut tls, &db, after_seq).await?;
         }
     }
     // Closing the stream is the EOF the puller reads as "no more frames".
@@ -225,35 +232,31 @@ async fn serve_conn(acceptor: TlsAcceptor, tcp: TcpStream, db_conn: &str) -> any
     Ok(())
 }
 
-/// Stream every `node_event.signed_bytes` (after the optional watermark) as a raw
-/// length-framed binary frame, ordered by `(recorded_at, node_event_id)` — the
-/// deterministic causal order the receiver applies in.
+/// Stream every `node_event` with `seq > after_seq`, ordered by `seq` (the serving
+/// node's local insertion order). Each frame is `[8-byte big-endian seq][signed_bytes]`
+/// so the puller can checkpoint its per-peer cursor. The seq prefix is transport
+/// metadata only; the signed_bytes are the untouched signed core (principle 12).
+/// `after_seq = 0` selects everything (the full-sweep path).
 async fn stream_node_events<S: AsyncWriteExt + Unpin>(
     tls: &mut S,
     db: &Client,
-    after_id: Option<Uuid>,
+    after_seq: i64,
 ) -> anyhow::Result<()> {
-    // `after_id` is the day-one watermark shape; Task 10 pulls the full set
-    // (after_id = NULL), and a later incremental pull will key off recorded_at.
-    // NOTE: the `<> $1` below is an exclude-ONE placeholder, not a true "after"
-    // predicate — it must be REPLACED (not extended) by a `(recorded_at, id) >`
-    // watermark when incremental pull lands; it is NOT working incremental logic.
-    // We keep the SQL uniform: NULL after_id selects everything. The id is bound as
-    // text and cast in SQL (matching the codebase's $1::text::uuid convention),
-    // avoiding the tokio-postgres `with-uuid-1` feature dependency.
-    let after_text: Option<String> = after_id.map(|u| u.to_string());
     let rows = db
         .query(
-            "SELECT signed_bytes FROM node_event \
-             WHERE $1::text IS NULL OR node_event_id <> $1::text::uuid \
-             ORDER BY recorded_at, node_event_id",
-            &[&after_text],
+            "SELECT seq, signed_bytes FROM node_event WHERE seq > $1 ORDER BY seq",
+            &[&after_seq],
         )
         .await
         .context("selecting node_event bytes to stream")?;
     for row in &rows {
-        let bytes: Vec<u8> = row.get(0);
-        write_frame(tls, &bytes).await.context("writing a node_event frame")?;
+        let seq: i64 = row.get(0);
+        let bytes: Vec<u8> = row.get(1);
+        // Frame payload = 8-byte BE seq ++ signed_bytes.
+        let mut framed = Vec::with_capacity(8 + bytes.len());
+        framed.extend_from_slice(&seq.to_be_bytes());
+        framed.extend_from_slice(&bytes);
+        write_frame(tls, &framed).await.context("writing a node_event frame")?;
     }
     Ok(())
 }
@@ -280,26 +283,41 @@ pub async fn client_config(
     Ok(PullConfig { tls, db_conn: db_conn.to_string() })
 }
 
-/// Connect to `peer` over pinned mTLS, request all node events, and apply each via
-/// the in-DB admission gate. Per-event rejections are **non-fatal** (logged with the
-/// legible DB reason) — deny-all for an un-trusted author is the expected case, so
-/// one rejected event must never abort the pull.
-///
-/// Opens its own short-lived DB connection. The `run` loop instead calls
-/// [`pull_into`] with the connection it already opened for the trust refresh, so a
-/// cycle uses ONE connection rather than two (PR #28 review follow-up).
-pub async fn pull_once(peer: SocketAddr, cfg: PullConfig) -> anyhow::Result<PullStats> {
+/// Connect to `peer` over pinned mTLS, request node events after this node's cursor for
+/// `peer` (or the full set when `full_sweep`), and apply each via the in-DB gate. Opens
+/// its own short-lived DB connection; `run` uses [`pull_into`] with its cycle connection.
+pub async fn pull_once(peer: SocketAddr, cfg: PullConfig, full_sweep: bool) -> anyhow::Result<PullStats> {
     let db = db::connect(&cfg.db_conn).await.context("pull: connecting to DB")?;
-    pull_into(peer, cfg.tls, &db).await
+    pull_into(peer, cfg.tls, &db, full_sweep).await
 }
 
-/// The pull itself, applying admitted events into an already-open `db`. Factored
-/// out so the caller controls the connection lifetime (one per `run` cycle).
+/// The pull itself, applying admitted events into an already-open `db`. Reads the
+/// per-peer cursor (keyed by the peer ADDRESS — known before connecting, so no protocol
+/// round-trip), requests `seq > cursor` (or `> 0` on a full sweep), parses the 8-byte seq
+/// prefix from each frame, applies the signed bytes via the unchanged admission gate, and
+/// — only at a CLEAN EOF — checkpoints the highest seq received through the advance-only
+/// door. A mid-stream failure returns early WITHOUT checkpointing, so the next cycle
+/// re-pulls from the last committed cursor and no event is lost (idempotent apply).
 pub async fn pull_into(
     peer: SocketAddr,
     tls: Arc<ClientConfig>,
     db: &Client,
+    full_sweep: bool,
 ) -> anyhow::Result<PullStats> {
+    let peer_key = peer.to_string();
+    // Cursor: 0 on a full sweep (everything) or when we have never pulled this peer.
+    let after_seq: i64 = if full_sweep {
+        0
+    } else {
+        db.query_one(
+            "SELECT coalesce((SELECT last_seq FROM sync_cursor WHERE peer_addr = $1), 0)",
+            &[&peer_key],
+        )
+        .await
+        .context("reading sync cursor")?
+        .get(0)
+    };
+
     let connector = TlsConnector::from(tls);
     let tcp = TcpStream::connect(peer).await.with_context(|| format!("connecting to {peer}"))?;
     // The pinned server cert's SAN is "cairn-node" (see transport::node_cert); the
@@ -308,14 +326,20 @@ pub async fn pull_into(
     let name = ServerName::try_from("cairn-node").context("building server name")?;
     let mut tls = connector.connect(name, tcp).await.context("mTLS handshake (server pin)")?;
 
-    // Task 10: pull the full set.
-    let req = Request::NodeEventsAfter { after_id: None };
+    let req = Request::NodeEventsAfterSeq { after_seq };
     write_frame(&mut tls, &serde_json::to_vec(&req)?).await.context("sending request")?;
 
     let mut stats = PullStats::default();
+    let mut max_seq = after_seq;
     while let Some(frame) = read_frame(&mut tls).await.context("reading a response frame")? {
         stats.received += 1;
-        match db.execute("SELECT apply_remote_node_event($1)", &[&frame]).await {
+        // Frame = [8-byte BE seq][signed_bytes]. A short frame is a protocol error.
+        if frame.len() < 8 {
+            anyhow::bail!("pull: response frame shorter than the 8-byte seq prefix");
+        }
+        let seq = i64::from_be_bytes(frame[..8].try_into().expect("8 bytes"));
+        let signed = &frame[8..];
+        match db.execute("SELECT apply_remote_node_event($1)", &[&signed]).await {
             Ok(_) => stats.admitted += 1,
             Err(e) => {
                 // Non-fatal: the admission gate refused this event (un-trusted
@@ -324,6 +348,17 @@ pub async fn pull_into(
                 eprintln!("pull: node_event rejected (non-fatal): {e}");
             }
         }
+        // Advance over RECEIVED events (stream is seq-ordered); rejections are re-tried
+        // on the next full sweep. Tracking the max — not the last — is robust to any
+        // server-side reordering.
+        if seq > max_seq { max_seq = seq; }
+    }
+    // Clean EOF reached: checkpoint through the advance-only door. Only now — a mid-stream
+    // error returned above without advancing the cursor.
+    if max_seq > after_seq || full_sweep {
+        db.execute("SELECT checkpoint_sync_cursor($1,$2)", &[&peer_key, &max_seq])
+            .await
+            .context("checkpointing sync cursor")?;
     }
     Ok(stats)
 }
@@ -364,8 +399,13 @@ pub async fn run(
     let client_tls = transport::client_config(sk, trust_store_from_set(trust_set.clone()))?;
     let db_conn = db_conn.to_string();
     let mut ticker = tokio::time::interval(std::time::Duration::from_secs(interval_secs.max(1)));
+    let mut cycle: u64 = 0;
+    // Snapshot of the trust set as of the previous cycle, to detect peering changes.
+    let mut prev_trust: HashSet<String> =
+        trust_set.read().map(|s| s.clone()).unwrap_or_default();
     loop {
         ticker.tick().await;
+        cycle += 1;
         // ONE DB connection per cycle, used for BOTH the trust refresh and applying
         // the pull's admitted events (previously this opened two short-lived
         // connections per cycle — PR #28 review follow-up). It is dropped at the end
@@ -373,9 +413,6 @@ pub async fn run(
         // restart is picked up by the next cycle's reconnect.
         let cycle_db = match db::connect(&db_conn).await {
             Ok(c) => c,
-            // No DB this cycle: the serve side keeps running on the last-known trust
-            // set (availability over consistency), and there is no point pulling
-            // events we could not apply, so skip the pull until the DB is back.
             Err(e) => {
                 eprintln!("run: DB unreachable, serving last-known set, skipping pull: {e}");
                 if serve_handle.is_finished() {
@@ -393,9 +430,21 @@ pub async fn run(
         if let Err(e) = refresh_trust_set(&cycle_db, &trust_set).await {
             eprintln!("run: trust refresh failed, serving last-known set: {e}");
         }
-        match pull_into(peer, client_tls.clone(), &cycle_db).await {
+        // Full sweep on cadence OR whenever the active peer set changed this cycle (so a
+        // freshly-peered node's backlog is pulled at once, not after FULL_SWEEP_EVERY).
+        let now_trust: HashSet<String> =
+            trust_set.read().map(|s| s.clone()).unwrap_or_default();
+        let trust_changed = now_trust != prev_trust;
+        prev_trust = now_trust;
+        // `% == 0` (not `is_multiple_of`, stabilized only in Rust 1.87) keeps this
+        // within the workspace MSRV (rust-version = "1.74"); the clippy lint that
+        // prefers the newer method is therefore allowed here.
+        #[allow(clippy::manual_is_multiple_of)]
+        let full_sweep = trust_changed || cycle % FULL_SWEEP_EVERY == 0;
+
+        match pull_into(peer, client_tls.clone(), &cycle_db, full_sweep).await {
             Ok(s) => eprintln!(
-                "run: pull {peer}: received={} admitted={} rejected={}",
+                "run: pull {peer}: full_sweep={full_sweep} received={} admitted={} rejected={}",
                 s.received, s.admitted, s.rejected
             ),
             // A sustained outage = a partition. Logged, never fatal.

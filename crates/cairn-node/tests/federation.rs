@@ -50,9 +50,9 @@ async fn b_pulls_and_admits_a_genesis_over_mtls() {
 
     // --- provision both nodes in their own fresh DBs ---
     let a = db::connect_and_load_schema(&base_a).await.unwrap();
-    a.batch_execute("TRUNCATE node_event, local_node").await.ok();
+    db::reset_node_federation_tables(&a).await.ok();
     let b = db::connect_and_load_schema(&base_b).await.unwrap();
-    b.batch_execute("TRUNCATE node_event, local_node").await.ok();
+    db::reset_node_federation_tables(&b).await.ok();
 
     let tmp = tempfile::tempdir().unwrap();
     let (sk_a, kid_a) = keystore::generate_and_seal(&tmp.path().join("a.key"), None).unwrap();
@@ -87,7 +87,7 @@ async fn b_pulls_and_admits_a_genesis_over_mtls() {
 
     // --- B pulls from A over mTLS ---
     let client_cfg = sync::client_config(&base_b, &sk_b, trust_b).await.unwrap();
-    let stats = sync::pull_once(addr, client_cfg).await.unwrap();
+    let stats = sync::pull_once(addr, client_cfg, false).await.unwrap();
     eprintln!("pull stats: {stats:?}");
     assert!(stats.received >= 1, "B must receive at least A's genesis frame");
 
@@ -131,11 +131,11 @@ async fn two_nodes_converge_then_unpeer_and_a_stranger_is_rejected() {
 
     // --- 1. provision A, B, C in their own fresh DBs ---
     let a = db::connect_and_load_schema(&base_a).await.unwrap();
-    a.batch_execute("TRUNCATE node_event, local_node").await.ok();
+    db::reset_node_federation_tables(&a).await.ok();
     let b = db::connect_and_load_schema(&base_b).await.unwrap();
-    b.batch_execute("TRUNCATE node_event, local_node").await.ok();
+    db::reset_node_federation_tables(&b).await.ok();
     let c = db::connect_and_load_schema(&base_c).await.unwrap();
-    c.batch_execute("TRUNCATE node_event, local_node").await.ok();
+    db::reset_node_federation_tables(&c).await.ok();
 
     let tmp = tempfile::tempdir().unwrap();
     let (sk_a, kid_a) = keystore::generate_and_seal(&tmp.path().join("a.key"), None).unwrap();
@@ -179,15 +179,20 @@ async fn two_nodes_converge_then_unpeer_and_a_stranger_is_rejected() {
     let serve_b = tokio::spawn(sync::serve(serve_cfg_b));
     let serve_c = tokio::spawn(sync::serve(serve_cfg_c));
 
-    // --- 3. bidirectional pull: A←B and B←A ---
-    // B pulls from A.
-    let cfg = sync::client_config(&base_b, &sk_b, trust_b.clone()).await.unwrap();
-    let s_ba = sync::pull_once(addr_a, cfg).await.unwrap();
-    eprintln!("B<-A pull: {s_ba:?}");
+    // --- 3. bidirectional pull: A←B first, then B←A ---
+    // Pull in this order so that B←A happens after A has absorbed B's events.
+    // After A←B, A holds all 4 events (2 from A + 2 from B). The subsequent B←A
+    // then sets B's cursor to A's current max seq, proving the post-convergence
+    // incremental re-pull returns received=0 (cursor suppresses re-shipping).
+    //
     // A pulls from B.
     let cfg = sync::client_config(&base_a, &sk_a, trust_a.clone()).await.unwrap();
-    let s_ab = sync::pull_once(addr_b, cfg).await.unwrap();
+    let s_ab = sync::pull_once(addr_b, cfg, false).await.unwrap();
     eprintln!("A<-B pull: {s_ab:?}");
+    // B pulls from A.
+    let cfg = sync::client_config(&base_b, &sk_b, trust_b.clone()).await.unwrap();
+    let s_ba = sync::pull_once(addr_a, cfg, false).await.unwrap();
+    eprintln!("B<-A pull: {s_ba:?}");
 
     // Convergence: BOTH DBs hold 2 enroll + 2 peer rows (set-union). Assert on each
     // RECEIVING node after TRUNCATE, so admitted rows can only have crossed the wire.
@@ -208,6 +213,12 @@ async fn two_nodes_converge_then_unpeer_and_a_stranger_is_rejected() {
         "B's trust_peer must show A active"
     );
 
+    // Incremental re-pull after convergence ships nothing new (cursor is current).
+    let cfg_b2 = sync::client_config(&base_b, &sk_b,
+        sync::trust_store_from_db(&b).await.unwrap()).await.unwrap();
+    let again = sync::pull_once(addr_a, cfg_b2, false).await.unwrap();
+    assert_eq!(again.received, 0, "post-convergence incremental pull ships nothing");
+
     // --- 4. THE STRANGER: B pulls from C (nobody peered with C). ---
     // mTLS must fail (C's server pins its empty trust set; B's client doesn't trust
     // C). The pull returns Err OR transfers zero admitted rows; either way B's row
@@ -217,7 +228,7 @@ async fn two_nodes_converge_then_unpeer_and_a_stranger_is_rejected() {
     let b_peer_before   = count_op(&b, "peer").await;
 
     let cfg = sync::client_config(&base_b, &sk_b, trust_b.clone()).await.unwrap();
-    match sync::pull_once(addr_c, cfg).await {
+    match sync::pull_once(addr_c, cfg, false).await {
         Ok(s) => {
             eprintln!("B<-C pull (stranger) unexpectedly returned Ok: {s:?}");
             // If the handshake somehow completed, the in-DB gate must still admit
@@ -256,7 +267,7 @@ async fn two_nodes_converge_then_unpeer_and_a_stranger_is_rejected() {
     // the DB, not only at the transport.
     let a_peer_before = count_op(&a, "peer").await;
     let cfg = sync::client_config(&base_a, &sk_a, trust_a.clone()).await.unwrap();
-    let s_unpeer = sync::pull_once(addr_b, cfg).await.unwrap();
+    let s_unpeer = sync::pull_once(addr_b, cfg, false).await.unwrap();
     eprintln!("A<-B post-unpeer pull: {s_unpeer:?}");
     assert!(
         s_unpeer.rejected >= 1,
