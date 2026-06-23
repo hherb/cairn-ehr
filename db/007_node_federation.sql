@@ -44,6 +44,40 @@ CREATE INDEX IF NOT EXISTS node_event_subject_idx ON node_event (subject_node_id
 ALTER TABLE node_event ADD COLUMN IF NOT EXISTS seq BIGINT GENERATED ALWAYS AS IDENTITY;
 CREATE INDEX IF NOT EXISTS node_event_seq_idx ON node_event (seq);
 
+-- Issue #38: the per-peer pull checkpoint. `last_seq` is the highest serving-node
+-- `seq` this node has pulled from `peer_addr`. MUTABLE node-local operational state
+-- (not a signed event), so it lives OUTSIDE the append-only trigger. Keyed by peer
+-- ADDRESS: the address is known before the connection (no protocol round-trip), and
+-- a wrong/stale key can only cause a re-pull or a transient skip — both healed by the
+-- full-sweep floor — never an incorrect admission.
+CREATE TABLE IF NOT EXISTS sync_cursor (
+    peer_addr  TEXT        PRIMARY KEY,
+    last_seq   BIGINT      NOT NULL DEFAULT 0,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
+);
+
+-- The ONE door that writes sync_cursor. The runtime role gets EXECUTE on this, never
+-- raw INSERT/UPDATE — preserving the floor invariant (PR #39): the cairn_node role does
+-- zero raw DML, only validated doors. ADVANCE-ONLY (GREATEST): a buggy or hostile caller
+-- cannot rewind the cursor to thrash re-pulls. Returns the resulting last_seq so the
+-- caller can log/assert. A forward jump can only DELAY a legitimate event (healed by the
+-- sweep), never admit an unauthorized one (the admission gate is untouched).
+CREATE OR REPLACE FUNCTION checkpoint_sync_cursor(p_peer_addr TEXT, p_observed_seq BIGINT)
+RETURNS BIGINT
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE v_last BIGINT;
+BEGIN
+    INSERT INTO sync_cursor (peer_addr, last_seq, updated_at)
+    VALUES (p_peer_addr, GREATEST(0, p_observed_seq), clock_timestamp())
+    ON CONFLICT (peer_addr) DO UPDATE
+        SET last_seq = GREATEST(sync_cursor.last_seq, EXCLUDED.last_seq),
+            updated_at = clock_timestamp()
+    RETURNING last_seq INTO v_last;
+    RETURN v_last;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION node_event_is_append_only()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -173,6 +207,12 @@ REVOKE INSERT, UPDATE, DELETE ON local_node FROM PUBLIC, cairn_node;
 REVOKE EXECUTE ON FUNCTION submit_node_event(bytea) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION submit_node_event(bytea) TO cairn_node;
 GRANT SELECT ON node_event, node_current, local_node TO cairn_node;
+
+-- sync_cursor: SELECT (for status/debug) but NO raw DML — writes go through the door.
+GRANT SELECT ON sync_cursor TO cairn_node;
+REVOKE INSERT, UPDATE, DELETE ON sync_cursor FROM PUBLIC, cairn_node;
+REVOKE EXECUTE ON FUNCTION checkpoint_sync_cursor(text, bigint) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION checkpoint_sync_cursor(text, bigint) TO cairn_node;
 
 -- The local node's trust set: peer assertions IT authored, graded active/revoked by
 -- the latest op per subject. Read by the admission gate (Task 8) and the mTLS
