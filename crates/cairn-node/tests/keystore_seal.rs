@@ -22,13 +22,20 @@ async fn sealed_init_produces_dual_recipient_key_and_surfaces_escrow() {
     identity::provision(&db, &sk, &kid, "A", "127.0.0.1:7900").await.unwrap();
 
     // Both recipients recover the same key; no/ wrong secret fails legibly (no panic).
-    assert_eq!(keystore::load(&kp, Some(op)).unwrap().to_bytes(), sk.to_bytes());
-    assert_eq!(keystore::load(&kp, Some(&code)).unwrap().to_bytes(), sk.to_bytes());
+    // The substantive dual-recipient claim is that BOTH secrets decrypt to the SAME
+    // key, so cross-check the two recipients against each other as well as the write side.
+    let sk_op  = keystore::load(&kp, Some(op)).unwrap();
+    let sk_rec = keystore::load(&kp, Some(&code)).unwrap();
+    assert_eq!(sk_op.to_bytes(), sk_rec.to_bytes(),
+        "both recipients must decrypt the same key");
+    assert_eq!(sk_op.to_bytes(), sk.to_bytes(),
+        "recipient-decrypted key must equal the provisioned key");
     assert!(keystore::load(&kp, None).is_err());
     assert!(keystore::load(&kp, Some("wrong")).is_err());
 
     // status reflects the sealed posture + escrow.
     let st = identity::status(&db, &kp).await.unwrap();
+    assert!(st.initialized, "provisioned node must report initialized=true");
     assert!(st.keystore_ok);
     assert!(st.key_at_rest.contains("SEALED"), "got {:?}", st.key_at_rest);
     assert!(st.recovery_escrow, "sealed key must report an escrow");
