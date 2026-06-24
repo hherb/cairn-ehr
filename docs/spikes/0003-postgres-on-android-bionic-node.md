@@ -1,9 +1,10 @@
 # Spike 0003 — A Cairn node on an Android phone (native bionic PostgreSQL 18 + pgrx)
 
-- **Status:** **Proposed** — kit drafted and desk-checked, **not yet run on device**. The bionic
-  Postgres half is de-risked to "assemble known-good pieces"; the pgrx-extension cross-compile is the
-  one genuinely unproven step. Awaiting an on-device run on the target handset.
-- **Date:** 2026-06-19
+- **Status:** **Ran 2026-06-25 — G0–G2 PASS** on the target handset (PARTIAL per §6: native
+  Postgres-the-node confirmed; **G3 pgrx still pending**). Native PostgreSQL 18.2 execs, `initdb`s a
+  cluster, and serves real SQL over TCP — no Termux userland, no root, no VM. The runnable kit now
+  exists at [`poc/pg-android-kit/`](../../poc/pg-android-kit/). See §10 for the run log.
+- **Date:** 2026-06-19 (proposed) · **2026-06-25** (run)
 - **Target hardware:** RedMagic 11 Pro (Snapdragon 8 Elite Gen 5, 24 GB RAM, 1 TB, Android 16 /
   REDMAGIC OS 11). A representative high-end phone-as-leaf-node.
 - **Validates:** the **fractal-topology** invariant (*one codebase at every tier; a node's role is
@@ -170,3 +171,45 @@ build (termux-Docker cross-compile) → stage (flatten `.debs` to a relocatable 
 extension → `adb push` + `initdb` + `CREATE EXTENSION` + `SELECT`. It runs on a laptop with the phone on
 USB. The build deliberately reuses the maintained patch set rather than hand-rolling an NDK build, so the
 only novel surface under test is §5.
+
+> [!NOTE]
+> The kit as actually built ([`poc/pg-android-kit/`](../../poc/pg-android-kit/)) took the faster route
+> for G0–G2: it flattens Termux's **prebuilt** PG-18 `.debs` into the relocatable prefix rather than
+> driving a from-source termux-Docker build. The only component compiled from source is the one that had
+> to be (`libandroid-shmem`, see §10). The from-source PG build and the pgrx extension (§5) remain for G3.
+
+---
+
+## 10. Run log — 2026-06-25 (G0–G2 PASS)
+
+Run on the target handset (`NX809J` / nubia RedMagic 11 Pro, `ro.soc.model=SM8850`, Android 16 / SDK 36,
+`arm64-v8a`, SELinux **enforcing**) over `adb`, as the `shell` user from `/data/local/tmp`.
+
+| Gate | Observation |
+|---|---|
+| **§3** | Confirmed on-device: `protected_vm.supported=true`, `vm.supported=` (empty), hypervisor `gunyah`. The stock AVF-VM path is denied on this Qualcomm part — bionic is the only native route, as desk-checked. |
+| **G0 — exec** | ✅ A bionic aarch64 PIE pushed to `/data/local/tmp` execs as `shell` under enforcing SELinux. The feared W^X denial does not bite for the adb/`shell` domain. |
+| **G1 — initdb** | ✅ Cluster initialized: `dynamic shared memory implementation … mmap` (as §4 predicted), ICU collation, data-page checksums on. |
+| **G2 — start** | ✅ Postmaster up; TCP bind on `127.0.0.1` succeeds; `psql` over TCP runs `version()` + `CREATE/INSERT/SELECT`. |
+| **G3 — pgrx** | ⏳ not attempted yet. |
+
+**The blocker, and its fix.** §4 named `libandroid-shmem` "the #1 risk." It was — but not for the
+predicted Android-16 ashmem/memfd reason. The prebuilt Termux lib has **two** defects on a stock device
+(both isolated by `strace`), fixed by recompiling that one ~600-line BSD lib with the NDK:
+
+1. **Infinite CPU spin** — it coordinates SysV-shm keys via symlinks under a *compile-time-baked Termux
+   prefix* (`/data/data/com.termux/files/usr/tmp`), unwritable here → `EACCES` → ~millions of retry
+   iterations, never the expected `EEXIST`. Fixed by deriving the dir from `$TMPDIR` at runtime.
+2. **`/dev/ashmem` removed (Android 11+)** — Termux builds at API 24 → legacy `/dev/ashmem` path →
+   `EACCES`. Building at API ≥ 26 uses `ASharedMemory_create`, but that drags in `libandroid.so` →
+   the handset's vendor `libvendorutils.so`, whose `BIO_flush` clashes with the bundled OpenSSL. Fixed
+   by backing regions with a plain `memfd_create()` syscall — the `.so` then needs only
+   `liblog`/`libdl`/`libc`.
+
+**Operational note** (not a failure): Unix-domain sockets cannot be created under `/data/local/tmp`
+(SELinux denies a socket node in `shell_data_file`); TCP loopback works, so the node runs TCP-only.
+
+**What this feeds back (per §7):** the phone tier is reachable natively on a stock Qualcomm flagship
+(G0–G2), with the MediaTek/Exynos-vs-Qualcomm procurement guidance from §3 confirmed on real hardware.
+The fractal-topology claim survives at the phone tier for the substrate; the [ADR-0002](../spec/decisions/0002-in-database-rust-pgrx-escape-hatch.md)
+pgrx escape hatch (G3) is the remaining evidence to gather.
