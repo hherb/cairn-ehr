@@ -8,6 +8,11 @@
 //! one-time recovery code (paper escrow). A defect here is silent key loss or a
 //! forged identity, so it is exhaustively unit-tested and kept reviewer-legible.
 
+use argon2::{Algorithm, Argon2, Params, Version};
+use chacha20poly1305::aead::Aead;
+use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305, XNonce};
+use serde::{Deserialize, Serialize};
+
 /// Crockford base32 alphabet (excludes I, L, O, U to avoid transcription errors).
 const B32: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
@@ -75,11 +80,6 @@ pub fn generate_recovery_code() -> String {
         .collect::<Vec<_>>()
         .join("-")
 }
-
-use argon2::{Algorithm, Argon2, Params, Version};
-use chacha20poly1305::aead::Aead;
-use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305, XNonce};
-use serde::{Deserialize, Serialize};
 
 /// Magic header so a sealed bundle is distinguishable from a raw 32-byte plaintext
 /// seed by inspection (keystore auto-detect). Versioned: bump on a format change.
@@ -260,6 +260,13 @@ mod tests {
         assert_eq!(unseal(&mutate(|s| s.wrap_rec.ct[0] ^= 1), "REC-CODE"), None);
         assert_eq!(unseal(&mutate(|s| s.salt_op[0] ^= 1), "op-pass"), None);
         assert_eq!(unseal(&mutate(|s| s.seed_nonce[0] ^= 1), "op-pass"), None);
+        // Recovery-path tamper: the assertions above all unseal via "op-pass" (the op
+        // path), which masks any mutation to the recovery wrap's KDF inputs. Exercise the
+        // second recipient explicitly: a flipped recovery salt yields a wrong KEK, and a
+        // flipped recovery nonce yields a wrong Poly1305 key — either must fail unseal via
+        // the recovery code, closing the coverage gap for the second recipient.
+        assert_eq!(unseal(&mutate(|s| s.salt_rec[0] ^= 1), "REC-CODE"), None);
+        assert_eq!(unseal(&mutate(|s| s.wrap_rec.nonce[0] ^= 1), "REC-CODE"), None);
     }
 
     #[test]
