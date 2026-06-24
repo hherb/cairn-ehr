@@ -267,8 +267,10 @@ alongside the B1–B4 table.
 > [!NOTE]
 > The guard (`db/tests/008_surrogate_test.sql`) is the load-bearing half: it mechanically
 > asserts the surrogate never reaches the canonical/signed plane (`event_log` stays
-> surrogate-free), that the `local_ref` domain is a real type barrier, and that egress
-> rehydrates the canonical UUID. It runs anywhere `psql` does — including in review, off-Pi.
+> surrogate-free — the load-bearing guarantee, since that plane is typed `uuid` and
+> `bigint <> uuid`), that the `local_ref` domain gives its one-directional guard (a
+> `uuid` won't coerce to a surrogate) while being honest it is *not* a two-way barrier,
+> and that egress rehydrates the canonical UUID. It runs anywhere `psql` does — including in review, off-Pi.
 
 ---
 
