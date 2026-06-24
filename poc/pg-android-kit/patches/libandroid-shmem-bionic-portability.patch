@@ -1,0 +1,107 @@
+# libandroid-shmem bionic-portability patch (Cairn spike 0003)
+# Generated against termux/libandroid-shmem @ 7f0bd7e25dbdd146265aff7c6a890029e374622d
+# Regenerate: see poc/pg-android-kit/02-build-shmem.sh (SHMEM_COMMIT).
+--- a/shmem.c
++++ b/shmem.c
+@@ -14,6 +14,12 @@
+ #include <sys/un.h>
+ #include <unistd.h>
+ #include <paths.h>
++// Cairn spike 0003: the portability fixes below use struct stat/fstat and the
++// memfd_create syscall number; declare them here so the patched .c is
++// self-contained and compiles under any build invocation (not only the kit's
++// `-include` flags in 02-build-shmem.sh).
++#include <sys/stat.h>
++#include <sys/syscall.h>
+ 
+ #if __ANDROID_API__ < 26
+ #define __u32 uint32_t
+@@ -113,11 +119,22 @@
+ 
+ static int ashmem_get_size_region(int fd)
+ {
+-#if __ANDROID_API__ >= 26
+-	return ASharedMemory_getSize(fd);
+-#else
+-	return TEMP_FAILURE_RETRY(ioctl(fd, ASHMEM_GET_SIZE, NULL));
+-#endif
++	// Cairn spike 0003: back the region with a memfd instead of ASharedMemory /
++	// /dev/ashmem. ASharedMemory_create lives in libandroid.so, which on this
++	// handset transitively pulls a vendor lib (libvendorutils.so) whose BIO_flush
++	// reference clashes with the bundled OpenSSL; /dev/ashmem is gone on Android 16.
++	// memfd is a plain syscall (no extra .so) and is mmap/fd-passing equivalent.
++	//
++	// CEILING (inherited from upstream's `int` return type): a region >= 2 GiB
++	// truncates here. PostgreSQL's main SysV segment is normally well under that
++	// (default shared_buffers ~128 MB), but a phone node tuned for a large-RAM
++	// handset (the 24 GB target) with shared_buffers in the GB range could cross
++	// it, yielding a wrong/negative size and a mis-sized mmap. Widening the
++	// contract to size_t would require changing this signature and every caller
++	// (out of scope for the spike); flagged so it is not mistaken for safe.
++	struct stat st;
++	if (fstat(fd, &st) != 0) return -1;
++	return (int) st.st_size;
+ }
+ 
+ /*
+@@ -129,28 +146,21 @@
+  */
+ static int ashmem_create_region(char const* name, size_t size)
+ {
+-#if __ANDROID_API__ >= 26
+-	return ASharedMemory_create(name, size);
+-#else
+-	// From https://android.googlesource.com/platform/system/core/+/master/libcutils/ashmem-dev.c
+-	int fd = open("/dev/ashmem", O_RDWR);
++	// Cairn spike 0003: see ashmem_get_size_region above. Create a named,
++	// fixed-size anonymous shared region via memfd_create + ftruncate. Called
++	// through syscall() so it needs no NDK API-level gating and no libandroid.
++#ifndef MFD_CLOEXEC
++#define MFD_CLOEXEC 0x0001U
++#endif
++	int fd = (int) syscall(__NR_memfd_create, name, MFD_CLOEXEC);
+ 	if (fd < 0) return fd;
+-
+-	char name_buffer[ASHMEM_NAME_LEN] = {0};
+-	strncpy(name_buffer, name, sizeof(name_buffer));
+-	name_buffer[sizeof(name_buffer)-1] = 0;
+-
+-	int ret = ioctl(fd, ASHMEM_SET_NAME, name_buffer);
+-	if (ret < 0) goto error;
+-
+-	ret = ioctl(fd, ASHMEM_SET_SIZE, size);
+-	if (ret < 0) goto error;
+-
++	if (ftruncate(fd, (off_t) size) != 0) {
++		int saved = errno;
++		close(fd);
++		errno = saved;
++		return -1;
++	}
+ 	return fd;
+-error:
+-	close(fd);
+-	return ret;
+-#endif
+ }
+ 
+ static void ashv_check_pid()
+@@ -349,7 +359,17 @@
+ 		// (3) If connected and opened, done. If connection refused
+ 		//     take ownership of the key and create the symlink.
+ 		// (4) If no symlink, create it.
+-		sprintf(symlink_path, ASHV_KEY_SYMLINK_PATH, key);
++		// Portability fix (Cairn spike 0003): the upstream Termux build bakes the
++		// Termux prefix into _PATH_TMP, so ASHV_KEY_SYMLINK_PATH points at
++		// /data/data/com.termux/files/usr/tmp — which does not exist and is not
++		// writable on a stock (non-Termux) device. The symlink-coordination loop
++		// below then spins forever on EACCES (never the expected EEXIST). Derive the
++		// coordination directory from $TMPDIR at runtime, with a writable fallback.
++		{
++			const char* ashv_tmpdir = getenv("TMPDIR");
++			if (ashv_tmpdir == NULL || ashv_tmpdir[0] == '\0') ashv_tmpdir = "/data/local/tmp";
++			snprintf(symlink_path, sizeof(symlink_path), "%s/ashv_key_%d", ashv_tmpdir, key);
++		}
+ 		char path_buffer[256];
+ 		char num_buffer[64];
+ 		while (true) {
