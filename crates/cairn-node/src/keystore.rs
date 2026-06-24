@@ -6,6 +6,12 @@ use std::path::Path;
 pub enum KeystoreError {
     #[error("io: {0}")] Io(#[from] std::io::Error),
     #[error("key material: {0}")] Key(String),
+    /// The file is a sealed bundle but no secret was supplied. A DISTINCT variant (not
+    /// folded into `Key`) so a caller can react — e.g. the CLI prompts interactively
+    /// for the passphrase — by matching ONE load attempt's error, with no separate
+    /// file-classification read that could race the load (a TOCTOU).
+    #[error("key is sealed: provide the passphrase (set CAIRN_KEY_PASSPHRASE) or recovery code")]
+    Sealed,
 }
 
 /// At-rest posture of a key file, inspectable WITHOUT the secret (for `status`).
@@ -62,15 +68,18 @@ pub fn seal_existing(path: &Path, op_pass: &str, recovery_code: &str) -> Result<
 
     // Read-after-write integrity check: re-read the file, parse it, and unseal under
     // BOTH recipients. A bad write, a serialization edge, or a truncation would be
-    // silently accepted without this — and the operator would lose the key.
+    // silently accepted without this — and the operator would lose the key. We use the
+    // per-recipient helpers (one Argon2 derivation each) rather than the agnostic
+    // `unseal` (which would re-try the op path for the recovery code), halving the
+    // memory-hard cost of this check — it runs on every migration, incl. on Pi-class nodes.
     let readback = std::fs::read(path)?;
     let readback_sealed = seal::from_cbor(&readback)
         .map_err(|e| KeystoreError::Key(
             format!("seal verification failed after write (parse): {e}")))?;
-    let seed_op = seal::unseal(&readback_sealed, op_pass)
+    let seed_op = seal::unseal_op(&readback_sealed, op_pass)
         .ok_or_else(|| KeystoreError::Key(
             "seal verification failed after write: op passphrase did not unseal".into()))?;
-    let seed_rec = seal::unseal(&readback_sealed, recovery_code)
+    let seed_rec = seal::unseal_rec(&readback_sealed, recovery_code)
         .ok_or_else(|| KeystoreError::Key(
             "seal verification failed after write: recovery code did not unseal".into()))?;
     if seed_op != seed || seed_rec != seed {
@@ -86,8 +95,7 @@ pub fn seal_existing(path: &Path, op_pass: &str, recovery_code: &str) -> Result<
 pub fn load(path: &Path, secret: Option<&str>) -> Result<SigningKey, KeystoreError> {
     let bytes = std::fs::read(path)?;
     if let Ok(sealed) = seal::from_cbor(&bytes) {
-        let secret = secret.ok_or_else(|| KeystoreError::Key(
-            "key is sealed: provide the passphrase (set CAIRN_KEY_PASSPHRASE)".into()))?;
+        let secret = secret.ok_or(KeystoreError::Sealed)?;
         let seed = seal::unseal(&sealed, secret).ok_or_else(|| KeystoreError::Key(
             "cannot unseal key: wrong passphrase/recovery code or corrupt file".into()))?;
         Ok(SigningKey::from_bytes(&seed))
@@ -144,7 +152,10 @@ mod tests {
         let (sk, _kid) = generate_sealed(&p, "op", "REC-CODE").unwrap();
         assert_eq!(load(&p, Some("op")).unwrap().to_bytes(), sk.to_bytes());
         assert_eq!(load(&p, Some("REC-CODE")).unwrap().to_bytes(), sk.to_bytes());
-        assert!(load(&p, None).is_err(), "sealed key with no secret must error");
+        // No secret on a sealed key yields the DISTINCT `Sealed` variant (so the CLI
+        // can decide to prompt), not a generic Key error.
+        assert!(matches!(load(&p, None), Err(KeystoreError::Sealed)),
+            "sealed key with no secret must return the Sealed variant");
         assert!(load(&p, Some("wrong")).is_err());
         assert!(matches!(key_at_rest_state(&p), KeyAtRest::Sealed { dual_recipient: true }));
     }

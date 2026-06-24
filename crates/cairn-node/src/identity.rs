@@ -212,20 +212,26 @@ pub async fn status(db: &Client, key_path: &Path) -> anyhow::Result<Status> {
     let kstate = crate::keystore::key_at_rest_state(key_path);
     use crate::keystore::KeyAtRest;
     let keystore_ok = matches!(kstate, KeyAtRest::Sealed { .. } | KeyAtRest::Plaintext);
-    let (key_at_rest, recovery_escrow) = match kstate {
+    // One classification site derives ALL THREE escrow-related fields together, so the
+    // human strings and the `recovery_escrow` bool can never drift out of agreement
+    // (the redundancy a split if/else would invite). `recovery_escrow` is true ONLY for
+    // a sealed bundle with a structurally-intact recovery wrap.
+    const STUB: &str = "STUBBED (ADR-0026): no recovery escrow; key loss = node loss";
+    let (key_at_rest, dr_escrow, recovery_escrow) = match kstate {
         KeyAtRest::Sealed { dual_recipient } => (
             format!("SEALED (argon2id + xchacha20poly1305{})",
                     if dual_recipient { "; dual-recipient" } else { "" }),
+            if dual_recipient {
+                "recovery code set (off-node escrow; ADR-0026 slice A)".to_string()
+            } else {
+                STUB.to_string()
+            },
             dual_recipient,
         ),
-        KeyAtRest::Plaintext => ("PLAINTEXT (0600; run `cairn-node seal-key`)".to_string(), false),
-        KeyAtRest::Missing   => ("MISSING".to_string(), false),
-        KeyAtRest::Corrupt   => ("CORRUPT (unparseable key file)".to_string(), false),
-    };
-    let dr_escrow = if recovery_escrow {
-        "recovery code set (off-node escrow; ADR-0026 slice A)".to_string()
-    } else {
-        "STUBBED (ADR-0026): no recovery escrow; key loss = node loss".to_string()
+        KeyAtRest::Plaintext =>
+            ("PLAINTEXT (0600; run `cairn-node seal-key`)".to_string(), STUB.to_string(), false),
+        KeyAtRest::Missing => ("MISSING".to_string(), STUB.to_string(), false),
+        KeyAtRest::Corrupt => ("CORRUPT (unparseable key file)".to_string(), STUB.to_string(), false),
     };
 
     // In-DB floor self-check: is the submit/admission gate actually unbypassable for

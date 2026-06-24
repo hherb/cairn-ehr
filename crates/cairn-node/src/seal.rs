@@ -137,12 +137,24 @@ pub struct SealedKey {
     pub wrap_rec: Wrap,
 }
 
+/// Length of a wrapped DEK on disk: the 32-byte DEK plus the 16-byte Poly1305 tag
+/// XChaCha20-Poly1305 appends. A recovery wrap shorter or longer than this cannot
+/// possibly recover the key, so `status` must not advertise it as an escrow.
+const WRAPPED_DEK_LEN: usize = 32 + 16;
+
 impl SealedKey {
-    /// Whether this bundle carries a recovery-code wrap (the off-node escrow).
-    /// Always true for `seal`-produced bundles today (seal is always dual-recipient);
-    /// the `false` case is reserved for a future single-recipient mode.
+    /// Whether this bundle carries a STRUCTURALLY-INTACT recovery-code wrap (the
+    /// off-node escrow). Checks the wrapped-DEK ciphertext is exactly the expected
+    /// length, so a truncated or empty recovery wrap (e.g. a partial write) is
+    /// honestly reported as "no escrow" rather than overstating the guarantee — an
+    /// operator must never discard the paper code trusting a wrap that can't recover.
+    ///
+    /// LIMIT (by design): this is a structural check only. Without the secret it
+    /// cannot detect a length-preserving bit-flip in the wrap; such corruption
+    /// surfaces as an unseal failure during actual recovery, never here. `status`
+    /// inspects the file without any secret, so this is the strongest honest check.
     pub fn has_recovery_wrap(&self) -> bool {
-        !self.wrap_rec.ct.is_empty()
+        self.wrap_rec.ct.len() == WRAPPED_DEK_LEN
     }
 }
 
@@ -205,15 +217,33 @@ pub fn seal(seed: &[u8; 32], op_pass: &str, recovery_code: &str) -> Result<Seale
     })
 }
 
-/// Recover the seed from either recipient. Tries the operational passphrase first
-/// (byte-exact), then the recovery code (normalized). `None` on wrong secret or any
-/// tamper (the AEAD tag fails). The two paths are indistinguishable to the caller:
-/// we never leak which recipient matched or why a decrypt failed.
-pub fn unseal(s: &SealedKey, secret: &str) -> Option<[u8; 32]> {
-    let dek = try_unwrap(&s.wrap_op, secret, &s.salt_op, &s.argon)
-        .or_else(|| try_unwrap(&s.wrap_rec, &normalize_recovery_code(secret), &s.salt_rec, &s.argon))?;
+/// Recover the seed via ONLY the operational-passphrase recipient: exactly one
+/// Argon2 derivation. The passphrase is used byte-exact. For callers that already
+/// know the recipient (e.g. the read-after-write check on a migration); `unseal` is
+/// the public, recipient-agnostic entry point.
+pub fn unseal_op(s: &SealedKey, op_pass: &str) -> Option<[u8; 32]> {
+    let dek = try_unwrap(&s.wrap_op, op_pass, &s.salt_op, &s.argon)?;
     let seed = aead_decrypt(&dek, &s.seed_nonce, &s.seed_ct)?;
     seed.try_into().ok()
+}
+
+/// Recover the seed via ONLY the recovery-code recipient: exactly one Argon2
+/// derivation. The code is normalized first so any spacing/case unseals.
+pub fn unseal_rec(s: &SealedKey, recovery_code: &str) -> Option<[u8; 32]> {
+    let dek = try_unwrap(&s.wrap_rec, &normalize_recovery_code(recovery_code), &s.salt_rec, &s.argon)?;
+    let seed = aead_decrypt(&dek, &s.seed_nonce, &s.seed_ct)?;
+    seed.try_into().ok()
+}
+
+/// Recover the seed from either recipient, secret unknown. Tries the operational
+/// passphrase first (byte-exact), then the recovery code (normalized). `None` on a
+/// wrong secret or any tamper (the AEAD tag fails). The two paths are
+/// indistinguishable to the caller: we never leak which recipient matched or why a
+/// decrypt failed. NOTE: a recovery-code unseal therefore pays the op-path Argon2
+/// derivation first — when the recipient IS known, call `unseal_op`/`unseal_rec`
+/// directly to do half the memory-hard work.
+pub fn unseal(s: &SealedKey, secret: &str) -> Option<[u8; 32]> {
+    unseal_op(s, secret).or_else(|| unseal_rec(s, secret))
 }
 
 /// Serialize to magic-prefixed CBOR bytes for on-disk storage.
@@ -273,6 +303,30 @@ mod tests {
         // the recovery code, closing the coverage gap for the second recipient.
         assert_eq!(unseal(&mutate(|s| s.salt_rec[0] ^= 1), "REC-CODE"), None);
         assert_eq!(unseal(&mutate(|s| s.wrap_rec.nonce[0] ^= 1), "REC-CODE"), None);
+    }
+
+    #[test]
+    fn per_recipient_unseal_helpers_isolate_their_recipient() {
+        let s = seal(&SEED, "op-pass", "REC-CODE").unwrap();
+        // Each helper recovers the seed via its own recipient only.
+        assert_eq!(unseal_op(&s, "op-pass"), Some(SEED));
+        assert_eq!(unseal_rec(&s, "REC-CODE"), Some(SEED));
+        // ...and refuses the other recipient's secret (no cross-talk): the op helper
+        // must not accept the recovery code, nor the recovery helper the passphrase.
+        assert_eq!(unseal_op(&s, "REC-CODE"), None);
+        assert_eq!(unseal_rec(&s, "op-pass"), None);
+    }
+
+    #[test]
+    fn has_recovery_wrap_is_false_for_a_truncated_wrap() {
+        // A partial write that truncates the recovery wrap must report NO escrow, so
+        // `status` never tells an operator the off-node code is good when it isn't.
+        let mut s = seal(&SEED, "op-pass", "REC-CODE").unwrap();
+        assert!(s.has_recovery_wrap(), "a freshly sealed key has an intact recovery wrap");
+        s.wrap_rec.ct.truncate(WRAPPED_DEK_LEN - 1);
+        assert!(!s.has_recovery_wrap(), "a truncated recovery wrap is not an escrow");
+        s.wrap_rec.ct.clear();
+        assert!(!s.has_recovery_wrap(), "an empty recovery wrap is not an escrow");
     }
 
     #[test]
