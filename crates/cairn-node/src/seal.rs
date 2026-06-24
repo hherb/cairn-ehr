@@ -76,9 +76,207 @@ pub fn generate_recovery_code() -> String {
         .join("-")
 }
 
+use argon2::{Algorithm, Argon2, Params, Version};
+use chacha20poly1305::aead::Aead;
+use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305, XNonce};
+use serde::{Deserialize, Serialize};
+
+/// Magic header so a sealed bundle is distinguishable from a raw 32-byte plaintext
+/// seed by inspection (keystore auto-detect). Versioned: bump on a format change.
+const MAGIC: &[u8] = b"CAIRNK1\n";
+
+#[derive(thiserror::Error, Debug)]
+pub enum SealError {
+    #[error("kdf: {0}")] Kdf(String),
+    #[error("aead")] Aead,
+    #[error("entropy: {0}")] Entropy(String),
+    #[error("decode: {0}")] Decode(String),
+}
+
+/// One AEAD-wrapped copy of the Data Encryption Key under a single secret's KEK.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Wrap {
+    pub nonce: [u8; 24],
+    pub ct: Vec<u8>,
+}
+
+/// Argon2id cost parameters, stored in-file so a future cost change stays
+/// backward-readable (forward compat).
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ArgonParams {
+    pub m_cost: u32,
+    pub t_cost: u32,
+    pub p_cost: u32,
+}
+
+impl Default for ArgonParams {
+    fn default() -> Self {
+        // RustCrypto Argon2 defaults: 19 MiB, 2 passes, 1 lane. Adequate for an
+        // at-rest key wrap; tunable later without breaking old files (params are in-file).
+        Self { m_cost: 19_456, t_cost: 2, p_cost: 1 }
+    }
+}
+
+/// A dual-recipient sealed signing key. A random DEK encrypts the seed; the DEK is
+/// wrapped once per secret (operational passphrase, recovery code). Either secret
+/// recovers the DEK and hence the seed; neither secret is stored.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SealedKey {
+    pub version: u8,
+    pub argon: ArgonParams,
+    pub salt_op: [u8; 16],
+    pub salt_rec: [u8; 16],
+    pub seed_nonce: [u8; 24],
+    pub seed_ct: Vec<u8>,
+    pub wrap_op: Wrap,
+    pub wrap_rec: Wrap,
+}
+
+impl SealedKey {
+    /// Whether this bundle carries a recovery-code wrap (the off-node escrow).
+    /// Always true for `seal`-produced bundles; kept explicit for `status`.
+    pub fn has_recovery_wrap(&self) -> bool {
+        !self.wrap_rec.ct.is_empty()
+    }
+}
+
+fn rand_bytes<const N: usize>() -> Result<[u8; N], SealError> {
+    let mut b = [0u8; N];
+    getrandom::fill(&mut b).map_err(|e| SealError::Entropy(e.to_string()))?;
+    Ok(b)
+}
+
+/// Derive a 32-byte key-encryption-key from a secret + salt via Argon2id.
+fn derive_kek(secret: &str, salt: &[u8; 16], p: &ArgonParams) -> Result<[u8; 32], SealError> {
+    let params = Params::new(p.m_cost, p.t_cost, p.p_cost, Some(32))
+        .map_err(|e| SealError::Kdf(e.to_string()))?;
+    let argon = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+    let mut kek = [0u8; 32];
+    argon.hash_password_into(secret.as_bytes(), salt, &mut kek)
+        .map_err(|e| SealError::Kdf(e.to_string()))?;
+    Ok(kek)
+}
+
+fn aead_encrypt(key: &[u8; 32], nonce: &[u8; 24], pt: &[u8]) -> Result<Vec<u8>, SealError> {
+    let cipher = XChaCha20Poly1305::new(Key::from_slice(key));
+    cipher.encrypt(XNonce::from_slice(nonce), pt).map_err(|_| SealError::Aead)
+}
+
+fn aead_decrypt(key: &[u8; 32], nonce: &[u8; 24], ct: &[u8]) -> Option<Vec<u8>> {
+    let cipher = XChaCha20Poly1305::new(Key::from_slice(key));
+    cipher.decrypt(XNonce::from_slice(nonce), ct).ok()
+}
+
+/// Wrap one DEK copy under a secret. The recovery code is normalized first so any
+/// spacing/case the human re-types still derives the same KEK.
+fn wrap_dek(dek: &[u8; 32], secret: &str, salt: &[u8; 16], p: &ArgonParams)
+    -> Result<Wrap, SealError> {
+    let kek = derive_kek(secret, salt, p)?;
+    let nonce = rand_bytes::<24>()?;
+    let ct = aead_encrypt(&kek, &nonce, dek)?;
+    Ok(Wrap { nonce, ct })
+}
+
+fn try_unwrap(w: &Wrap, secret: &str, salt: &[u8; 16], p: &ArgonParams) -> Option<[u8; 32]> {
+    let kek = derive_kek(secret, salt, p).ok()?;
+    let dek = aead_decrypt(&kek, &w.nonce, &w.ct)?;
+    dek.try_into().ok()
+}
+
+/// Seal a 32-byte signing seed under two independent secrets (dual-recipient).
+pub fn seal(seed: &[u8; 32], op_pass: &str, recovery_code: &str) -> Result<SealedKey, SealError> {
+    let argon = ArgonParams::default();
+    let dek = rand_bytes::<32>()?;
+    let seed_nonce = rand_bytes::<24>()?;
+    let seed_ct = aead_encrypt(&dek, &seed_nonce, seed)?;
+    let salt_op = rand_bytes::<16>()?;
+    let salt_rec = rand_bytes::<16>()?;
+    let wrap_op = wrap_dek(&dek, op_pass, &salt_op, &argon)?;
+    // Normalize the recovery code so re-typing with different spacing/case unseals.
+    let wrap_rec = wrap_dek(&dek, &normalize_recovery_code(recovery_code), &salt_rec, &argon)?;
+    Ok(SealedKey {
+        version: 1, argon, salt_op, salt_rec, seed_nonce, seed_ct, wrap_op, wrap_rec,
+    })
+}
+
+/// Recover the seed from either recipient. Tries the operational passphrase first
+/// (byte-exact), then the recovery code (normalized). `None` on wrong secret or any
+/// tamper (the AEAD tag fails). The two paths are indistinguishable to the caller:
+/// we never leak which recipient matched or why a decrypt failed.
+pub fn unseal(s: &SealedKey, secret: &str) -> Option<[u8; 32]> {
+    let dek = try_unwrap(&s.wrap_op, secret, &s.salt_op, &s.argon)
+        .or_else(|| try_unwrap(&s.wrap_rec, &normalize_recovery_code(secret), &s.salt_rec, &s.argon))?;
+    let seed = aead_decrypt(&dek, &s.seed_nonce, &s.seed_ct)?;
+    seed.try_into().ok()
+}
+
+/// Serialize to magic-prefixed CBOR bytes for on-disk storage.
+pub fn to_cbor(s: &SealedKey) -> Vec<u8> {
+    let mut out = MAGIC.to_vec();
+    ciborium::into_writer(s, &mut out).expect("CBOR serialization of SealedKey cannot fail");
+    out
+}
+
+/// Parse magic-prefixed CBOR bytes. Errors (not panics) on a missing magic header
+/// or malformed body — so `keystore::load` can fall through to the plaintext path.
+pub fn from_cbor(bytes: &[u8]) -> Result<SealedKey, SealError> {
+    let body = bytes.strip_prefix(MAGIC)
+        .ok_or_else(|| SealError::Decode("missing CAIRNK1 magic".into()))?;
+    ciborium::from_reader(body).map_err(|e| SealError::Decode(e.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const SEED: [u8; 32] = [7u8; 32];
+
+    #[test]
+    fn unseals_with_operational_passphrase() {
+        let s = seal(&SEED, "op-pass", "REC-CODE").unwrap();
+        assert_eq!(unseal(&s, "op-pass"), Some(SEED));
+    }
+
+    #[test]
+    fn unseals_with_recovery_code_any_formatting() {
+        let s = seal(&SEED, "op-pass", "ab12c-d34ef").unwrap();
+        // re-typed with different case/spacing still works
+        assert_eq!(unseal(&s, "AB12C D34EF"), Some(SEED));
+    }
+
+    #[test]
+    fn wrong_secret_returns_none() {
+        let s = seal(&SEED, "op-pass", "REC-CODE").unwrap();
+        assert_eq!(unseal(&s, "nope"), None);
+    }
+
+    #[test]
+    fn tampered_fields_return_none() {
+        let base = seal(&SEED, "op-pass", "REC-CODE").unwrap();
+        let mutate = |f: fn(&mut SealedKey)| { let mut s = base.clone(); f(&mut s); s };
+        // Flipping a byte in any ciphertext, salt, or nonce must fail the AEAD tag.
+        assert_eq!(unseal(&mutate(|s| s.seed_ct[0] ^= 1), "op-pass"), None);
+        assert_eq!(unseal(&mutate(|s| s.wrap_op.ct[0] ^= 1), "op-pass"), None);
+        assert_eq!(unseal(&mutate(|s| s.wrap_rec.ct[0] ^= 1), "REC-CODE"), None);
+        assert_eq!(unseal(&mutate(|s| s.salt_op[0] ^= 1), "op-pass"), None);
+        assert_eq!(unseal(&mutate(|s| s.seed_nonce[0] ^= 1), "op-pass"), None);
+    }
+
+    #[test]
+    fn cbor_roundtrips_and_has_magic() {
+        let s = seal(&SEED, "op-pass", "REC-CODE").unwrap();
+        let bytes = to_cbor(&s);
+        assert!(bytes.starts_with(b"CAIRNK1\n"), "magic header must be present");
+        let back = from_cbor(&bytes).unwrap();
+        assert_eq!(unseal(&back, "op-pass"), Some(SEED));
+        assert!(back.has_recovery_wrap());
+    }
+
+    #[test]
+    fn from_cbor_rejects_garbage_and_plaintext() {
+        assert!(from_cbor(b"not a sealed bundle").is_err());
+        assert!(from_cbor(&[0u8; 32]).is_err(), "a raw 32-byte seed is not a bundle");
+    }
 
     #[test]
     fn base32_roundtrips_arbitrary_bytes() {
