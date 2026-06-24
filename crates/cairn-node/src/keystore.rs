@@ -43,6 +43,12 @@ pub fn generate_sealed(path: &Path, op_pass: &str, recovery_code: &str)
 
 /// Migrate an existing plaintext key file to the sealed format. Errors if the file
 /// is already sealed (no double-seal) or is not a 32-byte seed.
+///
+/// This is the ONLY path that overwrites a live node's sole plaintext key in place.
+/// After writing, the file is re-read and the sealed bundle is unsealed under BOTH
+/// secrets to verify the write round-tripped correctly. If either unseal fails, or
+/// the recovered seed does not match, the error is loud and explicit — the operator
+/// still holds the recovery code shown by the CLI and must intervene.
 pub fn seal_existing(path: &Path, op_pass: &str, recovery_code: &str) -> Result<(), KeystoreError> {
     let bytes = std::fs::read(path)?;
     if seal::from_cbor(&bytes).is_ok() {
@@ -53,6 +59,24 @@ pub fn seal_existing(path: &Path, op_pass: &str, recovery_code: &str) -> Result<
     let sealed = seal::seal(&seed, op_pass, recovery_code)
         .map_err(|e| KeystoreError::Key(e.to_string()))?;
     write_key_file(path, &seal::to_cbor(&sealed))?;
+
+    // Read-after-write integrity check: re-read the file, parse it, and unseal under
+    // BOTH recipients. A bad write, a serialization edge, or a truncation would be
+    // silently accepted without this — and the operator would lose the key.
+    let readback = std::fs::read(path)?;
+    let readback_sealed = seal::from_cbor(&readback)
+        .map_err(|e| KeystoreError::Key(
+            format!("seal verification failed after write (parse): {e}")))?;
+    let seed_op = seal::unseal(&readback_sealed, op_pass)
+        .ok_or_else(|| KeystoreError::Key(
+            "seal verification failed after write: op passphrase did not unseal".into()))?;
+    let seed_rec = seal::unseal(&readback_sealed, recovery_code)
+        .ok_or_else(|| KeystoreError::Key(
+            "seal verification failed after write: recovery code did not unseal".into()))?;
+    if seed_op != seed || seed_rec != seed {
+        return Err(KeystoreError::Key(
+            "seal verification failed after write: recovered seed does not match original".into()));
+    }
     Ok(())
 }
 
@@ -140,7 +164,11 @@ mod tests {
         let p = dir.path().join("node.key");
         let (sk, _kid) = generate_plaintext(&p).unwrap();
         seal_existing(&p, "op", "REC-CODE").unwrap();
-        assert_eq!(load(&p, Some("op")).unwrap().to_bytes(), sk.to_bytes());
+        // Both recipients must survive migration: op passphrase and recovery code.
+        assert_eq!(load(&p, Some("op")).unwrap().to_bytes(), sk.to_bytes(),
+            "op passphrase must unseal migrated key");
+        assert_eq!(load(&p, Some("REC-CODE")).unwrap().to_bytes(), sk.to_bytes(),
+            "recovery code must unseal migrated key (off-node escrow path)");
         assert!(load(&p, None).is_err(), "after sealing, no-secret load must fail");
         assert!(seal_existing(&p, "op", "REC-CODE").is_err(), "double-seal must error");
     }

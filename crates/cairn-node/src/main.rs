@@ -26,6 +26,8 @@ fn load_signing_key(path: &std::path::Path) -> anyhow::Result<cairn_event::Signi
         None if matches!(key_at_rest_state(path), KeyAtRest::Sealed { .. }) => {
             Some(rpassword::prompt_password("operational passphrase: ")?)
         }
+        // Plaintext and Corrupt both reach here. A Corrupt file deliberately does not
+        // prompt — `load` will return a legible error rather than hanging on a tty.
         None => None,
     };
     Ok(load(path, secret.as_deref())?)

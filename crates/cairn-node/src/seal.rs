@@ -70,6 +70,8 @@ pub fn normalize_recovery_code(s: &str) -> String {
 /// e.g. `AB12C-D34EF-...`. Shown ONCE at provisioning; the off-node escrow.
 pub fn generate_recovery_code() -> String {
     let mut raw = [0u8; 20];
+    // Panic is acceptable here: an entropy failure at provisioning is catastrophic;
+    // the message carries nothing secret, and proceeding without entropy is worse.
     getrandom::fill(&mut raw).expect("entropy source unavailable");
     let flat = base32_encode(&raw);
     flat.as_bytes()
@@ -120,6 +122,9 @@ impl Default for ArgonParams {
 /// A dual-recipient sealed signing key. A random DEK encrypts the seed; the DEK is
 /// wrapped once per secret (operational passphrase, recovery code). Either secret
 /// recovers the DEK and hence the seed; neither secret is stored.
+///
+/// Debug is intentionally NOT derived: a stray `{:?}` must not be able to dump wrapped
+/// key material. The fields hold only ciphertext/salts/nonces, but the guardrail is explicit.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SealedKey {
     pub version: u8,
@@ -134,7 +139,8 @@ pub struct SealedKey {
 
 impl SealedKey {
     /// Whether this bundle carries a recovery-code wrap (the off-node escrow).
-    /// Always true for `seal`-produced bundles; kept explicit for `status`.
+    /// Always true for `seal`-produced bundles today (seal is always dual-recipient);
+    /// the `false` case is reserved for a future single-recipient mode.
     pub fn has_recovery_wrap(&self) -> bool {
         !self.wrap_rec.ct.is_empty()
     }
