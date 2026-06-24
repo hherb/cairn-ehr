@@ -70,7 +70,9 @@ async fn main() -> anyhow::Result<()> {
     match cli.cmd {
         Cmd::Init { name, address } => {
             let db = cairn_node::db::connect_and_load_schema(&cli.conn).await?;
-            let (sk, kid) = cairn_node::keystore::generate_and_seal(&cli.key, None)?;
+            // TEMPORARY STAND-IN (Task 5 replaces with sealed flow): use plaintext key
+            // for now so the build stays green while the sealed CLI is not yet wired.
+            let (sk, kid) = cairn_node::keystore::generate_plaintext(&cli.key)?;
             let node_id = cairn_node::identity::provision(&db, &sk, &kid, &name, &address).await?;
             println!("provisioned node {node_id}\nfingerprint {}", cairn_event::short_fingerprint(&kid)?);
         }
