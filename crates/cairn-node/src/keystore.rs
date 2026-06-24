@@ -77,7 +77,10 @@ pub fn load(path: &Path, secret: Option<&str>) -> Result<SigningKey, KeystoreErr
 /// Inspect the at-rest posture without needing the secret (for `status`).
 pub fn key_at_rest_state(path: &Path) -> KeyAtRest {
     match std::fs::read(path) {
-        Err(_) => KeyAtRest::Missing,
+        // NotFound is the ONLY genuinely-absent case; any other read error (e.g. permission
+        // denied) means the file is present but unreadable, so we cannot vouch for its state.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => KeyAtRest::Missing,
+        Err(_) => KeyAtRest::Corrupt, // present but unreadable — caller can't trust the state
         Ok(bytes) => {
             if let Ok(sealed) = seal::from_cbor(&bytes) {
                 KeyAtRest::Sealed { dual_recipient: sealed.has_recovery_wrap() }
