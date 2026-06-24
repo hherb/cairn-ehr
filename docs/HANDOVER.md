@@ -86,8 +86,9 @@ local PG16 + `cairn_pgx`.
   on PG16 + `cairn_pgx`, clippy clean.
 - Still open (remaining ADR-0026 slices): the sealed **local-state export** (config + drafts, not just the
   key); **backup-as-cold-peer** + backup-health (slice B); **key rotation / `supersede`** + new-identity
-  restore (slice C); Shamir M-of-N, QR, TPM/keyring. Also deferred: atomic key-file write (torn-write →
-  `Corrupt` bundle), passphrase `zeroize`-on-drop.
+  restore (slice C); Shamir M-of-N, QR, TPM/keyring. Also deferred (filed): atomic key-file write
+  ([issue #45](https://github.com/cairn-ehr/cairn-ehr/issues/45)), passphrase `zeroize`-on-drop
+  ([issue #46](https://github.com/cairn-ehr/cairn-ehr/issues/46)).
 - Test rig: DB-gated tests need local PG + `cairn_pgx` (`cargo pgrx install` against PG16); they self-serialize
   cluster-wide via a Postgres advisory lock (`db::test_serial_guard`), so plain `cargo test --workspace` is reliable.
 
