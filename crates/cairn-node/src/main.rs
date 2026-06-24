@@ -1,3 +1,4 @@
+use anyhow::Context;
 use clap::{Parser, Subcommand};
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -133,6 +134,23 @@ enum Cmd {
     },
     /// Print this node's honest assembly state (peers, keystore health, DR escrow stub).
     Status,
+    /// Back up this node's signed event set to a local cold-peer medium (ADR-0026 slice
+    /// B). Reads `node_event`, writes a self-verifying medium, re-reads + verifies it,
+    /// then records backup health beside the key. No signing key needed — the events are
+    /// already signed; confidentiality at rest is the medium volume's job.
+    Backup {
+        /// Path of the backup medium to write (e.g. a mounted encrypted volume).
+        #[arg(long)]
+        to: PathBuf,
+    },
+    /// Verify a backup medium WITHOUT applying it: every event's signature must check.
+    /// Pure/offline — needs no DB and no key. Exits non-zero on any tamper/bit-rot, so a
+    /// cron job can detect a rotted backup.
+    VerifyBackup {
+        /// Path of the backup medium to verify.
+        #[arg(long)]
+        from: PathBuf,
+    },
     /// Serve this node's `node_event` log to pinned-mTLS peers (federation sync).
     Serve {
         #[arg(long, default_value = "0.0.0.0:7843")]
@@ -298,6 +316,44 @@ async fn main() -> anyhow::Result<()> {
             }
             println!("dr_escrow     {}", st.dr_escrow);
             println!("recovery_esc  {}", st.recovery_escrow);
+            println!("last_backup   {}", st.last_backup);
+        }
+        Cmd::Backup { to } => {
+            // Reads node_event (any role with SELECT works) and writes a self-verifying
+            // medium; no signing key is loaded. Health is recorded only after the medium
+            // re-reads and verifies (see backup_to), so it never over-claims.
+            let db = cairn_node::db::connect(&cli.conn).await?;
+            let now_unix = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            let health_path = cairn_node::backup::health_path_for(&cli.key);
+            let report = cairn_node::backup::backup_to(&db, &to, &health_path, now_unix).await?;
+            println!(
+                "backed up {} event(s) ({} bytes) to {}",
+                report.event_count,
+                report.medium_bytes,
+                to.display()
+            );
+            println!("backup health recorded at {}", health_path.display());
+        }
+        Cmd::VerifyBackup { from } => {
+            // Offline, no DB, no key: read the medium and check every signature. A
+            // tampered/bit-rotted event fails the SAME check that catches a hostile peer.
+            let bytes = std::fs::read(&from)
+                .with_context(|| format!("reading backup medium {}", from.display()))?;
+            let report = cairn_node::backup::verify_medium_bytes(&bytes)?;
+            if report.all_intact() {
+                println!("backup OK: {}/{} event(s) verified", report.intact, report.total);
+            } else {
+                // Non-zero exit (bail) so a cron/health check detects a bad backup.
+                anyhow::bail!(
+                    "backup FAILED self-verification: {}/{} event(s) intact, first bad at index {:?}",
+                    report.intact,
+                    report.total,
+                    report.first_bad
+                );
+            }
         }
         Cmd::Serve { listen } => {
             use cairn_node::sync;

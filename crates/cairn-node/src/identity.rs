@@ -177,6 +177,13 @@ pub struct Status {
     /// `true` iff the at-rest key carries an off-node recovery wrap (ADR-0026 escrow).
     /// `false` for plaintext keys and any key sealed without a dual-recipient wrap.
     pub recovery_escrow: bool,
+    /// Backup freshness (ADR-0026 point 7): the last successful backup's age, size and
+    /// location, or "never — running without a net" when the node has no backup-health
+    /// sidecar. Node-local operational state read from a `backup-status.json` sibling of
+    /// the key file — never an event, never signed, never replicated. Degrades to the
+    /// "never" warning when absent/unreadable (the fail-safe reading: it can only
+    /// under-claim freshness, never assert a backup the node does not hold).
+    pub last_backup: String,
 }
 
 /// Assemble the node's current status without erroring on a missing keystore.
@@ -248,6 +255,17 @@ pub async fn status(db: &Client, key_path: &Path) -> anyhow::Result<Status> {
     let runtime_role: String = floor.get("role");
     let can_insert: bool = floor.get("can_insert");
 
+    // Backup health (ADR-0026 point 7): read the node-local sidecar beside the key and
+    // render an honest freshness line. `SystemTime` is the operational wall-clock (a
+    // display value, NOT the clinical HLC). A clock before the epoch (cannot happen on a
+    // sane host) falls back to 0, which only makes the age display larger — never unsafe.
+    let now_unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let health = crate::backup::read_health(&crate::backup::health_path_for(key_path));
+    let last_backup = crate::backup::describe_health(now_unix, &health);
+
     Ok(Status {
         // When un-provisioned, surface a legible sentinel rather than a blank
         // node_id, and flag `initialized=false` so callers can prompt for `init`.
@@ -262,6 +280,7 @@ pub async fn status(db: &Client, key_path: &Path) -> anyhow::Result<Status> {
         db_floor_enforced: !can_insert,
         dr_escrow,
         recovery_escrow,
+        last_backup,
     })
 }
 
