@@ -151,9 +151,12 @@ accurate (one-directional framing), so neither was touched. All G1–G6 green on
   harness ready ([`PI-RUNBOOK.md`](../poc/walking-skeleton/PI-RUNBOOK.md)); **awaiting the Pi 5 / 16 GB / 1 TB SSD.**
   The one number that could revisit ADR-0015's *provisional* BLAKE3 blob-digest default is the ARM SHA-256-vs-BLAKE3
   result. Floor experiment = a Pi 4 / 8 GB (changes only `--label`).
-- **Spike 0003 — Postgres on Android** ([0003](spikes/0003-postgres-on-android-bionic-node.md), Proposed): validates
-  the fractal-topology invariant at the phone tier (RedMagic 11 Pro). Bionic Postgres is de-risked; the **pgrx
-  cross-compile is the one genuinely unproven step**. Awaiting an on-device run.
+- **Spike 0003 — Postgres on Android** ([0003](spikes/0003-postgres-on-android-bionic-node.md), **Ran 2026-06-25 —
+  G0–G3 PASS**): validated the fractal-topology invariant at the phone tier (RedMagic 11 Pro). Native PG 18.2 execs,
+  `initdb`s, serves SQL over TCP, and a cross-built pgrx extension loads + runs (incl. SPI) — no Termux userland, no
+  root, no VM. Runnable kit at [`poc/pg-android-kit/`](../poc/pg-android-kit/) (PR #47). The one real blocker was
+  `libandroid-shmem` (compile-baked Termux prefix + dead `/dev/ashmem`), fixed by a self-contained, pinned-upstream
+  patch. Remaining non-load-bearing gaps: from-source PG build and APK/`jniLibs` packaging.
 - **easyGP session** — port the [ADR-0020](spec/decisions/0020-active-write-thin-encounters-and-the-delete-vs-erase-distinction.md)
   deferred items with live easyGP schema access: the `rx!`/`tx!` type-through parser + state machine; the
   formulation/drug data source + renal/hepatic/pregnancy/paediatric **forced-manual** rule table; the

@@ -36,9 +36,15 @@ PREFIX="$WORK/prefix"; SRC="$WORK/shmem-src"
 [ -x "$CC" ] || { echo "NDK clang not found: $CC (set ANDROID_NDK)" >&2; exit 1; }
 [ -d "$PREFIX/lib" ] || { echo "run 01-stage-prefix.sh first (no $PREFIX/lib)" >&2; exit 1; }
 
-# 1. Fetch pristine upstream source + license.
+# 1. Fetch pristine upstream source + license at a PINNED commit. The patch in
+#    patches/ carries fixed hunk offsets and is generated against exactly this
+#    revision; tracking a moving `master` would let `patch` reject silently (or
+#    apply with fuzz) the day upstream drifts, breaking a kit we claim is
+#    re-verifiable from the committed scripts. Bump deliberately + regenerate the
+#    patch (see patches/…-portability.patch header) when you want a newer base.
+SHMEM_COMMIT="${SHMEM_COMMIT:-7f0bd7e25dbdd146265aff7c6a890029e374622d}"
 mkdir -p "$SRC"
-base=https://raw.githubusercontent.com/termux/libandroid-shmem/master
+base="https://raw.githubusercontent.com/termux/libandroid-shmem/$SHMEM_COMMIT"
 for f in shmem.c shm.h LICENSE; do
   curl -fsSL --max-time 30 -o "$SRC/$f" "$base/$f"
 done
@@ -47,9 +53,9 @@ done
 ( cd "$SRC" && patch -p1 < "$KIT/patches/libandroid-shmem-bionic-portability.patch" )
 
 # 3. Cross-compile. memfd_create is reached via syscall() so no API gating is
-#    needed; we pull in fcntl/stat/syscall headers for the patched code paths.
+#    needed. The patch is self-contained (it carries its own <sys/stat.h> /
+#    <sys/syscall.h> includes), so no -include flags are required here.
 "$CC" -shared -fPIC -O2 -Wall -Wno-unused \
-  -include fcntl.h -include sys/stat.h -include sys/syscall.h \
   -I"$SRC" "$SRC/shmem.c" -llog -o "$PREFIX/lib/libandroid-shmem.so"
 
 echo "=== built $PREFIX/lib/libandroid-shmem.so ==="

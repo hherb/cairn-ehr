@@ -1,6 +1,22 @@
---- a/shmem.c	2026-06-25 01:12:20
-+++ b/shmem.c	2026-06-25 01:07:35
-@@ -113,11 +113,14 @@
+# libandroid-shmem bionic-portability patch (Cairn spike 0003)
+# Generated against termux/libandroid-shmem @ 7f0bd7e25dbdd146265aff7c6a890029e374622d
+# Regenerate: see poc/pg-android-kit/02-build-shmem.sh (SHMEM_COMMIT).
+--- a/shmem.c
++++ b/shmem.c
+@@ -14,6 +14,12 @@
+ #include <sys/un.h>
+ #include <unistd.h>
+ #include <paths.h>
++// Cairn spike 0003: the portability fixes below use struct stat/fstat and the
++// memfd_create syscall number; declare them here so the patched .c is
++// self-contained and compiles under any build invocation (not only the kit's
++// `-include` flags in 02-build-shmem.sh).
++#include <sys/stat.h>
++#include <sys/syscall.h>
+ 
+ #if __ANDROID_API__ < 26
+ #define __u32 uint32_t
+@@ -113,11 +119,22 @@
  
  static int ashmem_get_size_region(int fd)
  {
@@ -14,13 +30,21 @@
 +	// handset transitively pulls a vendor lib (libvendorutils.so) whose BIO_flush
 +	// reference clashes with the bundled OpenSSL; /dev/ashmem is gone on Android 16.
 +	// memfd is a plain syscall (no extra .so) and is mmap/fd-passing equivalent.
++	//
++	// CEILING (inherited from upstream's `int` return type): a region >= 2 GiB
++	// truncates here. PostgreSQL's main SysV segment is normally well under that
++	// (default shared_buffers ~128 MB), but a phone node tuned for a large-RAM
++	// handset (the 24 GB target) with shared_buffers in the GB range could cross
++	// it, yielding a wrong/negative size and a mis-sized mmap. Widening the
++	// contract to size_t would require changing this signature and every caller
++	// (out of scope for the spike); flagged so it is not mistaken for safe.
 +	struct stat st;
 +	if (fstat(fd, &st) != 0) return -1;
 +	return (int) st.st_size;
  }
  
  /*
-@@ -129,28 +132,21 @@
+@@ -129,28 +146,21 @@
   */
  static int ashmem_create_region(char const* name, size_t size)
  {
@@ -62,7 +86,7 @@
  }
  
  static void ashv_check_pid()
-@@ -349,7 +345,17 @@
+@@ -349,7 +359,17 @@
  		// (3) If connected and opened, done. If connection refused
  		//     take ownership of the key and create the symlink.
  		// (4) If no symlink, create it.

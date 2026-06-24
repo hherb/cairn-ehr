@@ -29,7 +29,9 @@ adb shell "
   export LD_LIBRARY_PATH=\$BASE/lib PATH=\$BASE/bin:\$PATH HOME=/data/local/tmp TZ=UTC TMPDIR=\$BASE/tmp PGDATA=\$BASE/data
   rm -f \$BASE/tmp/ashv_key_*
   postgres -D \$BASE/data -c unix_socket_directories= -c listen_addresses=127.0.0.1 -c port=$PORT >\$BASE/g3.log 2>&1 &
-  sleep 4
+  # Wait for readiness instead of a fixed sleep (see 03-run-on-device.sh): a
+  # cold/busy device can need >4s, and connecting early reports a false failure.
+  i=0; until pg_isready -h 127.0.0.1 -p $PORT -q 2>/dev/null || [ \$i -ge 30 ]; do i=\$((i+1)); sleep 1; done
   PSQL=\"psql -h 127.0.0.1 -p $PORT -U postgres -d postgres -tA\"
   \$PSQL -c 'DROP EXTENSION IF EXISTS cairn_smoke;'
   \$PSQL -c 'CREATE EXTENSION cairn_smoke;'

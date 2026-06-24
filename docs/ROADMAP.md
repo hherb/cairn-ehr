@@ -98,5 +98,5 @@ API**. Policy and UI sit *above* this line and are deliberately out of scope her
 ## Parallel build-prep (not blocking the critical path)
 
 - **Bet B — Pi compute-cost run** — the [ADR-0001](spec/decisions/0001-fat-postgres-thin-daemon.md) projection/keystore go/no-go; also settles ARM SHA-256-vs-BLAKE3 (ADR-0015 provisional default). Awaiting Pi 5 hardware.
-- **Spike 0003 — Postgres on Android** — validates the fractal-topology invariant at the phone tier; pgrx cross-compile is the one unproven step.
+- **Spike 0003 — Postgres on Android** — **Ran 2026-06-25, G0–G3 PASS**: native PG 18.2 + a cross-built pgrx extension (incl. SPI) on a stock Android 16 phone; validates the fractal-topology invariant at the phone tier. Runnable kit at [`poc/pg-android-kit/`](../poc/pg-android-kit/). Remaining gaps (from-source PG build, APK packaging) are non-load-bearing.
 - **Continued clinical case-mining** — the highest-signal mode for stress-testing the primitives before product build.

@@ -18,8 +18,8 @@ This is a feasibility probe, not a product. See the spike doc for scope and the 
 | File | Role |
 |---|---|
 | `01-stage-prefix.sh` | Download Termux's prebuilt PG-18 `.debs` (+ dependency closure) and flatten them into one relocatable `prefix/` tree. Termux is used only as a *source of cross-compiled aarch64 binaries*; none of its userland lands on the phone. |
-| `02-build-shmem.sh` | Fetch upstream `libandroid-shmem` (3-clause BSD), apply our portability patch, and cross-compile a fixed `libandroid-shmem.so` (NDK) that overwrites the broken prebuilt one. |
-| `patches/libandroid-shmem-bionic-portability.patch` | Our two-part fix to `libandroid-shmem` (see below). |
+| `02-build-shmem.sh` | Fetch upstream `libandroid-shmem` (3-clause BSD) **at a pinned commit**, apply our portability patch, and cross-compile a fixed `libandroid-shmem.so` (NDK) that overwrites the broken prebuilt one. |
+| `patches/libandroid-shmem-bionic-portability.patch` | Our **self-contained** two-part fix to `libandroid-shmem` (carries its own includes; generated against the pinned commit — see below). |
 | `03-run-on-device.sh` | Push the prefix to a connected device and run the G0/G1/G2 gates. |
 | `extension/` | A tiny **pgrx** smoke extension (`cairn_smoke`): plain return, arg passing, varlena/palloc, SPI — plus a host `pg_config` shim and hand-written control+SQL. |
 | `04-build-extension.sh` | Cross-compile the extension for `aarch64-linux-android` (the G3 long pole). |

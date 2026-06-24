@@ -44,7 +44,11 @@ adb shell "$ENV; rm -rf $DEV/data; rm -f $DEV/tmp/ashv_key_*;
 echo "=== G2: start postmaster (TCP-only) + smoke SQL ==="
 adb shell "$ENV; rm -f $DEV/tmp/ashv_key_*;
   postgres -D $DEV/data -c unix_socket_directories= -c listen_addresses=127.0.0.1 -c port=$PORT >$DEV/server.log 2>&1 &
-  sleep 4
+  # Wait until the postmaster actually accepts connections rather than a fixed
+  # sleep — a cold or busy device can take well over 4s, and a fixed wait then
+  # connects too early and reports a spurious failure. pg_isready returns 0 only
+  # once the server is accepting (~30s ceiling so we still fail, not hang).
+  i=0; until pg_isready -h 127.0.0.1 -p $PORT -q 2>/dev/null || [ \$i -ge 30 ]; do i=\$((i+1)); sleep 1; done
   PSQL=\"psql -h 127.0.0.1 -p $PORT -U postgres -d postgres -tA\"
   \$PSQL -c 'select version();'
   \$PSQL -c 'create table t(id serial primary key, note text, ts timestamptz default now());'

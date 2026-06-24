@@ -64,6 +64,23 @@ while [ ${#queue[@]} -gt 0 ]; do
 done
 echo "closure: ${order[*]}"
 
+# 2b. The Termux index is a ROLLING "stable" snapshot, so the PostgreSQL version
+#     floats over time. The spike doc + README assert a specific version; warn
+#     loudly if the index has moved off it so the staged binaries and the prose
+#     can never silently disagree. (postgres is an aarch64 ELF and cannot be run
+#     on the host to check --version, so we read the package index instead.)
+EXPECT_PG="${EXPECT_PG:-18.2}"
+pg_ver="$(field postgresql Version || true)"
+case "$pg_ver" in
+  "$EXPECT_PG"|"$EXPECT_PG"-*|"$EXPECT_PG".*)
+    echo "postgresql version: $pg_ver (matches expected $EXPECT_PG)" ;;
+  "")
+    echo "WARN: could not read postgresql Version from the index" >&2 ;;
+  *)
+    echo "WARN: Termux now ships postgresql $pg_ver, but this kit/doc expects $EXPECT_PG." >&2
+    echo "      The staged binaries will be $pg_ver; update the docs or set EXPECT_PG." >&2 ;;
+esac
+
 # 3. Download each package and flatten its data tree into the single prefix.
 for p in "${order[@]}"; do
   fn="$(field "$p" Filename || true)"
