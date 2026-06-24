@@ -27,7 +27,7 @@ API**. Policy and UI sit *above* this line and are deliberately out of scope her
 
 ## Phase 1 — Event core to production (the wire contract)
 
-- **HLC ordering + incremental sync watermark** — replace genesis HLC 0/0 placeholder and full-pull; resolve the convergence-safety subtlety ([issue #38](https://github.com/cairn-ehr/cairn-ehr/issues/38)).
+- **HLC ordering + incremental sync watermark** — ✓ done at `cairn-node` level ([issue #38](https://github.com/cairn-ehr/cairn-ehr/issues/38), PR #42): real local HLC, per-peer `seq` cursor via advance-only door, full-sweep correctness floor. Promote the same discipline into the production `cairn-event`/`cairn-sync` core.
 - **Legibility twin** — mandatory signed mechanically-derived plaintext twin on every event; promote from skeletal ([ADR-0012](spec/decisions/0012-schema-evolution-event-format-and-legibility-across-time.md), [§3.13](spec/data-model.md)).
 - **Canonical identifiers + node-local surrogate keys** ([ADR-0031](spec/decisions/0031-canonical-identifiers-and-node-local-surrogate-keys.md)).
 - **Additive-only schema evolution** discipline baked into the event format ([ADR-0012](spec/decisions/0012-schema-evolution-event-format-and-legibility-across-time.md)).

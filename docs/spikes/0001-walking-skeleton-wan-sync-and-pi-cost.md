@@ -253,8 +253,10 @@ B5 is **built and runnable**; only the ARM numbers await the board. The artifact
   note events — `chart_note_u` (16-byte canonical-UUID FK) vs `chart_note_s` (8-byte surrogate FK) —
   maintained from the *same* event stream so the A/B is honest.
 - **`db/tests/008_surrogate_test.sql`** — the **leakage guard** (G1–G6), the load-bearing half: it
-  mechanically asserts the surrogate never reaches the signed plane (`event_log` is surrogate-free),
-  `local_ref` is a real two-way type barrier, interning is idempotent/dense, the anchor carries both while
+  mechanically asserts the surrogate never reaches the signed plane (`event_log` is surrogate-free —
+  the load-bearing guarantee, since the signed plane is typed `uuid` and `bigint <> uuid`), that the
+  `local_ref` domain gives the one-directional guard it actually can (a `uuid` won't coerce to a
+  surrogate) while being honest that it is *not* a two-way barrier, interning is idempotent/dense, the anchor carries both while
   referencing rows carry only the surrogate, and egress rehydrates the canonical UUID. Runs in review, off-Pi.
 - **`db/bench/b5_surrogate.sql`** + **`db/bench/run_b5.sh`** — seeds N patients × M notes and reports the
   FK-index size ratio (B5.1), heap sizes (B5.2), and `EXPLAIN (ANALYZE, BUFFERS)` of the UUID-keyed vs

@@ -18,12 +18,19 @@
 -- in a signed body, never on the inter-node wire, never as a content-address
 -- input, never as a stable API identity. If it leaked, two nodes would assign
 -- different integers to the same patient and set-union sync would silently
--- diverge. Two structural guards enforce that here:
---   1. a distinct `local_ref` DOMAIN, so a surrogate cannot be passed where a
---      `uuid` is expected (a leak becomes a type error, db/tests/008_*_test.sql);
+-- diverge. The guarantee that actually stops that is structural and lives in TWO
+-- places — note the `local_ref` DOMAIN is NOT, by itself, the leak-proof barrier:
+--   1. THE LOAD-BEARING GUARANTEE: the canonical/signed plane is typed `uuid`
+--      (event_log.patient_id) and `bigint <> uuid`, so a surrogate cannot be cast
+--      into a signed body — backed by the G2 test (event_log stays surrogate-free,
+--      db/tests/008_*_test.sql). A bigint simply cannot become a uuid.
 --   2. all interning/de-interning is confined to the two functions below
 --      (intern_patient on ingress, patient_uuid on egress) — the projection's
 --      private chokepoints, mirroring the §9.6 submit/egress floor.
+-- The `local_ref` DOMAIN is a complementary intent-signal + ONE-directional guard
+-- (a `uuid` won't coerce to `local_ref`), NOT a symmetric barrier: a domain over
+-- bigint accepts any bigint, so the surrogate→bigint direction is not blocked by
+-- it (proven honestly by G4 in the test). Don't over-trust the domain.
 --
 -- This file is also the build-prep artifact for Spike 0001 Bet B5: it stands up
 -- a UUID-keyed child projection (chart_note_u, today's shape) and a surrogate-
@@ -36,10 +43,14 @@
 BEGIN;
 
 -- ---------------------------------------------------------------------------
--- The type-system guard. local_ref is structurally a bigint, but the NAMED type
--- is what stops a surrogate being silently used as a global id: a column or
--- function parameter declared `uuid` will not accept a `local_ref`, and vice
--- versa. CREATE DOMAIN is not IF-NOT-EXISTS-able, so guard it idempotently.
+-- The type-system intent-signal. local_ref is structurally a bigint; the NAMED
+-- type documents "this is a node-local surrogate, not a global id" and gives a
+-- ONE-directional guard: a column/parameter declared `uuid` will not accept a
+-- `local_ref` (uuid and bigint do not inter-coerce). It is NOT symmetric — a
+-- parameter declared `local_ref` accepts any plain `bigint`, so it does not by
+-- itself stop the surrogate→bigint direction. The leak-proof guarantee is the
+-- `uuid` typing of the signed plane + G2 (see header). CREATE DOMAIN is not
+-- IF-NOT-EXISTS-able, so guard it idempotently.
 -- ---------------------------------------------------------------------------
 DO $$ BEGIN
     CREATE DOMAIN local_ref AS BIGINT;

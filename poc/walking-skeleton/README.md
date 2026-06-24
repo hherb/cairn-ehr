@@ -55,8 +55,9 @@ db/bench/run_b5.sh "host=/var/run/postgresql dbname=cairn_b5 user=postgres" 2000
 ```
 
 `db/tests/008_surrogate_test.sql` mechanically asserts the surrogate never escapes the
-projection (the `event_log` signed plane stays surrogate-free, the `local_ref` domain is
-a real type barrier, egress rehydrates the canonical UUID). On the Pi, see
+projection (the `event_log` signed plane stays surrogate-free — the load-bearing guarantee,
+since it is typed `uuid` and `bigint <> uuid`; the `local_ref` domain adds a one-directional
+guard but is honestly *not* a two-way barrier; egress rehydrates the canonical UUID). On the Pi, see
 [`PI-RUNBOOK.md`](PI-RUNBOOK.md) §6.1.
 
 ### pgrx extension (`crates/cairn_pgx`)

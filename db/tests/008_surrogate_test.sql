@@ -108,24 +108,67 @@ BEGIN
 END $$;
 
 -- ===========================================================================
--- G4 — the domain is a real type barrier in BOTH directions: a uuid cannot be
---      passed where a local_ref is expected, and vice versa. This is what makes
---      a leak a compile/parse-time error rather than a silent mis-join.
+-- G4 — what the `local_ref` domain actually guards, stated honestly.
+--
+--   A `local_ref` is `CREATE DOMAIN local_ref AS BIGINT`. A domain over a base
+--   type is NOT a symmetric, two-way type barrier: a `local_ref` value flows
+--   into any plain `bigint` with no cast and no error, so the dangerous
+--   direction — a surrogate leaking into a bare `bigint` — is NOT blocked by the
+--   domain (G4c proves this, so no future reader over-trusts it). What the type
+--   system DOES enforce is one-directional: a `uuid` cannot be used where a
+--   `local_ref`/`bigint` is expected, and a surrogate cannot be cast into the
+--   canonical `uuid` plane. The LOAD-BEARING leak guarantee is therefore G2
+--   (event_log is surrogate-free) + the `uuid` column type, NOT this domain;
+--   the domain is intent-signalling plus that one-directional guard.
+--
+--   We assert the two functions exist first, so the type checks below cannot
+--   pass vacuously by resolving to "function does not exist" (the old G4 listed
+--   `undefined_function` among the accepted errors and would have done exactly
+--   that). undefined_function is deliberately NOT caught anywhere here.
 -- ===========================================================================
 DO $$ BEGIN
+    IF to_regprocedure('intern_patient(uuid)') IS NULL THEN
+        RAISE EXCEPTION 'G4 FAILED: intern_patient(uuid) does not exist — type checks would pass vacuously';
+    END IF;
+    IF to_regprocedure('patient_uuid(local_ref)') IS NULL THEN
+        RAISE EXCEPTION 'G4 FAILED: patient_uuid(local_ref) does not exist — type checks would pass vacuously';
+    END IF;
+
+    -- G4a — the genuine guard: a real uuid value cannot be coerced to local_ref.
+    -- (Note: a uuid value directly, not a text round-trip — the old test cast
+    -- uuid::text::local_ref and caught the text→bigint PARSE failure, which is
+    -- base coercion, not the type relationship we mean to assert.)
     BEGIN
-        PERFORM patient_uuid(gen_random_uuid()::text::local_ref);  -- nonsense cast must fail
-        RAISE EXCEPTION 'G4 FAILED: a uuid was accepted as a local_ref';
+        PERFORM gen_random_uuid()::local_ref;
+        RAISE EXCEPTION 'G4a FAILED: a uuid was coerced to a local_ref';
     EXCEPTION
-        WHEN invalid_text_representation OR datatype_mismatch OR undefined_function THEN
-            RAISE NOTICE 'G4a OK: uuid rejected where local_ref expected';
+        WHEN cannot_coerce THEN
+            RAISE NOTICE 'G4a OK: uuid cannot be coerced to local_ref (one-directional guard)';
     END;
+
+    -- G4b — the load-bearing signed-plane guarantee: a surrogate (bigint) cannot
+    -- be cast into the canonical uuid plane, so it can never reach
+    -- event_log.patient_id by a stray cast. This is `bigint <> uuid` doing the
+    -- work (with G2), which is the protection the prose must credit — not the
+    -- local_ref domain.
     BEGIN
-        PERFORM intern_patient(1::text);  -- bigint-ish where uuid expected
-        RAISE EXCEPTION 'G4 FAILED: a non-uuid was accepted by intern_patient';
+        PERFORM 99999::bigint::uuid;
+        RAISE EXCEPTION 'G4b FAILED: a bigint surrogate was cast into the canonical uuid plane';
     EXCEPTION
-        WHEN invalid_text_representation OR datatype_mismatch OR undefined_function THEN
-            RAISE NOTICE 'G4b OK: non-uuid rejected where uuid expected';
+        WHEN cannot_coerce THEN
+            RAISE NOTICE 'G4b OK: a bigint surrogate cannot be cast to uuid (signed plane is protected by bigint<>uuid + G2)';
+    END;
+
+    -- G4c — the HONEST limit, asserted so it cannot regress into a false belief:
+    -- a bare bigint IS silently accepted where a `local_ref` is expected, because
+    -- the domain is transparent over its base type. This direction is NOT a
+    -- barrier; the test records the true behaviour rather than claiming otherwise.
+    BEGIN
+        PERFORM patient_uuid(99999::bigint);  -- accepted silently; returns NULL (no such ref)
+        RAISE NOTICE 'G4c OK: bigint flows into local_ref with no type error — domain is a one-directional hint, not a two-way barrier';
+    EXCEPTION
+        WHEN cannot_coerce OR datatype_mismatch THEN
+            RAISE EXCEPTION 'G4c FAILED: bigint→local_ref unexpectedly rejected — the test''s honesty assumption is wrong, revisit the prose';
     END;
 END $$;
 

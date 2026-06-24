@@ -1,6 +1,6 @@
 # HANDOVER — Cairn
 
-**Session date:** 2026-06-22 · **Spec/ADRs:** v0.31 · **Phase:** architecture complete; proving viability
+**Session date:** 2026-06-24 · **Spec/ADRs:** v0.31 (+ADR-0031) · **Phase:** architecture complete; proving viability
 through proof-of-concept spikes (walking skeleton, advisory-actor contract, a first federating node) — no
 clinical implementation yet. (Status lines across spec/README/GOVERNANCE were realigned to this framing this session.)
 
@@ -67,7 +67,7 @@ local PG16 + `cairn_pgx`.
 - **DR/recovery escrow** is a named stub ([ADR-0026](spec/decisions/0026-node-durability-and-disaster-recovery.md)),
   shown as `dr_escrow: STUBBED`.
 - ~~Genesis **HLC 0/0 placeholder**; **full-pull, no incremental watermark**~~ **closed 2026-06-23**
-  ([issue #38](https://github.com/cairn-ehr/cairn-ehr/issues/38), branch `harden-node-incremental-sync`):
+  ([issue #38](https://github.com/cairn-ehr/cairn-ehr/issues/38), **merged [PR #42](https://github.com/cairn-ehr/cairn-ehr/pull/42)**):
   incremental pull keyed on a monotonic local-insertion `node_event.seq` (a node always inserts newly-learned
   events with a fresh high `seq`, so the watermark is **structurally** skip-proof — decoupling it from the HLC,
   which dissolved the stated coupling), per-peer `sync_cursor` written only through an advance-only
@@ -98,6 +98,27 @@ coverage that was missing. **Smaller deferred items remain open** (commented in 
 `actor_current` wall-clock ordering needs a monotonic tiebreaker before production; no FK on
 `recall_overlay.target_event_id`; plaintext twin is skeletal.
 
+### Dual-identifier discipline — ADR-0031, merged 2026-06-22 ([PR #34](https://github.com/cairn-ehr/cairn-ehr/pull/34))
+New **[ADR-0031](spec/decisions/0031-canonical-identifiers-and-node-local-surrogate-keys.md)** (canonical
+identifiers + node-local surrogate keys): canonical plane (UUIDv7 + multihash) is unchanged and is the *only*
+identifier on the wire/in signed bodies; the **projection plane** may intern canonical IDs to dense node-local
+`bigint` surrogates as physical join keys. Leakage of a surrogate into a signed body = silent cross-node
+corruption, so it is made *hard* (distinct domain type, mapping confined to floor functions, API egress always
+the global ID). Landed with `db/008_surrogate_projection.sql` + the Bet B5 leakage guard. Final magnitude is
+**measured on Bet B** (Pi), exactly as ADR-0001's compute bet — a "no measurable win" result narrows scope, not
+fails the discipline.
+
+**Honest gap (fixed 2026-06-24, [issue #35](https://github.com/cairn-ehr/cairn-ehr/issues/35)):** the prose
+called the `local_ref` domain a "real two-way type barrier," but a PG domain over `bigint` is *not* — a
+surrogate flows into any plain `bigint` with no cast/error (empirically confirmed). Corrected the wording in
+`db/008`, spike 0001 §6.2, PI-RUNBOOK §6.1, and the walking-skeleton README to name the *actual* load-bearing
+guarantee (signed plane typed `uuid` + `bigint ≠ uuid` + the G2 assertion) and to frame the domain honestly as
+an intent-signal + one-directional guard. Rewrote **G4** in `db/tests/008_surrogate_test.sql`: it now asserts
+the functions exist first (no more vacuous pass via `undefined_function`, now dropped), proves the genuine
+guard (G4a `uuid`↛`local_ref`; G4b `bigint`↛`uuid` signed plane), and **characterizes the honest limit**
+(G4c: `bigint` flows into `local_ref` silently). The spec body (§3.18) and immutable ADR-0031 were already
+accurate (one-directional framing), so neither was touched. All G1–G6 green on PG16. *(PR pending.)*
+
 ---
 
 ## Open threads — pick one (today's-work menu)
@@ -105,12 +126,11 @@ coverage that was missing. **Smaller deferred items remain open** (commented in 
 **Desk-doable now (no external dependency):**
 - **Clinical case-mining** — historically the highest-signal generative mode; the event-overlay + key-custody +
   actor primitives have absorbed every case so far without new architecture. Bring a real ED/hospital failure mode.
-- **Harden the first federating node** — status-before-init crash and the runtime-login-role/floor-ENFORCED
-  proof are **closed 2026-06-23** (see node gaps above). Remaining: **incremental sync watermark + genesis HLC**
-  ([issue #38](https://github.com/cairn-ehr/cairn-ehr/issues/38) — a coupled design with a real convergence-safety
-  subtlety, not a placeholder swap); DR/recovery escrow stub (ADR-0026); key rotation / `supersede`.
-- **Spike 0002 attestation success-path** — ~~the one un-exercised half of the ADR-0030 contract (`attest-stdin`
-  CLI + positive token tests)~~ **closed 2026-06-22** (see Spike 0002 honest-gap note above).
+- **Dedupe transitive RustCrypto dep versions** in `Cargo.lock` ([issue #11](https://github.com/cairn-ehr/cairn-ehr/issues/11)) — supply-chain hygiene cleanup.
+- **Harden the first federating node** — status-before-init crash, runtime-login-role/floor-ENFORCED proof, **and
+  incremental sync watermark + genesis HLC** ([issue #38](https://github.com/cairn-ehr/cairn-ehr/issues/38),
+  PR #42) are all **closed** (see node gaps above). Remaining: DR/recovery escrow stub (ADR-0026); key rotation /
+  `supersede`.
 - **Landing-page polish** — non-developer page for the generated site (frontend-design; `web/` already advanced
   across PRs #15–#17; draft plans under `docs/superpowers/`).
 
@@ -194,6 +214,7 @@ ADR before reopening any of these.
 | [0028](spec/decisions/0028-finalized-closed-contributor-role-enum.md) | Finalized closed contributor-role enum | §3.9 |
 | [0029](spec/decisions/0029-skill-epoch-as-pinned-actor-determinant.md) | Skill-epoch + served-model digest as pinned actor determinants | §7.5 |
 | [0030](spec/decisions/0030-advisory-actor-integration-contract.md) | Advisory-actor integration contract | §9.8 |
+| [0031](spec/decisions/0031-canonical-identifiers-and-node-local-surrogate-keys.md) | Canonical IDs + node-local `bigint` surrogate keys (dual-identifier discipline) | §3.1/§3.2 |
 
 **Ecosystem evals** (`docs/ecosystem/`, neither spec nor ADR): 0001 (kastellan/localmail plugins), 0003
 (reference-data sourcing — medicines/terminologies, fed ADR-0025).
