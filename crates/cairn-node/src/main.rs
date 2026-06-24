@@ -2,17 +2,12 @@ use clap::{Parser, Subcommand};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-/// Resolve the operational passphrase: `--passphrase` flag, else CAIRN_KEY_PASSPHRASE,
-/// else an interactive no-echo prompt. Errors if none is available (we never write an
-/// unsealed key implicitly — use --insecure-plaintext for that).
+/// Resolve the operational passphrase: from `--passphrase` (which clap also fills from
+/// the CAIRN_KEY_PASSPHRASE env var), else an interactive no-echo prompt. Errors if none
+/// is available — we never write an unsealed key implicitly (use --insecure-plaintext).
 fn resolve_passphrase(flag: Option<String>) -> anyhow::Result<String> {
     if let Some(p) = flag.filter(|s| !s.is_empty()) {
         return Ok(p);
-    }
-    if let Ok(p) = std::env::var("CAIRN_KEY_PASSPHRASE") {
-        if !p.is_empty() {
-            return Ok(p);
-        }
     }
     let p = rpassword::prompt_password("operational passphrase: ")?;
     if p.is_empty() {
@@ -143,8 +138,10 @@ async fn main() -> anyhow::Result<()> {
             let op = resolve_passphrase(passphrase)?;
             let code = cairn_node::seal::generate_recovery_code();
             cairn_node::keystore::seal_existing(&cli.key, &op, &code)?;
-            println!("key at {} sealed.", cli.key.display());
+            // Print the recovery code FIRST (it is the critical, shown-once output),
+            // then the confirmation — mirrors the Init arm's ordering.
             print_recovery_code(&code);
+            println!("key at {} sealed.", cli.key.display());
         }
         Cmd::Identity => {
             let db = cairn_node::db::connect(&cli.conn).await?;
