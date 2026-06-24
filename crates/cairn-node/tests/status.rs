@@ -69,6 +69,7 @@ async fn status_reports_peers_and_keystore_health() {
         "key_at_rest must surface v1 plaintext, got: {:?}",
         st.key_at_rest
     );
+    assert!(!st.recovery_escrow, "plaintext key has no recovery escrow");
     // Finding 2 (review): the in-DB floor self-check is populated. Tests connect as a
     // superuser, so the floor is present-but-bypassable here (can raw-INSERT) — assert
     // that exact honest reading rather than pretending the gate binds this connection.
