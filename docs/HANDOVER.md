@@ -98,7 +98,7 @@ coverage that was missing. **Smaller deferred items remain open** (commented in 
 `actor_current` wall-clock ordering needs a monotonic tiebreaker before production; no FK on
 `recall_overlay.target_event_id`; plaintext twin is skeletal.
 
-### Dual-identifier discipline — ADR-0031, merged 2026-06-22 ([PR #34](https://github.com/cairn-ehr/cairn-ehr/pull/34))
+### Dual-identifier discipline — ADR-0031, merged 2026-06-22 ([PR #34](https://github.com/cairn-ehr/cairn-ehr/pull/34); `local_ref` honesty fix merged 2026-06-24 [PR #43](https://github.com/cairn-ehr/cairn-ehr/pull/43))
 New **[ADR-0031](spec/decisions/0031-canonical-identifiers-and-node-local-surrogate-keys.md)** (canonical
 identifiers + node-local surrogate keys): canonical plane (UUIDv7 + multihash) is unchanged and is the *only*
 identifier on the wire/in signed bodies; the **projection plane** may intern canonical IDs to dense node-local
@@ -117,7 +117,7 @@ an intent-signal + one-directional guard. Rewrote **G4** in `db/tests/008_surrog
 the functions exist first (no more vacuous pass via `undefined_function`, now dropped), proves the genuine
 guard (G4a `uuid`↛`local_ref`; G4b `bigint`↛`uuid` signed plane), and **characterizes the honest limit**
 (G4c: `bigint` flows into `local_ref` silently). The spec body (§3.18) and immutable ADR-0031 were already
-accurate (one-directional framing), so neither was touched. All G1–G6 green on PG16. *(PR pending.)*
+accurate (one-directional framing), so neither was touched. All G1–G6 green on PG16. **Merged 2026-06-24 ([PR #43](https://github.com/cairn-ehr/cairn-ehr/pull/43)).**
 
 ---
 
