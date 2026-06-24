@@ -125,18 +125,95 @@ pub fn key_at_rest_state(path: &Path) -> KeyAtRest {
     }
 }
 
+/// The sibling temp path used for an atomic write: the target's full filename plus a
+/// `.tmp` suffix, in the SAME directory. Pure (no I/O) so it is trivially testable.
+/// Same-directory matters: `rename` is only atomic within one filesystem, so a temp in
+/// `/tmp` (possibly a different mount) would defeat the whole point.
+fn tmp_sibling(path: &Path) -> std::path::PathBuf {
+    let mut name = path.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+    name.push(".tmp");
+    path.with_file_name(name)
+}
+
+/// fsync the directory that contains `path`, so a freshly-`rename`d entry survives a power
+/// loss. We fsync the temp file's *bytes* before the rename, but the rename itself is a
+/// directory-entry update whose durability is a SEPARATE guarantee: without this, a crash
+/// just after `write_key_file` returns can revert the directory to its pre-rename state —
+/// for `seal_existing` that silently un-seals the key back to the plaintext original the
+/// operator believes is now sealed. The parent of a bare filename is "" → fall back to ".".
+#[cfg(unix)]
+fn fsync_parent_dir(path: &Path) -> std::io::Result<()> {
+    let parent = path.parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    std::fs::File::open(parent)?.sync_all()
+}
+
+/// Atomically write `bytes` to `path` with owner-only (0600) permissions.
+///
+/// WHY ATOMIC (issue #45): `seal_existing` (the `seal-key` migration) overwrites a live
+/// node's SOLE key in place, and a sealed bundle is hundreds of bytes. Writing the target
+/// directly with `truncate` means a process kill or power loss mid-write leaves a partial
+/// file that boots to `KeyAtRest::Corrupt` — the node loses its identity. Instead we write
+/// to a sibling temp file, fsync it so the bytes are durable, then `rename` it over the
+/// target. A POSIX `rename` within one directory is atomic: any reader (concurrent, or
+/// after a crash) sees either the complete OLD file or the complete NEW one, never a torn
+/// mix. A crash before the rename simply leaves the intact original untouched. Finally we
+/// fsync the parent directory so the rename itself is durable, not just the bytes.
 #[cfg(unix)]
 fn write_key_file(path: &Path, bytes: &[u8]) -> Result<(), KeystoreError> {
     use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    let tmp = tmp_sibling(path);
+    // create+truncate clobbers any stale temp a previous crashed write may have left.
     let mut f = std::fs::OpenOptions::new()
-        .write(true).create(true).truncate(true).mode(0o600).open(path)?;
-    f.write_all(bytes)?;
+        .write(true).create(true).truncate(true).mode(0o600).open(&tmp)?;
+    // Set perms + write + fsync as one fallible block; on ANY failure remove the temp so we
+    // never leave litter, and leave the original target untouched (the rename never happened).
+    let write_then_sync = (|| -> std::io::Result<()> {
+        // `mode(0o600)` above only applies when open CREATES the inode; if a stale temp
+        // already existed it was reused with its OLD (possibly wider) perms. Force 0600
+        // explicitly — BEFORE any secret bytes are written — so the key can never end wider
+        // than 0600 regardless of the temp's prior perms.
+        f.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+        f.write_all(bytes)?;
+        f.sync_all()?; // bytes durable on disk BEFORE we expose them via the rename
+        Ok(())
+    })();
+    if let Err(e) = write_then_sync {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.into());
+    }
+    drop(f); // close before rename (tidy on all platforms)
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.into());
+    }
+    fsync_parent_dir(path)?; // make the rename itself crash-durable, not just the bytes
     Ok(())
 }
 #[cfg(not(unix))]
 fn write_key_file(path: &Path, bytes: &[u8]) -> Result<(), KeystoreError> {
-    std::fs::write(path, bytes)?;
+    use std::io::Write;
+    // Same atomic tmp → fsync → rename discipline as the unix path, minus the 0600 mode
+    // (POSIX perms do not apply) and the directory fsync (opening a directory as a File is
+    // not portable). `std::fs::rename` replaces an existing target on Windows too.
+    let tmp = tmp_sibling(path);
+    let write_then_sync = (|| -> std::io::Result<()> {
+        let mut f = std::fs::OpenOptions::new()
+            .write(true).create(true).truncate(true).open(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?; // bytes durable on disk BEFORE we expose them via the rename
+        Ok(())
+    })();
+    if let Err(e) = write_then_sync {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.into());
+    }
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.into());
+    }
     Ok(())
 }
 
@@ -182,6 +259,73 @@ mod tests {
             "recovery code must unseal migrated key (off-node escrow path)");
         assert!(load(&p, None).is_err(), "after sealing, no-secret load must fail");
         assert!(seal_existing(&p, "op", "REC-CODE").is_err(), "double-seal must error");
+    }
+
+    #[test]
+    fn tmp_sibling_appends_tmp_suffix_in_same_dir() {
+        // The atomic-write temp file must live in the SAME directory as the target
+        // (rename is only atomic within one filesystem) and be named so it can never be
+        // mistaken for the key itself.
+        let p = Path::new("/var/lib/cairn/node.key");
+        let t = tmp_sibling(p);
+        assert_eq!(t, Path::new("/var/lib/cairn/node.key.tmp"));
+        assert_eq!(t.parent(), p.parent(), "temp must be a sibling of the target");
+    }
+
+    #[test]
+    fn write_is_atomic_and_leaves_no_temp_litter() {
+        let dir = tempdir().unwrap();
+        let p = dir.path().join("node.key");
+        generate_sealed(&p, "op", "REC-CODE").unwrap();
+        // The temp sibling used during the atomic write must be cleaned up (renamed away).
+        assert!(!tmp_sibling(&p).exists(), "atomic write must not leave a .tmp sibling");
+        assert!(matches!(key_at_rest_state(&p), KeyAtRest::Sealed { .. }));
+    }
+
+    #[test]
+    fn stale_temp_from_a_prior_crashed_write_is_overwritten() {
+        // A previous crash could leave a stale `<key>.tmp`. A new write must clobber it
+        // (truncate) and still succeed, never appending to or being confused by the junk.
+        let dir = tempdir().unwrap();
+        let p = dir.path().join("node.key");
+        std::fs::write(tmp_sibling(&p), b"garbage from a half-finished write").unwrap();
+        let (sk, _kid) = generate_sealed(&p, "op", "REC-CODE").unwrap();
+        assert_eq!(load(&p, Some("op")).unwrap().to_bytes(), sk.to_bytes());
+        assert!(!tmp_sibling(&p).exists(), "stale temp must be gone after a successful write");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn written_key_has_owner_only_permissions() {
+        // The atomic write creates the temp file 0600 and rename keeps that inode, so the
+        // final key must be owner-read/write only — a regression that drops the mode on the
+        // temp would leak the sealed bundle to other local users.
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempdir().unwrap();
+        let p = dir.path().join("node.key");
+        generate_sealed(&p, "op", "REC-CODE").unwrap();
+        let mode = std::fs::metadata(&p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "key file must be owner-read/write only");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stale_temp_with_wide_perms_does_not_leak_into_the_key_mode() {
+        // `OpenOptions::mode()` only applies when open CREATES the inode. A stale `<key>.tmp`
+        // left wider than 0600 (a foreign tool, a manual op, a different-umask process) is
+        // reused with its OLD perms by create+truncate, and rename would then carry that
+        // wider mode onto the key. The write MUST force 0600 regardless of the temp's prior
+        // perms — otherwise a `--insecure-plaintext` seed or a sealed bundle leaks to other
+        // local users.
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempdir().unwrap();
+        let p = dir.path().join("node.key");
+        let tmp = tmp_sibling(&p);
+        std::fs::write(&tmp, b"stale junk from a foreign write").unwrap();
+        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o644)).unwrap();
+        generate_sealed(&p, "op", "REC-CODE").unwrap();
+        let mode = std::fs::metadata(&p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "a stale wide-perm temp must not leak its mode into the key");
     }
 
     #[test]
