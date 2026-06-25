@@ -60,8 +60,12 @@ API**. Policy and UI sit *above* this line and are deliberately out of scope her
 - **Visibility-scope ≠ replication; the safety projection** — sealed bodies emit de-identified, severity-graded safety projection; sensitivity is a graded append-only stream ([ADR-0006](spec/decisions/0006-visibility-scope-replication-and-the-safety-projection.md)).
 - **At-rest seal** — ✓ done at node level (ADR-0026 **slice A**): signing key sealed with a dual-recipient
   envelope (Argon2id KEKs from an operational passphrase + a one-time off-node recovery code; XChaCha20-Poly1305),
-  recovery escrow minted at `init`, `seal-key` migration. Remaining ADR-0026 slices: sealed local-state export,
-  backup-as-cold-peer, `supersede`/new-identity restore ([ADR-0026](spec/decisions/0026-node-durability-and-disaster-recovery.md)).
+  recovery escrow minted at `init`, `seal-key` migration.
+- **Backup-as-cold-peer (export + health)** — ✓ done at node level (ADR-0026 **slice B**): `backup`/`verify-backup`
+  CLI + `last_backup` status; signed-event medium, self-verifying via the existing signature invariant; fail-safe
+  node-local health sidecar; shared `fsio` atomic-write. **Restore-apply** half = slice C ([issue #50](https://github.com/cairn-ehr/cairn-ehr/issues/50)):
+  self-trusting restore door + new-identity `supersede` (the live admission gate is the *peer* path). Remaining
+  ADR-0026 slices: sealed local-state export (point 3), slice C ([ADR-0026](spec/decisions/0026-node-durability-and-disaster-recovery.md)).
 - **Trusted-time anchoring** — graded-interval `t_recorded` with clock-confidence grade; transparency-log multi-anchor existence proof ([ADR-0027](spec/decisions/0027-trusted-time-anchoring.md)).
 - **Audit-log integrity, offline auth, mTLS** ([§7](spec/security.md)).
 
