@@ -3,7 +3,12 @@
 //! always run.
 
 use cairn_node::db;
-use cairn_node::localstate::{apply_local_state, read_local_state};
+use cairn_node::localstate::{
+    apply_local_state, establish_lsk, from_cbor, localstate_path_for, lsk_sidecar_path_for,
+    parse_container, read_local_state, seal_local_state, serialize_container, serialize_sidecar,
+    to_cbor, unseal_local_state_rec, LocalState,
+};
+use tempfile::tempdir;
 
 fn cs() -> Option<String> {
     std::env::var("CAIRN_TEST_PG").ok()
@@ -28,4 +33,43 @@ async fn read_local_state_is_empty_at_the_federation_tier() {
     apply_local_state(&conn, &ls)
         .await
         .expect("applying an empty bundle is a noop");
+}
+
+#[test]
+fn export_then_restore_roundtrips_an_empty_bundle_offline() {
+    // Pure/offline slice of the round-trip (no DB): seal an empty bundle under an LSK,
+    // write the CAIRNL1 sibling, then unseal it via the recovery code and apply-check it.
+    let dir = tempdir().unwrap();
+    let medium = dir.path().join("cairn.medium");
+    let op = "op-pass";
+    let code = "AB12C-D34EF";
+
+    let wraps = establish_lsk(op, code).unwrap();
+    let bundle = to_cbor(&LocalState::empty());
+    let sealed = seal_local_state(&wraps, op, &bundle).unwrap();
+    let export_path = localstate_path_for(&medium);
+    std::fs::write(&export_path, serialize_container(&sealed)).unwrap();
+
+    // Restore side: read the sibling, unseal with the OLD recovery code, decode, check empty.
+    let bytes = std::fs::read(&export_path).unwrap();
+    let parsed = parse_container(&bytes).unwrap();
+    let plaintext = unseal_local_state_rec(&parsed, code).expect("recovery code must unseal");
+    let restored = from_cbor(&plaintext).unwrap();
+    assert!(restored.is_empty(), "an empty bundle restores empty");
+}
+
+#[test]
+fn sidecar_written_atomically_is_readable() {
+    // The `.lsk` escrow the CLI writes must parse back (guards the serialize/atomic-write pair).
+    let dir = tempdir().unwrap();
+    let key = dir.path().join("node.key");
+    let wraps = establish_lsk("op", "REC-CODE").unwrap();
+    cairn_node::fsio::atomic_write(
+        &lsk_sidecar_path_for(&key),
+        &serialize_sidecar(&wraps),
+        Some(0o600),
+    )
+    .unwrap();
+    let back = std::fs::read(lsk_sidecar_path_for(&key)).unwrap();
+    assert!(cairn_node::localstate::parse_sidecar(&back).is_ok());
 }
