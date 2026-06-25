@@ -514,25 +514,33 @@ async fn main() -> anyhow::Result<()> {
             // restores from events alone — honest degradation).
             let export_path = cairn_node::localstate::localstate_path_for(&from);
             if let Ok(bytes) = std::fs::read(&export_path) {
-                let sealed = cairn_node::localstate::parse_container(&bytes)?;
-                eprintln!("Local-state export found. Enter the OLD node's recovery code to unseal it:");
-                let old_code = Zeroizing::new(
-                    rpassword::prompt_password("old recovery code: ")?);
-                // Local-state is OPTIONAL (and empty today). The node is ALREADY fully
-                // restored at this point (key minted, events applied, identity finalized),
-                // so a wrong recovery-code guess must NOT bail and strand a half-committed
-                // node — it degrades honestly: warn and skip, exactly like the no-sibling
-                // path. Only a non-empty bundle this version cannot apply stays loud (the
-                // `?` on apply_local_state below).
-                match cairn_node::localstate::unseal_local_state_rec(&sealed, &old_code) {
-                    Some(plaintext) => {
-                        let bundle = cairn_node::localstate::from_cbor(&plaintext)?;
-                        cairn_node::localstate::apply_local_state(&db, &bundle).await?;
-                        println!("local-state restored from {}", export_path.display());
+                // A corrupt/bit-rotted export sibling must NOT bail — by this point the node
+                // is ALREADY fully restored (key minted, events applied, identity finalized),
+                // and off-site media bit-rot is a likely failure. Local-state is OPTIONAL and
+                // the events are the load-bearing copy, so degrade honestly: warn and skip.
+                match cairn_node::localstate::parse_container(&bytes) {
+                    Ok(sealed) => {
+                        eprintln!("Local-state export found. Enter the OLD node's recovery code to unseal it:");
+                        let old_code = Zeroizing::new(
+                            rpassword::prompt_password("old recovery code: ")?);
+                        // Wrong recovery-code guess degrades the same way (warn + skip) — a bad
+                        // guess at the OPTIONAL local-state must not kill an otherwise-complete
+                        // restore. Only a non-empty bundle this version cannot apply stays loud
+                        // (the `?` on apply_local_state below).
+                        match cairn_node::localstate::unseal_local_state_rec(&sealed, &old_code) {
+                            Some(plaintext) => {
+                                let bundle = cairn_node::localstate::from_cbor(&plaintext)?;
+                                cairn_node::localstate::apply_local_state(&db, &bundle).await?;
+                                println!("local-state restored from {}", export_path.display());
+                            }
+                            None => eprintln!(
+                                "WARNING: could not unseal the local-state export — wrong recovery code? \
+                                 Skipping local-state; node restores from events alone."),
+                        }
                     }
-                    None => eprintln!(
-                        "WARNING: could not unseal the local-state export — wrong recovery code? \
-                         Skipping local-state; node restores from events alone."),
+                    Err(_) => eprintln!(
+                        "WARNING: local-state export present at {} but unreadable (corrupt/bit-rotted?) — \
+                         skipping local-state; node restores from events alone.", export_path.display()),
                 }
             }
 

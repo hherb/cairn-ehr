@@ -73,3 +73,12 @@ fn sidecar_written_atomically_is_readable() {
     let back = std::fs::read(lsk_sidecar_path_for(&key)).unwrap();
     assert!(cairn_node::localstate::parse_sidecar(&back).is_ok());
 }
+
+#[test]
+fn corrupt_container_parses_as_error_not_panic() {
+    // A bit-rotted export sibling must surface as Err so restore can WARN+skip
+    // (honest degradation) rather than bailing an already-restored node.
+    let garbage = b"CAIRNL1\nnot valid cbor at all";
+    assert!(cairn_node::localstate::parse_container(garbage).is_err());
+    assert!(cairn_node::localstate::parse_container(b"no magic here").is_err());
+}
