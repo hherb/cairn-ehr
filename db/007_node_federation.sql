@@ -202,7 +202,7 @@ BEGIN
         RETURN v_eid;
     END IF;
 
-    -- peer / revoke: authored only by this node's own current key.
+    -- peer / revoke / supersede: authored only by this node's own current key.
     IF v_local_node IS NULL THEN
         RAISE EXCEPTION 'submit_node_event: node not yet enrolled; cannot author peering';
     END IF;

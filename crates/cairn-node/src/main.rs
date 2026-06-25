@@ -393,8 +393,16 @@ async fn main() -> anyhow::Result<()> {
             }
             // 2. Resolve the dead node-id (solo auto-detect, else --superseded-node).
             let dead = cairn_node::restore::resolve_dead_node_id(&events, superseded_node.as_deref())?;
-            let (name, address) = cairn_node::restore::old_genesis_meta(&events, &dead)
-                .unwrap_or_else(|| ("restored-node".to_string(), String::new()));
+            let (name, address) = if let Some(meta) = cairn_node::restore::old_genesis_meta(&events, &dead) {
+                meta
+            } else {
+                eprintln!(
+                    "WARNING: no genesis metadata found for dead node {dead} on the medium; \
+                     the new node will use a synthetic display-name ('restored-node') and \
+                     empty address. Pass --superseded-node to select a different dead node-id."
+                );
+                ("restored-node".to_string(), String::new())
+            };
 
             // 3. Connect to the FRESH db and load the schema (DDL: owner privileges, like init).
             let db = cairn_node::db::connect_and_load_schema(&cli.conn).await?;
@@ -412,6 +420,11 @@ async fn main() -> anyhow::Result<()> {
             } else {
                 let op = resolve_passphrase(passphrase)?;
                 let code = Zeroizing::new(cairn_node::seal::generate_recovery_code());
+                // Show the recovery code BEFORE the key is persisted — same rationale as
+                // `init`: a crash between persist and print would seal the disaster-recovery
+                // node under a code no human ever saw, silently destroying the new escrow.
+                // Printing first means the worst case is a shown code for an unwritten key
+                // (restore simply re-runs), never a permanently sealed, unrecoverable node.
                 print_recovery_code(&code);
                 cairn_node::keystore::generate_sealed(&cli.key, &op, &code)?
             };

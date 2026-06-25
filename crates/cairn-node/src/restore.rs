@@ -89,7 +89,6 @@ use tokio_postgres::Client;
 pub struct RestoreOutcome {
     pub new_node_id_hex: String,
     pub superseded_node_id_hex: String,
-    pub events_applied: usize,
 }
 
 /// Apply every signed event from the medium through the self-trusting restore door, in
@@ -97,6 +96,10 @@ pub struct RestoreOutcome {
 /// author). Idempotent: the door's ON CONFLICT DO NOTHING makes re-application a no-op.
 /// MUST run while the DB is still un-enrolled — the door fails closed once a genesis
 /// exists (which is exactly what finalize_identity creates next).
+///
+/// Returns the number of events PROCESSED (the slice length), not the number newly
+/// inserted. Because the door uses ON CONFLICT DO NOTHING, re-applying the same medium
+/// is a no-op at the DB level but still returns the same count — not 0.
 pub async fn apply_medium(db: &Client, events: &[Vec<u8>]) -> anyhow::Result<usize> {
     use anyhow::Context;
     for (i, e) in events.iter().enumerate() {
@@ -119,11 +122,10 @@ pub async fn finalize_identity(
     old_node_id_hex: &str,
 ) -> anyhow::Result<RestoreOutcome> {
     let new_node_id_hex = crate::identity::provision(db, sk, key_id, name, address).await?;
-    crate::identity::author_supersede(db, sk, key_id, &new_node_id_hex, old_node_id_hex).await?;
+    crate::identity::author_supersede(db, sk, key_id, name, old_node_id_hex).await?;
     Ok(RestoreOutcome {
         new_node_id_hex,
         superseded_node_id_hex: old_node_id_hex.to_ascii_lowercase(),
-        events_applied: 0, // set by the caller, which knows the medium length
     })
 }
 
