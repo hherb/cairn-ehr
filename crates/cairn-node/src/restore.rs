@@ -11,8 +11,6 @@ use cairn_event::{event_address, verify_self_described};
 
 #[derive(thiserror::Error, Debug)]
 pub enum RestoreError {
-    #[error("decode: {0}")]
-    Decode(String),
     #[error("medium has no genesis (node.enrolled) event")]
     NoGenesis,
     #[error("medium carries {0} enrolls; pass --superseded-node <hex> to pick the dead node")]
@@ -82,6 +80,51 @@ pub fn old_genesis_meta(events: &[Vec<u8>], node_id_hex: &str) -> Option<(String
                 .to_string();
             (name, addr)
         })
+}
+
+use tokio_postgres::Client;
+
+/// What a completed restore produced.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreOutcome {
+    pub new_node_id_hex: String,
+    pub superseded_node_id_hex: String,
+    pub events_applied: usize,
+}
+
+/// Apply every signed event from the medium through the self-trusting restore door, in
+/// medium order (the node's own genesis is first, so non-enroll events resolve their
+/// author). Idempotent: the door's ON CONFLICT DO NOTHING makes re-application a no-op.
+/// MUST run while the DB is still un-enrolled — the door fails closed once a genesis
+/// exists (which is exactly what finalize_identity creates next).
+pub async fn apply_medium(db: &Client, events: &[Vec<u8>]) -> anyhow::Result<usize> {
+    use anyhow::Context;
+    for (i, e) in events.iter().enumerate() {
+        db.execute("SELECT restore_node_event($1)", &[e]).await
+            .with_context(|| format!("applying restored event #{i}"))?;
+    }
+    Ok(events.len())
+}
+
+/// After the medium is applied, mint the node's NEW identity: author a fresh genesis
+/// (sets local_node = NEW and permanently fences the restore door closed), then author a
+/// node-level supersede(dead -> new). The signing key is the freshly-minted one (the old
+/// key was never backed up). Returns the new + superseded node-ids for the operator.
+pub async fn finalize_identity(
+    db: &Client,
+    sk: &cairn_event::SigningKey,
+    key_id: &str,
+    name: &str,
+    address: &str,
+    old_node_id_hex: &str,
+) -> anyhow::Result<RestoreOutcome> {
+    let new_node_id_hex = crate::identity::provision(db, sk, key_id, name, address).await?;
+    crate::identity::author_supersede(db, sk, key_id, &new_node_id_hex, old_node_id_hex).await?;
+    Ok(RestoreOutcome {
+        new_node_id_hex,
+        superseded_node_id_hex: old_node_id_hex.to_ascii_lowercase(),
+        events_applied: 0, // set by the caller, which knows the medium length
+    })
 }
 
 #[cfg(test)]
