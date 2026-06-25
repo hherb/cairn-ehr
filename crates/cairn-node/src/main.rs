@@ -78,6 +78,22 @@ fn print_recovery_code(code: &str) {
     eprintln!();
 }
 
+/// Write the `.lsk` sidecar (the day-one local-state escrow, ADR-0026 slice D). Mints +
+/// dual-wraps a long-lived local-state DEK and atomically writes it 0600 beside the key.
+/// Errors loudly if the sidecar already exists (no silent overwrite of an escrow).
+fn establish_local_state_escrow(key_path: &std::path::Path, op_pass: &str, recovery_code: &str)
+    -> anyhow::Result<()> {
+    use cairn_node::localstate::{establish_lsk, lsk_sidecar_path_for, serialize_sidecar};
+    let sidecar = lsk_sidecar_path_for(key_path);
+    if sidecar.exists() {
+        anyhow::bail!("local-state escrow already exists at {}", sidecar.display());
+    }
+    let wraps = establish_lsk(op_pass, recovery_code)?;
+    cairn_node::fsio::atomic_write(&sidecar, &serialize_sidecar(&wraps), Some(0o600))?;
+    eprintln!("local-state escrow established at {}", sidecar.display());
+    Ok(())
+}
+
 #[derive(Parser)]
 #[command(name = "cairn-node", about = "A Cairn federation node")]
 struct Cli {
@@ -106,6 +122,12 @@ enum Cmd {
     },
     /// Seal an existing plaintext key file and mint a fresh recovery code.
     SealKey {
+        #[arg(long, env = "CAIRN_KEY_PASSPHRASE")] passphrase: Option<String>,
+    },
+    /// Establish the local-state escrow (`.lsk`) for a node provisioned before slice D.
+    /// Prompts for the op passphrase AND the recovery code (both needed once). Errors if
+    /// an escrow already exists.
+    EstablishLocalStateKey {
         #[arg(long, env = "CAIRN_KEY_PASSPHRASE")] passphrase: Option<String>,
     },
     /// Print this node's identity (node_id, pubkey, fingerprint, address).
@@ -209,7 +231,12 @@ async fn main() -> anyhow::Result<()> {
                 // first means the worst case is a shown code for an unwritten key (init
                 // simply re-runs and mints a fresh one), never a lost escrow.
                 print_recovery_code(&code);
-                cairn_node::keystore::generate_sealed(&cli.key, &op, &code)?
+                let kp = cairn_node::keystore::generate_sealed(&cli.key, &op, &code)?;
+                // Establish the day-one local-state escrow (ADR-0026 slice D): a long-lived
+                // local-state DEK dual-wrapped under the SAME two secrets. Must happen here,
+                // while both are in hand — it cannot be retrofitted onto state accrued later.
+                establish_local_state_escrow(&cli.key, &op, &code)?;
+                kp
             };
             let node_id = cairn_node::identity::provision(&db, &sk, &kid, &name, &address).await?;
             println!("provisioned node {node_id}\nfingerprint {}", cairn_event::short_fingerprint(&kid)?);
@@ -236,7 +263,20 @@ async fn main() -> anyhow::Result<()> {
             // (silent escrow loss). The shown-once code is the critical output.
             print_recovery_code(&code);
             cairn_node::keystore::seal_existing(&cli.key, &op, &code)?;
+            establish_local_state_escrow(&cli.key, &op, &code)?;
             println!("key at {} sealed.", cli.key.display());
+        }
+        Cmd::EstablishLocalStateKey { passphrase } => {
+            let op = resolve_passphrase(passphrase)?;
+            // The recovery code is the OFF-NODE secret; the node never stored it, so the
+            // operator must type the one shown at `init`/`seal-key`.
+            let code = Zeroizing::new(
+                rpassword::prompt_password("recovery code (from init/seal-key): ")?);
+            if code.is_empty() {
+                anyhow::bail!("no recovery code provided");
+            }
+            establish_local_state_escrow(&cli.key, &op, &code)?;
+            println!("local-state escrow established.");
         }
         Cmd::Identity => {
             let db = cairn_node::db::connect(&cli.conn).await?;
@@ -338,6 +378,7 @@ async fn main() -> anyhow::Result<()> {
             println!("dr_escrow     {}", st.dr_escrow);
             println!("recovery_esc  {}", st.recovery_escrow);
             println!("last_backup   {}", st.last_backup);
+            println!("local_state   {}", st.local_state);
             if let Some(old) = &st.supersedes {
                 println!("supersedes    {old}");
             }
