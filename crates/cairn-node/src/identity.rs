@@ -210,6 +210,11 @@ pub struct Status {
     /// The dead node-id this node supersedes (ADR-0026 slice C), if it was restored from
     /// a backup under a new identity. `None` for a node provisioned fresh via `init`.
     pub supersedes: Option<String>,
+    /// Local-state export posture (ADR-0026 slice D): whether the day-one local-state
+    /// escrow (`<key>.lsk`) exists and whether an export sibling sits alongside the last
+    /// backup medium. Node-local, never an event. Honest-degrades to the "no escrow"
+    /// warning when absent.
+    pub local_state: String,
 }
 
 /// Assemble the node's current status without erroring on a missing keystore.
@@ -304,6 +309,18 @@ pub async fn status(db: &Client, key_path: &Path) -> anyhow::Result<Status> {
         .await?
         .map(|r| r.get::<_, String>("old"));
 
+    // Local-state export posture (ADR-0026 slice D). The escrow is the `.lsk` sidecar of
+    // the key; the export is the `<medium>.localstate` sibling of the LAST backup medium
+    // (its path is recorded in the backup-health sidecar we already read above).
+    let lsk_present = crate::localstate::parse_sidecar(
+        &std::fs::read(crate::localstate::lsk_sidecar_path_for(key_path)).unwrap_or_default()
+    ).is_ok();
+    let export_present = health.as_ref().is_some_and(|h| {
+        let medium = std::path::Path::new(&h.medium_path);
+        crate::localstate::localstate_path_for(medium).exists()
+    });
+    let local_state = crate::localstate::describe_local_state(lsk_present, export_present);
+
     Ok(Status {
         // When un-provisioned, surface a legible sentinel rather than a blank
         // node_id, and flag `initialized=false` so callers can prompt for `init`.
@@ -320,6 +337,7 @@ pub async fn status(db: &Client, key_path: &Path) -> anyhow::Result<Status> {
         recovery_escrow,
         last_backup,
         supersedes,
+        local_state,
     })
 }
 

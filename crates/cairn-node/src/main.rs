@@ -78,6 +78,60 @@ fn print_recovery_code(code: &str) {
     eprintln!();
 }
 
+/// Write the `.lsk` sidecar (the day-one local-state escrow, ADR-0026 slice D). Mints +
+/// dual-wraps a long-lived local-state DEK and atomically writes it 0600 beside the key.
+///
+/// `overwrite` selects the pre-existing-escrow policy:
+///   - `false` — the explicit `establish-local-state-key` verb: REFUSE if a sidecar already
+///     exists, so an operator can never silently clobber a working escrow.
+///   - `true` — the key-minting / re-sealing paths (`init`, `seal-key`, `restore`): the key's
+///     escrow secrets were just (re)minted here, so the LSK MUST travel with them. Replace any
+///     stale sidecar so the `.lsk` and the signing key always share one coherent secret set.
+///     Without this, `seal-key` on a node that already has a `.lsk` (e.g. from a prior
+///     `establish-local-state-key` on a still-plaintext key) would reseal the key under a fresh
+///     recovery code, then BAIL on the existing sidecar — leaving the LSK wrapped under the OLD
+///     code, desynced, with the command erroring after the key is already resealed. Existing
+///     exports stay recoverable regardless: every `CAIRNL1` container is self-contained (carries
+///     its own wraps), so the old recovery code still unseals already-written exports; only
+///     FUTURE exports use the new sidecar.
+fn establish_local_state_escrow(
+    key_path: &std::path::Path, op_pass: &str, recovery_code: &str, overwrite: bool,
+) -> anyhow::Result<()> {
+    use cairn_node::localstate::{establish_lsk, lsk_sidecar_path_for, serialize_sidecar};
+    let sidecar = lsk_sidecar_path_for(key_path);
+    if sidecar.exists() && !overwrite {
+        anyhow::bail!("local-state escrow already exists at {}", sidecar.display());
+    }
+    let replacing = sidecar.exists();
+    let wraps = establish_lsk(op_pass, recovery_code)?;
+    cairn_node::fsio::atomic_write(&sidecar, &serialize_sidecar(&wraps), Some(0o600))?;
+    eprintln!(
+        "local-state escrow {} at {}",
+        if replacing { "re-established (replaced stale sidecar)" } else { "established" },
+        sidecar.display()
+    );
+    Ok(())
+}
+
+/// Seal the node's local-state bundle and write the `CAIRNL1` export sibling beside `medium`
+/// (ADR-0026 slice D). Returns the export path on success. Kept separate from the `backup`
+/// arm so the caller can treat EVERY failure here as a warn-and-skip degradation: the export
+/// is OPTIONAL and the event medium is already written (the load-bearing copy), so a missing
+/// passphrase (unattended run), a wrong passphrase, or an I/O error must never abort backup.
+async fn seal_and_write_local_state_export(
+    db: &tokio_postgres::Client,
+    wraps: &cairn_node::localstate::LskWraps,
+    passphrase: Option<String>,
+    medium: &std::path::Path,
+) -> anyhow::Result<PathBuf> {
+    let op = resolve_passphrase(passphrase)?; // op-pass unwraps the LSK
+    let bundle = cairn_node::localstate::read_local_state(db).await?;
+    let container = cairn_node::localstate::build_export_container(wraps, &op, &bundle)?;
+    let export_path = cairn_node::localstate::localstate_path_for(medium);
+    cairn_node::fsio::atomic_write(&export_path, &container, Some(0o600))?;
+    Ok(export_path)
+}
+
 #[derive(Parser)]
 #[command(name = "cairn-node", about = "A Cairn federation node")]
 struct Cli {
@@ -106,6 +160,12 @@ enum Cmd {
     },
     /// Seal an existing plaintext key file and mint a fresh recovery code.
     SealKey {
+        #[arg(long, env = "CAIRN_KEY_PASSPHRASE")] passphrase: Option<String>,
+    },
+    /// Establish the local-state escrow (`.lsk`) for a node provisioned before slice D.
+    /// Prompts for the op passphrase AND the recovery code (both needed once). Errors if
+    /// an escrow already exists.
+    EstablishLocalStateKey {
         #[arg(long, env = "CAIRN_KEY_PASSPHRASE")] passphrase: Option<String>,
     },
     /// Print this node's identity (node_id, pubkey, fingerprint, address).
@@ -142,6 +202,10 @@ enum Cmd {
         /// Path of the backup medium to write (e.g. a mounted encrypted volume).
         #[arg(long)]
         to: PathBuf,
+        /// Operational passphrase to seal the local-state export (else CAIRN_KEY_PASSPHRASE,
+        /// else prompt). Only used when a local-state escrow (`.lsk`) exists.
+        #[arg(long, env = "CAIRN_KEY_PASSPHRASE")]
+        passphrase: Option<String>,
     },
     /// Verify a backup medium WITHOUT applying it: every event's signature must check.
     /// Pure/offline — needs no DB and no key. Exits non-zero on any tamper/bit-rot, so a
@@ -209,7 +273,14 @@ async fn main() -> anyhow::Result<()> {
                 // first means the worst case is a shown code for an unwritten key (init
                 // simply re-runs and mints a fresh one), never a lost escrow.
                 print_recovery_code(&code);
-                cairn_node::keystore::generate_sealed(&cli.key, &op, &code)?
+                let kp = cairn_node::keystore::generate_sealed(&cli.key, &op, &code)?;
+                // Establish the day-one local-state escrow (ADR-0026 slice D): a long-lived
+                // local-state DEK dual-wrapped under the SAME two secrets. Must happen here,
+                // while both are in hand — it cannot be retrofitted onto state accrued later.
+                // `overwrite=true`: the key was just minted, so any stale sidecar belongs to a
+                // dead key and must be replaced under these fresh secrets.
+                establish_local_state_escrow(&cli.key, &op, &code, true)?;
+                kp
             };
             let node_id = cairn_node::identity::provision(&db, &sk, &kid, &name, &address).await?;
             println!("provisioned node {node_id}\nfingerprint {}", cairn_event::short_fingerprint(&kid)?);
@@ -236,7 +307,31 @@ async fn main() -> anyhow::Result<()> {
             // (silent escrow loss). The shown-once code is the critical output.
             print_recovery_code(&code);
             cairn_node::keystore::seal_existing(&cli.key, &op, &code)?;
+            // `overwrite=true`: sealing mints a FRESH recovery code, so the LSK must be
+            // re-wrapped under it. A pre-existing `.lsk` (e.g. from an earlier
+            // establish-local-state-key on the still-plaintext key) would otherwise stay
+            // wrapped under the old code and desync from the just-resealed signing key.
+            establish_local_state_escrow(&cli.key, &op, &code, true)?;
             println!("key at {} sealed.", cli.key.display());
+        }
+        Cmd::EstablishLocalStateKey { passphrase } => {
+            let op = resolve_passphrase(passphrase)?;
+            // The recovery code is the OFF-NODE secret; the node never stored it, so the
+            // operator must type the one shown at `init`/`seal-key`.
+            let code = Zeroizing::new(
+                rpassword::prompt_password("recovery code (from init/seal-key): ")?);
+            // Reject whitespace-only input, not just empty: `normalize_recovery_code`
+            // (inside `establish_lsk`) strips ALL spacing, so a code of "   " would
+            // normalize to empty and wrap the LSK under an effectively-empty recovery
+            // secret. Trim only for the guard — pass the ORIGINAL `code` on, since
+            // normalization already handles spacing/case during the wrap.
+            if code.trim().is_empty() {
+                anyhow::bail!("no recovery code provided");
+            }
+            // `overwrite=false`: this is the explicit "set up the escrow" verb, so refuse to
+            // silently clobber a working escrow that protects already-written exports.
+            establish_local_state_escrow(&cli.key, &op, &code, false)?;
+            println!("local-state escrow established.");
         }
         Cmd::Identity => {
             let db = cairn_node::db::connect(&cli.conn).await?;
@@ -338,11 +433,12 @@ async fn main() -> anyhow::Result<()> {
             println!("dr_escrow     {}", st.dr_escrow);
             println!("recovery_esc  {}", st.recovery_escrow);
             println!("last_backup   {}", st.last_backup);
+            println!("local_state   {}", st.local_state);
             if let Some(old) = &st.supersedes {
                 println!("supersedes    {old}");
             }
         }
-        Cmd::Backup { to } => {
+        Cmd::Backup { to, passphrase } => {
             // Reads node_event (any role with SELECT works) and writes a self-verifying
             // medium; no signing key is loaded. Health is recorded only after the medium
             // re-reads and verifies (see backup_to), so it never over-claims.
@@ -360,6 +456,33 @@ async fn main() -> anyhow::Result<()> {
                 to.display()
             );
             println!("backup health recorded at {}", health_path.display());
+            // ADR-0026 slice D: co-locate the sealed local-state export beside the medium,
+            // IF the local-state escrow exists. Degrades honestly (warn, never fail the
+            // event backup) when the escrow is absent — the events are the load-bearing copy.
+            let sidecar = cairn_node::localstate::lsk_sidecar_path_for(&cli.key);
+            match std::fs::read(&sidecar).ok()
+                .and_then(|b| cairn_node::localstate::parse_sidecar(&b).ok()) {
+                Some(wraps) => {
+                    // The sealed export is OPTIONAL — the event medium + health are ALREADY
+                    // written (the load-bearing copy). So ANY failure here (a passphrase an
+                    // unattended/cron run cannot supply, a wrong passphrase, an I/O error)
+                    // degrades honestly: warn + skip, exactly like the absent-escrow branch
+                    // below. It must NEVER abort an already-complete event backup with a
+                    // non-zero exit — that would page an operator over a backup that succeeded.
+                    match seal_and_write_local_state_export(&db, &wraps, passphrase, &to).await {
+                        Ok(export_path) =>
+                            println!("local-state exported to {}", export_path.display()),
+                        Err(e) => eprintln!(
+                            "WARNING: local-state export skipped: {e:#}. Backed up events only \
+                             (they are the load-bearing copy and are safe); set \
+                             CAIRN_KEY_PASSPHRASE or pass --passphrase to write the sealed export."),
+                    }
+                }
+                None => eprintln!(
+                    "WARNING: no local-state escrow ({} absent) — backed up events only; \
+                     run `cairn-node establish-local-state-key` to enable the sealed export",
+                    sidecar.display()),
+            }
         }
         Cmd::VerifyBackup { from } => {
             // Offline, no DB, no key: read the medium and check every signature. A
@@ -424,7 +547,12 @@ async fn main() -> anyhow::Result<()> {
                 // Printing first means the worst case is a shown code for an unwritten key
                 // (restore simply re-runs), never a permanently sealed, unrecoverable node.
                 print_recovery_code(&code);
-                cairn_node::keystore::generate_sealed(&cli.key, &op, &code)?
+                let kp = cairn_node::keystore::generate_sealed(&cli.key, &op, &code)?;
+                // The restored node gets its OWN day-one local-state escrow under its NEW
+                // secrets (ADR-0026 slice D) — the old `.lsk` was on the dead disk.
+                // `overwrite=true`: the key was just minted; replace any stale sidecar.
+                establish_local_state_escrow(&cli.key, &op, &code, true)?;
+                kp
             };
 
             // 5. Apply old events through the self-trusting door (db still un-enrolled),
@@ -432,6 +560,42 @@ async fn main() -> anyhow::Result<()> {
             let applied = cairn_node::restore::apply_medium(&db, &events).await?;
             let outcome = cairn_node::restore::finalize_identity(
                 &db, &sk, &kid, &name, &address, &dead).await?;
+
+            // ADR-0026 slice D: if a sealed local-state export sits beside the medium,
+            // unseal it with the OLD recovery code and apply it (empty/noop today), then
+            // give the NEW node its OWN local-state escrow. Absent export => skip (the node
+            // restores from events alone — honest degradation).
+            let export_path = cairn_node::localstate::localstate_path_for(&from);
+            if let Ok(bytes) = std::fs::read(&export_path) {
+                // A corrupt/bit-rotted export sibling must NOT bail — by this point the node
+                // is ALREADY fully restored (key minted, events applied, identity finalized),
+                // and off-site media bit-rot is a likely failure. Local-state is OPTIONAL and
+                // the events are the load-bearing copy, so degrade honestly: warn and skip.
+                match cairn_node::localstate::parse_container(&bytes) {
+                    Ok(sealed) => {
+                        eprintln!("Local-state export found. Enter the OLD node's recovery code to unseal it:");
+                        let old_code = Zeroizing::new(
+                            rpassword::prompt_password("old recovery code: ")?);
+                        // Wrong recovery-code guess degrades the same way (warn + skip) — a bad
+                        // guess at the OPTIONAL local-state must not kill an otherwise-complete
+                        // restore. Only a non-empty bundle this version cannot apply stays loud
+                        // (the `?` on apply_local_state below).
+                        match cairn_node::localstate::unseal_local_state_rec(&sealed, &old_code) {
+                            Some(plaintext) => {
+                                let bundle = cairn_node::localstate::from_cbor(&plaintext)?;
+                                cairn_node::localstate::apply_local_state(&db, &bundle).await?;
+                                println!("local-state restored from {}", export_path.display());
+                            }
+                            None => eprintln!(
+                                "WARNING: could not unseal the local-state export — wrong recovery code? \
+                                 Skipping local-state; node restores from events alone."),
+                        }
+                    }
+                    Err(_) => eprintln!(
+                        "WARNING: local-state export present at {} but unreadable (corrupt/bit-rotted?) — \
+                         skipping local-state; node restores from events alone.", export_path.display()),
+                }
+            }
 
             println!("restored {applied} event(s) from {}", from.display());
             println!("new node {}", outcome.new_node_id_hex);
