@@ -65,10 +65,40 @@ pub fn serialize_medium(events: &[Vec<u8>]) -> Vec<u8> {
     let mut out = Vec::with_capacity(MEDIUM_MAGIC.len() + total);
     out.extend_from_slice(MEDIUM_MAGIC);
     for e in events {
+        // The `as u32` length prefix mirrors `MAX_EVENT_BYTES`/`parse_medium`. Real signed
+        // node-events are a few hundred bytes and the wire layer caps them well under 4 GiB,
+        // so this is unreachable today — but assert the invariant so a future change that
+        // lifts the upstream cap can never silently truncate a length prefix here.
+        debug_assert!(
+            e.len() <= MAX_EVENT_BYTES,
+            "event of {} bytes exceeds the {MAX_EVENT_BYTES}-byte medium frame cap",
+            e.len()
+        );
         out.extend_from_slice(&(e.len() as u32).to_be_bytes());
         out.extend_from_slice(e);
     }
     out
+}
+
+/// Serialize an event set into a medium image and self-verify it in one step, returning the
+/// verified bytes — or an error if the set fails its own signature check.
+///
+/// This runs BEFORE the image is written over the live medium (see [`backup_to`]). That
+/// ordering is the load-bearing half of the "never over-claim" guarantee: a re-backup
+/// commonly targets a fixed path, so if a serialization/signing regression produced a set
+/// that fails verification we must reject it here — *before* the atomic rename — rather than
+/// overwrite the previous good medium with an unrestorable one and only then notice.
+pub fn serialize_and_verify(events: &[Vec<u8>]) -> Result<Vec<u8>, BackupError> {
+    let image = serialize_medium(events);
+    let report = verify_medium_bytes(&image)?;
+    if !report.all_intact() {
+        return Err(BackupError::Decode(format!(
+            "refusing to write a medium that fails its own self-verification \
+             ({} of {} events intact, first bad at index {:?})",
+            report.intact, report.total, report.first_bad
+        )));
+    }
+    Ok(image)
 }
 
 /// Parse a backup-medium byte image back into its signed events. Pure.
@@ -266,15 +296,18 @@ pub async fn read_event_set(db: &tokio_postgres::Client) -> anyhow::Result<Vec<V
 
 /// Back up the node's event set to `medium_path`, then record health at `health_path`.
 ///
-/// Ordering is deliberately fail-safe and read-after-write verified:
-///   1. write the medium atomically (a crash here never destroys the previous good
-///      medium — the rename either lands whole or not at all);
-///   2. re-read and self-verify it — if the freshly-written medium does not verify, we
-///      BAIL WITHOUT touching health, so the recorded "last backup" always refers to a
-///      medium that actually restores;
-///   3. only then update the health sidecar.
+/// Ordering is deliberately fail-safe and verify-BEFORE-write:
+///   1. serialize the medium and self-verify the image IN MEMORY — if the set fails its
+///      own signature check we BAIL before touching disk, so the previous good medium at
+///      `medium_path` is left completely untouched (a re-backup over a fixed path can
+///      never destroy a restorable medium with an unrestorable one);
+///   2. write the verified image atomically (a crash here never destroys the previous good
+///      medium either — the rename either lands whole or not at all);
+///   3. re-read and self-verify the on-disk bytes — a defence-in-depth tripwire for an fs
+///      bug between write and rename; still BAIL WITHOUT touching health if it fails;
+///   4. only then update the health sidecar.
 ///
-/// A crash between (2) and (3) leaves health UNDER-reporting (older / "never"), which is
+/// A crash between (3) and (4) leaves health UNDER-reporting (older / "never"), which is
 /// the correct direction for a safety-net indicator — it must never over-claim.
 ///
 /// `now_unix` is injected (operational wall-clock) so the function stays deterministic
@@ -287,13 +320,17 @@ pub async fn backup_to(
 ) -> anyhow::Result<BackupReport> {
     use anyhow::Context;
     let events = read_event_set(db).await?;
-    let medium = serialize_medium(&events);
+
+    // Verify the image BEFORE it can overwrite the live medium: a set that fails its own
+    // signature check is rejected here, with the previous good medium still intact on disk.
+    let medium = serialize_and_verify(&events)
+        .context("self-verifying the backup image before writing (previous medium untouched)")?;
 
     crate::fsio::atomic_write(medium_path, &medium, Some(0o600))
         .with_context(|| format!("writing backup medium to {}", medium_path.display()))?;
 
-    // Read-after-write: the medium we just wrote must parse AND every event must verify,
-    // or we refuse to advance health (so the operator is never told a broken backup is good).
+    // Read-after-write: the on-disk bytes must still parse AND verify (catches an fs/rename
+    // bug), or we refuse to advance health (never tell the operator a broken backup is good).
     let readback = std::fs::read(medium_path)
         .with_context(|| format!("re-reading backup medium {}", medium_path.display()))?;
     let report = verify_medium_bytes(&readback)
@@ -418,6 +455,31 @@ mod tests {
         // It still parses structurally (length prefixes intact) but fails verification.
         let report = verify_medium_bytes(&image).unwrap();
         assert!(!report.all_intact(), "a content bit-flip must fail the signature check");
+    }
+
+    #[test]
+    fn serialize_and_verify_returns_a_verified_image_for_an_intact_set() {
+        let k = sk();
+        let events: Vec<Vec<u8>> = (0..3).map(|n| synth_event(&k, n)).collect();
+        let image = serialize_and_verify(&events).expect("an intact set must serialize + verify");
+        assert!(image.starts_with(MEDIUM_MAGIC));
+        assert_eq!(parse_medium(&image).unwrap(), events, "the returned bytes are the medium image");
+    }
+
+    #[test]
+    fn serialize_and_verify_refuses_a_set_with_a_tampered_event() {
+        // The load-bearing guarantee behind verify-BEFORE-write: a set that fails its OWN
+        // signature check is rejected before any bytes reach disk, so a re-backup over a
+        // fixed medium path can never overwrite the previous good medium with an
+        // unrestorable one.
+        let k = sk();
+        let mut events: Vec<Vec<u8>> = (0..3).map(|n| synth_event(&k, n)).collect();
+        let mid = events[1].len() / 2;
+        events[1][mid] ^= 0xff;
+        assert!(
+            matches!(serialize_and_verify(&events), Err(BackupError::Decode(_))),
+            "a set that fails self-verification must be refused, not serialized to a medium"
+        );
     }
 
     #[test]

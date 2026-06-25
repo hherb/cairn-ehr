@@ -100,8 +100,10 @@ local PG16 + `cairn_pgx`.
   on PG16 + `cairn_pgx`, clippy clean.
 - ~~**backup-as-cold-peer** + backup-health (slice B)~~ **export half closed this session**: `backup`/`verify-backup`
   CLI + `last_backup` status line; signed-event medium, self-verifying via the existing signature invariant (tamper
-  → non-zero exit); fail-safe node-local health sidecar; read-after-write verify gates the health update so it never
-  over-claims. New `backup.rs` (pure medium format + verify + health) + shared `fsio` atomic-write. **Restore (apply)
+  → non-zero exit); fail-safe node-local health sidecar; **verify-before-write** (the image self-verifies *before* the
+  atomic rename, so a bad set never overwrites the previous good medium) plus a read-after-write tripwire gate the
+  health update so it never over-claims. New `backup.rs` (pure medium format + verify + health) + shared `fsio`
+  atomic-write. **Restore (apply)
   half = slice C** ([issue #50](https://github.com/cairn-ehr/cairn-ehr/issues/50)): a self-trusting restore door
   (the live `apply_remote_node_event` is the *peer*-admission gate — it rejects a node rehydrating its own history)
   coupled with new-identity `supersede` (no `supersede` op for *nodes* yet; signing key never backed up).
