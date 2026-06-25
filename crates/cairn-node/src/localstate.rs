@@ -252,6 +252,34 @@ pub fn lsk_sidecar_path_for(key: &Path) -> PathBuf {
     key.with_file_name(name)
 }
 
+/// Read the node's exportable local state from the DB. At the federation-node tier there
+/// is no clinical surface — no DEK store, no draft store, no config table — so this returns
+/// the EMPTY bundle. THIS IS THE SEAM the clinical tier extends: it will read the keystore's
+/// node-default + sealed-episode DEKs (minus erased — ADR-0026 point 6), node config, and
+/// the draft/scratchpad store into the typed slots. The signing key is never read here
+/// (point 4). Async + DB-handle so the future shape needs no signature change.
+pub async fn read_local_state(_db: &tokio_postgres::Client) -> anyhow::Result<LocalState> {
+    Ok(LocalState::empty())
+}
+
+/// Apply a restored local-state bundle into a fresh node. At this tier the bundle is empty,
+/// so this is a validated noop — it asserts the bundle carries no content it cannot yet
+/// honour, rather than silently dropping it. THIS IS THE SEAM the clinical tier extends: it
+/// will load DEKs into the keystore, restore config, and rehydrate drafts. A non-empty
+/// bundle here means a newer node wrote content an older restorer cannot apply — fail loud.
+pub async fn apply_local_state(
+    _db: &tokio_postgres::Client,
+    ls: &LocalState,
+) -> anyhow::Result<()> {
+    if !ls.is_empty() {
+        anyhow::bail!(
+            "restored local-state bundle carries content this node version cannot apply \
+             (the clinical-tier apply seam is not built yet); refusing to silently drop it"
+        );
+    }
+    Ok(())
+}
+
 /// The `status` local-state line. Pure (presence flags injected). Honest about BOTH the
 /// day-one escrow (`.lsk` present) and whether an export has been written. Absent escrow is
 /// the loud case — a node accruing real content without the channel would lose it on a dead disk.
