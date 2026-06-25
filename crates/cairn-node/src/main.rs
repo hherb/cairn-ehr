@@ -80,18 +80,56 @@ fn print_recovery_code(code: &str) {
 
 /// Write the `.lsk` sidecar (the day-one local-state escrow, ADR-0026 slice D). Mints +
 /// dual-wraps a long-lived local-state DEK and atomically writes it 0600 beside the key.
-/// Errors loudly if the sidecar already exists (no silent overwrite of an escrow).
-fn establish_local_state_escrow(key_path: &std::path::Path, op_pass: &str, recovery_code: &str)
-    -> anyhow::Result<()> {
+///
+/// `overwrite` selects the pre-existing-escrow policy:
+///   - `false` — the explicit `establish-local-state-key` verb: REFUSE if a sidecar already
+///     exists, so an operator can never silently clobber a working escrow.
+///   - `true` — the key-minting / re-sealing paths (`init`, `seal-key`, `restore`): the key's
+///     escrow secrets were just (re)minted here, so the LSK MUST travel with them. Replace any
+///     stale sidecar so the `.lsk` and the signing key always share one coherent secret set.
+///     Without this, `seal-key` on a node that already has a `.lsk` (e.g. from a prior
+///     `establish-local-state-key` on a still-plaintext key) would reseal the key under a fresh
+///     recovery code, then BAIL on the existing sidecar — leaving the LSK wrapped under the OLD
+///     code, desynced, with the command erroring after the key is already resealed. Existing
+///     exports stay recoverable regardless: every `CAIRNL1` container is self-contained (carries
+///     its own wraps), so the old recovery code still unseals already-written exports; only
+///     FUTURE exports use the new sidecar.
+fn establish_local_state_escrow(
+    key_path: &std::path::Path, op_pass: &str, recovery_code: &str, overwrite: bool,
+) -> anyhow::Result<()> {
     use cairn_node::localstate::{establish_lsk, lsk_sidecar_path_for, serialize_sidecar};
     let sidecar = lsk_sidecar_path_for(key_path);
-    if sidecar.exists() {
+    if sidecar.exists() && !overwrite {
         anyhow::bail!("local-state escrow already exists at {}", sidecar.display());
     }
+    let replacing = sidecar.exists();
     let wraps = establish_lsk(op_pass, recovery_code)?;
     cairn_node::fsio::atomic_write(&sidecar, &serialize_sidecar(&wraps), Some(0o600))?;
-    eprintln!("local-state escrow established at {}", sidecar.display());
+    eprintln!(
+        "local-state escrow {} at {}",
+        if replacing { "re-established (replaced stale sidecar)" } else { "established" },
+        sidecar.display()
+    );
     Ok(())
+}
+
+/// Seal the node's local-state bundle and write the `CAIRNL1` export sibling beside `medium`
+/// (ADR-0026 slice D). Returns the export path on success. Kept separate from the `backup`
+/// arm so the caller can treat EVERY failure here as a warn-and-skip degradation: the export
+/// is OPTIONAL and the event medium is already written (the load-bearing copy), so a missing
+/// passphrase (unattended run), a wrong passphrase, or an I/O error must never abort backup.
+async fn seal_and_write_local_state_export(
+    db: &tokio_postgres::Client,
+    wraps: &cairn_node::localstate::LskWraps,
+    passphrase: Option<String>,
+    medium: &std::path::Path,
+) -> anyhow::Result<PathBuf> {
+    let op = resolve_passphrase(passphrase)?; // op-pass unwraps the LSK
+    let bundle = cairn_node::localstate::read_local_state(db).await?;
+    let container = cairn_node::localstate::build_export_container(wraps, &op, &bundle)?;
+    let export_path = cairn_node::localstate::localstate_path_for(medium);
+    cairn_node::fsio::atomic_write(&export_path, &container, Some(0o600))?;
+    Ok(export_path)
 }
 
 #[derive(Parser)]
@@ -239,7 +277,9 @@ async fn main() -> anyhow::Result<()> {
                 // Establish the day-one local-state escrow (ADR-0026 slice D): a long-lived
                 // local-state DEK dual-wrapped under the SAME two secrets. Must happen here,
                 // while both are in hand — it cannot be retrofitted onto state accrued later.
-                establish_local_state_escrow(&cli.key, &op, &code)?;
+                // `overwrite=true`: the key was just minted, so any stale sidecar belongs to a
+                // dead key and must be replaced under these fresh secrets.
+                establish_local_state_escrow(&cli.key, &op, &code, true)?;
                 kp
             };
             let node_id = cairn_node::identity::provision(&db, &sk, &kid, &name, &address).await?;
@@ -267,7 +307,11 @@ async fn main() -> anyhow::Result<()> {
             // (silent escrow loss). The shown-once code is the critical output.
             print_recovery_code(&code);
             cairn_node::keystore::seal_existing(&cli.key, &op, &code)?;
-            establish_local_state_escrow(&cli.key, &op, &code)?;
+            // `overwrite=true`: sealing mints a FRESH recovery code, so the LSK must be
+            // re-wrapped under it. A pre-existing `.lsk` (e.g. from an earlier
+            // establish-local-state-key on the still-plaintext key) would otherwise stay
+            // wrapped under the old code and desync from the just-resealed signing key.
+            establish_local_state_escrow(&cli.key, &op, &code, true)?;
             println!("key at {} sealed.", cli.key.display());
         }
         Cmd::EstablishLocalStateKey { passphrase } => {
@@ -284,7 +328,9 @@ async fn main() -> anyhow::Result<()> {
             if code.trim().is_empty() {
                 anyhow::bail!("no recovery code provided");
             }
-            establish_local_state_escrow(&cli.key, &op, &code)?;
+            // `overwrite=false`: this is the explicit "set up the escrow" verb, so refuse to
+            // silently clobber a working escrow that protects already-written exports.
+            establish_local_state_escrow(&cli.key, &op, &code, false)?;
             println!("local-state escrow established.");
         }
         Cmd::Identity => {
@@ -417,14 +463,20 @@ async fn main() -> anyhow::Result<()> {
             match std::fs::read(&sidecar).ok()
                 .and_then(|b| cairn_node::localstate::parse_sidecar(&b).ok()) {
                 Some(wraps) => {
-                    let op = resolve_passphrase(passphrase)?; // op-pass unwraps the LSK
-                    let bundle = cairn_node::localstate::read_local_state(&db).await?;
-                    let sealed = cairn_node::localstate::seal_local_state(
-                        &wraps, &op, &cairn_node::localstate::to_cbor(&bundle))?;
-                    let export_path = cairn_node::localstate::localstate_path_for(&to);
-                    cairn_node::fsio::atomic_write(
-                        &export_path, &cairn_node::localstate::serialize_container(&sealed), Some(0o600))?;
-                    println!("local-state exported to {}", export_path.display());
+                    // The sealed export is OPTIONAL — the event medium + health are ALREADY
+                    // written (the load-bearing copy). So ANY failure here (a passphrase an
+                    // unattended/cron run cannot supply, a wrong passphrase, an I/O error)
+                    // degrades honestly: warn + skip, exactly like the absent-escrow branch
+                    // below. It must NEVER abort an already-complete event backup with a
+                    // non-zero exit — that would page an operator over a backup that succeeded.
+                    match seal_and_write_local_state_export(&db, &wraps, passphrase, &to).await {
+                        Ok(export_path) =>
+                            println!("local-state exported to {}", export_path.display()),
+                        Err(e) => eprintln!(
+                            "WARNING: local-state export skipped: {e:#}. Backed up events only \
+                             (they are the load-bearing copy and are safe); set \
+                             CAIRN_KEY_PASSPHRASE or pass --passphrase to write the sealed export."),
+                    }
                 }
                 None => eprintln!(
                     "WARNING: no local-state escrow ({} absent) — backed up events only; \
@@ -498,7 +550,8 @@ async fn main() -> anyhow::Result<()> {
                 let kp = cairn_node::keystore::generate_sealed(&cli.key, &op, &code)?;
                 // The restored node gets its OWN day-one local-state escrow under its NEW
                 // secrets (ADR-0026 slice D) — the old `.lsk` was on the dead disk.
-                establish_local_state_escrow(&cli.key, &op, &code)?;
+                // `overwrite=true`: the key was just minted; replace any stale sidecar.
+                establish_local_state_escrow(&cli.key, &op, &code, true)?;
                 kp
             };
 

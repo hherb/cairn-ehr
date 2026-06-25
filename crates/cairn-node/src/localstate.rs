@@ -216,6 +216,20 @@ pub fn parse_container(bytes: &[u8]) -> Result<SealedLocalState, LocalStateError
     ciborium::from_reader(body).map_err(|e| LocalStateError::Decode(e.to_string()))
 }
 
+/// Seal a bundle for export AND frame it as the on-disk `CAIRNL1` container, in one fallible
+/// step. Combining the seal and the framing lets the `backup` caller treat the whole optional
+/// export as a SINGLE degrade-on-error operation (warn + skip on failure, never abort backup).
+/// Errors only if the op-pass cannot unwrap the LSK or AEAD fails — never frames a container
+/// under a wrong/garbage key.
+pub fn build_export_container(
+    wraps: &LskWraps,
+    op_pass: &str,
+    bundle: &LocalState,
+) -> Result<Vec<u8>, LocalStateError> {
+    let sealed = seal_local_state(wraps, op_pass, &to_cbor(bundle))?;
+    Ok(serialize_container(&sealed))
+}
+
 /// Serialize the LSK wraps to magic-prefixed CBOR for the `.lsk` sidecar. Pure.
 pub fn serialize_sidecar(w: &LskWraps) -> Vec<u8> {
     let mut out = SIDECAR_MAGIC.to_vec();
@@ -428,6 +442,29 @@ mod tests {
         assert_eq!(
             unseal_local_state_rec(&back, REC).as_deref(),
             Some(b"x".as_slice())
+        );
+    }
+
+    #[test]
+    fn build_export_container_frames_a_sealed_bundle_and_rejects_a_wrong_op_pass() {
+        // The `backup` arm calls this as ONE fallible step it degrades on (warn + skip) so a
+        // missing/wrong passphrase never aborts an already-complete event backup.
+        let wraps = establish_lsk(OP, REC).unwrap();
+        let bytes = build_export_container(&wraps, OP, &LocalState::empty())
+            .expect("the right op-pass must seal + frame the export");
+        assert!(
+            bytes.starts_with(b"CAIRNL1\n"),
+            "the built export must carry the container magic"
+        );
+        // The off-node recovery code still unseals the framed container to the empty bundle.
+        let parsed = parse_container(&bytes).unwrap();
+        let plaintext = unseal_local_state_rec(&parsed, REC).expect("recovery code must unseal");
+        assert!(from_cbor(&plaintext).unwrap().is_empty());
+        // A wrong op-pass cannot unwrap the LSK, so building fails rather than emitting a
+        // container under a wrong/garbage key — this Err is exactly what drives the warn+skip.
+        assert!(
+            build_export_container(&wraps, "wrong-op", &LocalState::empty()).is_err(),
+            "a wrong op-pass must fail the build, not produce a bad container"
         );
     }
 

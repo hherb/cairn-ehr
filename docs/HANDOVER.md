@@ -13,10 +13,15 @@ backup time) and `restore` decrypts via the old recovery code. The **signing key
 `crates/cairn-node/src/localstate.rs` (versioned `LocalState` with typed-empty slots + additive CBOR; reuses `seal.rs`
 primitives — no duplicated crypto; `CAIRNL1` export container co-located with the backup medium + `CAIRNX1` `.lsk`
 sidecar; DB read/apply **seams** the clinical tier extends, empty/noop today). CLI: `.lsk` established at
-`init`/`seal-key`, new `establish-local-state-key` verb, `backup` writes the export sibling, `restore` consumes it
-(**honest-degrades** — warn+skip — on absent/corrupt/unsealable export), `status` `local_state` line. **No DB schema
-change.** Built via brainstorm→plan→subagent-SDD (6 TDD tasks, per-task + opus whole-branch review; spec+plan under
-`docs/superpowers/`). Full `cairn-node` suite green (19/19 binaries). Follow-up: [issue #54](https://github.com/cairn-ehr/cairn-ehr/issues/54)
+`init`/`seal-key`, new `establish-local-state-key` verb, `backup` writes the export sibling, `restore` consumes it,
+`status` `local_state` line. **No DB schema change.** Built via brainstorm→plan→subagent-SDD (6 TDD tasks, per-task +
+opus whole-branch review; spec+plan under `docs/superpowers/`). **Honest degradation on both ends** (the events are the
+load-bearing copy, the export is optional): `restore` warns+skips an absent/corrupt/unsealable export; `backup` warns+skips
+when the export can't be sealed (no passphrase in an unattended run, wrong passphrase, I/O error) rather than aborting an
+already-complete event backup — review fix, drove the `localstate::build_export_container` helper. The day-one escrow is
+**re-established under fresh secrets** on every key-minting/re-sealing path (`init`/`seal-key`/`restore`, `overwrite=true`)
+so the `.lsk` never desyncs from a just-resealed signing key; the explicit `establish-local-state-key` verb still refuses
+to clobber an existing escrow — review fix. Full `cairn-node` suite green (19/19 binaries). Follow-up: [issue #54](https://github.com/cairn-ehr/cairn-ehr/issues/54)
 (uniform LSK/DEK zeroization across `seal.rs`+`localstate.rs` — deferred, consistent with existing convention).
 
 **Prior sessions (2026-06-25):** ADR-0026 **slice C** — restore (apply) + new-identity `supersede`
