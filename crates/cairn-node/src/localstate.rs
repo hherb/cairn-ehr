@@ -19,6 +19,12 @@ use crate::seal::{
     self, aead_decrypt, aead_encrypt, normalize_recovery_code, rand_bytes, ArgonParams, Wrap,
 };
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
+
+/// Magic for the `.lsk` sidecar (the dual-wrapped LSK). 8 bytes, like CAIRNK1/CAIRNB1.
+const SIDECAR_MAGIC: &[u8] = b"CAIRNX1\n";
+/// Magic for the export container (the sealed local-state bundle).
+const CONTAINER_MAGIC: &[u8] = b"CAIRNL1\n";
 
 #[derive(thiserror::Error, Debug)]
 pub enum LocalStateError {
@@ -195,6 +201,74 @@ pub fn unseal_local_state_rec(s: &SealedLocalState, recovery_code: &str) -> Opti
     aead_decrypt(&lsk, &s.payload_nonce, &s.payload_ct)
 }
 
+/// Serialize a sealed export to magic-prefixed CBOR for the `CAIRNL1` sibling file. Pure.
+pub fn serialize_container(s: &SealedLocalState) -> Vec<u8> {
+    let mut out = CONTAINER_MAGIC.to_vec();
+    ciborium::into_writer(s, &mut out).expect("CBOR serialization of SealedLocalState cannot fail");
+    out
+}
+
+/// Parse a `CAIRNL1` container. Errors (never panics) on bad magic / malformed body.
+pub fn parse_container(bytes: &[u8]) -> Result<SealedLocalState, LocalStateError> {
+    let body = bytes
+        .strip_prefix(CONTAINER_MAGIC)
+        .ok_or_else(|| LocalStateError::Decode("missing CAIRNL1 magic".into()))?;
+    ciborium::from_reader(body).map_err(|e| LocalStateError::Decode(e.to_string()))
+}
+
+/// Serialize the LSK wraps to magic-prefixed CBOR for the `.lsk` sidecar. Pure.
+pub fn serialize_sidecar(w: &LskWraps) -> Vec<u8> {
+    let mut out = SIDECAR_MAGIC.to_vec();
+    ciborium::into_writer(w, &mut out).expect("CBOR serialization of LskWraps cannot fail");
+    out
+}
+
+/// Parse a `.lsk` sidecar. Errors on bad magic / malformed body.
+pub fn parse_sidecar(bytes: &[u8]) -> Result<LskWraps, LocalStateError> {
+    let body = bytes
+        .strip_prefix(SIDECAR_MAGIC)
+        .ok_or_else(|| LocalStateError::Decode("missing CAIRNX1 magic".into()))?;
+    ciborium::from_reader(body).map_err(|e| LocalStateError::Decode(e.to_string()))
+}
+
+/// The export sibling for a backup medium: `<medium>.localstate` in the same directory,
+/// so the operator carries ONE artifact off-site (ADR-0026 point 3 — "same artifact"). Pure.
+pub fn localstate_path_for(medium: &Path) -> PathBuf {
+    let mut name = medium
+        .file_name()
+        .map(|n| n.to_os_string())
+        .unwrap_or_default();
+    name.push(".localstate");
+    medium.with_file_name(name)
+}
+
+/// The `.lsk` sidecar for a key file: `<key>.lsk`, sibling of the signing key. Pure.
+pub fn lsk_sidecar_path_for(key: &Path) -> PathBuf {
+    let mut name = key
+        .file_name()
+        .map(|n| n.to_os_string())
+        .unwrap_or_default();
+    name.push(".lsk");
+    key.with_file_name(name)
+}
+
+/// The `status` local-state line. Pure (presence flags injected). Honest about BOTH the
+/// day-one escrow (`.lsk` present) and whether an export has been written. Absent escrow is
+/// the loud case — a node accruing real content without the channel would lose it on a dead disk.
+pub fn describe_local_state(lsk_present: bool, export_present: bool) -> String {
+    match (lsk_present, export_present) {
+        (false, _) => {
+            "no local-state escrow — run `cairn-node establish-local-state-key`".to_string()
+        }
+        (true, false) => {
+            "escrow set (dual-recipient); no export yet — run `cairn-node backup`".to_string()
+        }
+        (true, true) => {
+            "escrow set (dual-recipient); exported alongside the last backup".to_string()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -309,6 +383,74 @@ mod tests {
         // wrong/garbage key.
         let wraps = establish_lsk(OP, REC).unwrap();
         assert!(seal_local_state(&wraps, "wrong-op", &to_cbor(&LocalState::empty())).is_err());
+    }
+
+    use std::path::Path;
+
+    #[test]
+    fn container_roundtrips_and_has_magic() {
+        let wraps = establish_lsk(OP, REC).unwrap();
+        let sealed = seal_local_state(&wraps, OP, b"x").unwrap();
+        let bytes = serialize_container(&sealed);
+        assert!(
+            bytes.starts_with(b"CAIRNL1\n"),
+            "export container must carry CAIRNL1 magic"
+        );
+        let back = parse_container(&bytes).unwrap();
+        assert_eq!(
+            unseal_local_state_rec(&back, REC).as_deref(),
+            Some(b"x".as_slice())
+        );
+    }
+
+    #[test]
+    fn sidecar_roundtrips_and_has_magic() {
+        let wraps = establish_lsk(OP, REC).unwrap();
+        let bytes = serialize_sidecar(&wraps);
+        assert!(
+            bytes.starts_with(b"CAIRNX1\n"),
+            "lsk sidecar must carry CAIRNX1 magic"
+        );
+        let back = parse_sidecar(&bytes).unwrap();
+        // The recovered wraps still unseal an export sealed under the originals.
+        let sealed = seal_local_state(&back, OP, b"y").unwrap();
+        assert_eq!(
+            unseal_local_state_op(&sealed, OP).as_deref(),
+            Some(b"y".as_slice())
+        );
+    }
+
+    #[test]
+    fn parse_rejects_wrong_or_missing_magic() {
+        assert!(parse_container(b"nope").is_err());
+        assert!(parse_sidecar(b"nope").is_err());
+        // A container's bytes are not a valid sidecar and vice-versa (distinct magics).
+        let wraps = establish_lsk(OP, REC).unwrap();
+        let container = serialize_container(&seal_local_state(&wraps, OP, b"z").unwrap());
+        assert!(
+            parse_sidecar(&container).is_err(),
+            "a container must not parse as a sidecar"
+        );
+    }
+
+    #[test]
+    fn paths_are_deterministic_siblings() {
+        assert_eq!(
+            localstate_path_for(Path::new("/mnt/backup/cairn.medium")),
+            Path::new("/mnt/backup/cairn.medium.localstate")
+        );
+        assert_eq!(
+            lsk_sidecar_path_for(Path::new("/var/lib/cairn/node.key")),
+            Path::new("/var/lib/cairn/node.key.lsk")
+        );
+    }
+
+    #[test]
+    fn describe_local_state_is_honest_about_escrow_and_export() {
+        assert!(describe_local_state(false, false).contains("no local-state escrow"));
+        assert!(describe_local_state(true, false).contains("escrow set"));
+        assert!(describe_local_state(true, false).contains("no export yet"));
+        assert!(describe_local_state(true, true).contains("exported"));
     }
 
     #[test]
