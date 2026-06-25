@@ -337,6 +337,9 @@ async fn main() -> anyhow::Result<()> {
             println!("dr_escrow     {}", st.dr_escrow);
             println!("recovery_esc  {}", st.recovery_escrow);
             println!("last_backup   {}", st.last_backup);
+            if let Some(old) = &st.supersedes {
+                println!("supersedes    {old}");
+            }
         }
         Cmd::Backup { to } => {
             // Reads node_event (any role with SELECT works) and writes a self-verifying

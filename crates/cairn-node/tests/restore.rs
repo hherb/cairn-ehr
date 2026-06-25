@@ -237,6 +237,26 @@ async fn restore_door_applies_a_non_enroll_event_after_genesis() {
     assert_eq!(author, a_id, "peer event's author resolved to node A's genesis content-address");
 }
 
+/// After a restore, `status` reports the supersede lineage (this node supersedes the dead one).
+#[tokio::test]
+async fn status_reports_supersede_lineage() {
+    let Some(base) = cs() else { eprintln!("skipped: set CAIRN_TEST_PG"); return };
+    let _guard = db::test_serial_guard(&base).await.unwrap();
+    let a = db::connect_and_load_schema(&base).await.unwrap();
+    db::reset_node_federation_tables(&a).await.ok();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let (sk, kid) = keystore::generate_plaintext(&tmp.path().join("a.key")).unwrap();
+    identity::provision(&a, &sk, &kid, "A", "127.0.0.1:7940").await.unwrap();
+    let id = identity::load_local(&a).await.unwrap();
+    let old_hex = "1220".to_string() + &"cd".repeat(32);
+    identity::author_supersede(&a, &sk, &kid, &id.node_id_hex, &old_hex).await.unwrap();
+
+    let st = identity::status(&a, &tmp.path().join("a.key")).await.unwrap();
+    assert_eq!(st.supersedes.as_deref(), Some(old_hex.as_str()),
+        "status must surface the supersede lineage");
+}
+
 /// The restore door's fail-closed behaviour: a non-enroll event applied before its
 /// author's genesis must be rejected with a legible error.
 #[tokio::test]

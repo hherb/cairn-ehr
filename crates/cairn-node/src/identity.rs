@@ -207,6 +207,9 @@ pub struct Status {
     /// "never" warning when absent/unreadable (the fail-safe reading: it can only
     /// under-claim freshness, never assert a backup the node does not hold).
     pub last_backup: String,
+    /// The dead node-id this node supersedes (ADR-0026 slice C), if it was restored from
+    /// a backup under a new identity. `None` for a node provisioned fresh via `init`.
+    pub supersedes: Option<String>,
 }
 
 /// Assemble the node's current status without erroring on a missing keystore.
@@ -289,6 +292,18 @@ pub async fn status(db: &Client, key_path: &Path) -> anyhow::Result<Status> {
     let health = crate::backup::read_health(&crate::backup::health_path_for(key_path));
     let last_backup = crate::backup::describe_health(now_unix, &health);
 
+    // Supersede lineage (ADR-0026 slice C): if THIS node supersedes a dead one, surface it.
+    // `node_lineage.new_node_id` is the author (this node); there is at most one for v1.
+    let supersedes: Option<String> = db
+        .query_opt(
+            "SELECT encode(superseded_node_id,'hex') AS old FROM node_lineage \
+             WHERE new_node_id = (SELECT node_id FROM local_node WHERE id) \
+             ORDER BY hlc_wall DESC, hlc_counter DESC LIMIT 1",
+            &[],
+        )
+        .await?
+        .map(|r| r.get::<_, String>("old"));
+
     Ok(Status {
         // When un-provisioned, surface a legible sentinel rather than a blank
         // node_id, and flag `initialized=false` so callers can prompt for `init`.
@@ -304,6 +319,7 @@ pub async fn status(db: &Client, key_path: &Path) -> anyhow::Result<Status> {
         dr_escrow,
         recovery_escrow,
         last_backup,
+        supersedes,
     })
 }
 
