@@ -431,6 +431,13 @@ mod tests {
             parse_sidecar(&container).is_err(),
             "a container must not parse as a sidecar"
         );
+        // ...and the reverse: the invariant is bidirectional (distinct 8-byte magics),
+        // so a sidecar's bytes must not parse as a container either.
+        let sidecar = serialize_sidecar(&wraps);
+        assert!(
+            parse_container(&sidecar).is_err(),
+            "a sidecar must not parse as a container"
+        );
     }
 
     #[test]
