@@ -15,6 +15,9 @@
 //! day-one piece is `establish_lsk`: state accrued before the channel exists has no
 //! durability path, so the channel must exist from `init`.
 
+use crate::seal::{
+    self, aead_decrypt, aead_encrypt, normalize_recovery_code, rand_bytes, ArgonParams, Wrap,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(thiserror::Error, Debug)]
@@ -96,9 +99,6 @@ pub fn from_cbor(bytes: &[u8]) -> Result<LocalState, LocalStateError> {
     ciborium::from_reader(bytes).map_err(|e| LocalStateError::Decode(e.to_string()))
 }
 
-use crate::seal::{self, aead_decrypt, aead_encrypt, normalize_recovery_code, rand_bytes,
-                  ArgonParams, Wrap};
-
 /// The dual-wraps of a long-lived local-state DEK (LSK), established ONCE at provisioning
 /// (the can't-retrofit day-one piece). A random 32-byte LSK is wrapped under a KEK from the
 /// operational passphrase AND a KEK from the recovery code; either secret recovers it.
@@ -135,24 +135,46 @@ pub fn establish_lsk(op_pass: &str, recovery_code: &str) -> Result<LskWraps, Loc
     let wrap_op = seal::wrap_dek(&lsk, op_pass, &salt_op, &argon)
         .map_err(|e| LocalStateError::Seal(e.to_string()))?;
     // Normalize the recovery code so any spacing/case the human re-types still unseals.
-    let wrap_rec = seal::wrap_dek(&lsk, &normalize_recovery_code(recovery_code), &salt_rec, &argon)
-        .map_err(|e| LocalStateError::Seal(e.to_string()))?;
-    Ok(LskWraps { argon, salt_op, salt_rec, wrap_op, wrap_rec })
+    let wrap_rec = seal::wrap_dek(
+        &lsk,
+        &normalize_recovery_code(recovery_code),
+        &salt_rec,
+        &argon,
+    )
+    .map_err(|e| LocalStateError::Seal(e.to_string()))?;
+    Ok(LskWraps {
+        argon,
+        salt_op,
+        salt_rec,
+        wrap_op,
+        wrap_rec,
+    })
 }
 
 /// Seal the current bundle for export: unwrap the LSK with the op-pass (the unattended,
 /// runtime-available secret), then AEAD-encrypt the bundle under the LSK with a fresh nonce.
 /// The wraps are carried through unchanged (stable across exports — ADR-0026 point 5).
 /// Errors if the op-pass cannot unwrap the LSK (never seals under a wrong/garbage key).
-pub fn seal_local_state(wraps: &LskWraps, op_pass: &str, bundle: &[u8])
-    -> Result<SealedLocalState, LocalStateError> {
-    let lsk = seal::try_unwrap(&wraps.wrap_op, op_pass, &wraps.salt_op, &wraps.argon)
-        .ok_or_else(|| LocalStateError::Seal(
-            "operational passphrase did not unwrap the local-state key".into()))?;
+pub fn seal_local_state(
+    wraps: &LskWraps,
+    op_pass: &str,
+    bundle: &[u8],
+) -> Result<SealedLocalState, LocalStateError> {
+    let lsk = seal::try_unwrap(&wraps.wrap_op, op_pass, &wraps.salt_op, &wraps.argon).ok_or_else(
+        || {
+            LocalStateError::Seal(
+                "operational passphrase did not unwrap the local-state key".into(),
+            )
+        },
+    )?;
     let payload_nonce = rand_bytes::<24>().map_err(|e| LocalStateError::Seal(e.to_string()))?;
     let payload_ct = aead_encrypt(&lsk, &payload_nonce, bundle)
         .map_err(|_| LocalStateError::Seal("aead".into()))?;
-    Ok(SealedLocalState { wraps: wraps.clone(), payload_nonce, payload_ct })
+    Ok(SealedLocalState {
+        wraps: wraps.clone(),
+        payload_nonce,
+        payload_ct,
+    })
 }
 
 /// Recover the bundle via the operational passphrase (re-export / self-verify path).
@@ -165,7 +187,11 @@ pub fn unseal_local_state_op(s: &SealedLocalState, op_pass: &str) -> Option<Vec<
 /// guaranteed-available secret after total disk loss). The code is normalized first.
 pub fn unseal_local_state_rec(s: &SealedLocalState, recovery_code: &str) -> Option<Vec<u8>> {
     let lsk = seal::try_unwrap(
-        &s.wraps.wrap_rec, &normalize_recovery_code(recovery_code), &s.wraps.salt_rec, &s.wraps.argon)?;
+        &s.wraps.wrap_rec,
+        &normalize_recovery_code(recovery_code),
+        &s.wraps.salt_rec,
+        &s.wraps.argon,
+    )?;
     aead_decrypt(&lsk, &s.payload_nonce, &s.payload_ct)
 }
 
@@ -179,7 +205,10 @@ mod tests {
         let bytes = to_cbor(&ls);
         let back = from_cbor(&bytes).expect("an empty bundle must roundtrip");
         assert_eq!(back, ls, "roundtrip must recover the exact bundle");
-        assert!(back.is_empty(), "a fresh node's bundle has no content today");
+        assert!(
+            back.is_empty(),
+            "a fresh node's bundle has no content today"
+        );
     }
 
     #[test]
@@ -194,10 +223,14 @@ mod tests {
         // field defaulted. We simulate "older" by constructing a ciborium Value::Map
         // omitting later fields, then serializing it to CBOR — encode a map missing `drafts`.
         let mut partial = std::collections::BTreeMap::new();
-        partial.insert("version".to_string(), ciborium::value::Value::Integer(1.into()));
+        partial.insert(
+            "version".to_string(),
+            ciborium::value::Value::Integer(1.into()),
+        );
         // Intentionally omit node_default_deks/episode_deks/config/drafts.
         let val = ciborium::value::Value::Map(
-            partial.into_iter()
+            partial
+                .into_iter()
                 .map(|(k, v)| (ciborium::value::Value::Text(k), v))
                 .collect(),
         );
@@ -216,21 +249,57 @@ mod tests {
         let bundle = to_cbor(&LocalState::empty());
         let sealed = seal_local_state(&wraps, OP, &bundle).unwrap();
         // Either secret recovers the same plaintext bundle.
-        assert_eq!(unseal_local_state_op(&sealed, OP).as_deref(), Some(bundle.as_slice()));
-        assert_eq!(unseal_local_state_rec(&sealed, REC).as_deref(), Some(bundle.as_slice()),
-            "the recovery code (off-node escrow) must unseal — the disaster-recovery path");
+        assert_eq!(
+            unseal_local_state_op(&sealed, OP).as_deref(),
+            Some(bundle.as_slice())
+        );
+        assert_eq!(
+            unseal_local_state_rec(&sealed, REC).as_deref(),
+            Some(bundle.as_slice()),
+            "the recovery code (off-node escrow) must unseal — the disaster-recovery path"
+        );
     }
 
     #[test]
     fn lsk_unseal_rejects_wrong_secret_and_tamper() {
         let wraps = establish_lsk(OP, REC).unwrap();
         let sealed = seal_local_state(&wraps, OP, &to_cbor(&LocalState::empty())).unwrap();
-        assert_eq!(unseal_local_state_op(&sealed, "nope"), None, "wrong op-pass => None");
-        assert_eq!(unseal_local_state_rec(&sealed, "ZZZZZ"), None, "wrong recovery code => None");
+        assert_eq!(
+            unseal_local_state_op(&sealed, "nope"),
+            None,
+            "wrong op-pass => None"
+        );
+        assert_eq!(
+            unseal_local_state_rec(&sealed, "ZZZZZ"),
+            None,
+            "wrong recovery code => None"
+        );
         // Flip a byte of the payload ciphertext: AEAD tag must fail.
         let mut t = sealed.clone();
         t.payload_ct[0] ^= 1;
-        assert_eq!(unseal_local_state_op(&t, OP), None, "tampered payload must fail unseal");
+        assert_eq!(
+            unseal_local_state_op(&t, OP),
+            None,
+            "tampered payload must fail unseal"
+        );
+        // The LSK wrap is where the key actually lives on disk (the real storage-attacker
+        // target): a flipped wrap ciphertext must fail the unwrap's AEAD tag, not silently
+        // recover a corrupted key.
+        let mut t2 = sealed.clone();
+        t2.wraps.wrap_op.ct[0] ^= 1;
+        assert_eq!(
+            unseal_local_state_op(&t2, OP),
+            None,
+            "tampered op-wrap must fail unseal"
+        );
+
+        let mut t3 = sealed.clone();
+        t3.wraps.wrap_rec.ct[0] ^= 1;
+        assert_eq!(
+            unseal_local_state_rec(&t3, REC),
+            None,
+            "tampered rec-wrap must fail unseal"
+        );
     }
 
     #[test]
@@ -251,10 +320,25 @@ mod tests {
         let wraps = establish_lsk(OP, REC).unwrap();
         let a = seal_local_state(&wraps, OP, b"bundle-A").unwrap();
         let b = seal_local_state(&wraps, OP, b"bundle-B").unwrap();
-        assert_eq!(a.wraps.wrap_op.ct, b.wraps.wrap_op.ct, "LSK op-wrap is stable across exports");
-        assert_eq!(a.wraps.wrap_rec.ct, b.wraps.wrap_rec.ct, "LSK rec-wrap is stable across exports");
-        assert_ne!(a.payload_ct, b.payload_ct, "each export re-encrypts the payload (fresh nonce)");
-        assert_eq!(unseal_local_state_rec(&a, REC).as_deref(), Some(b"bundle-A".as_slice()));
-        assert_eq!(unseal_local_state_rec(&b, REC).as_deref(), Some(b"bundle-B".as_slice()));
+        assert_eq!(
+            a.wraps.wrap_op.ct, b.wraps.wrap_op.ct,
+            "LSK op-wrap is stable across exports"
+        );
+        assert_eq!(
+            a.wraps.wrap_rec.ct, b.wraps.wrap_rec.ct,
+            "LSK rec-wrap is stable across exports"
+        );
+        assert_ne!(
+            a.payload_ct, b.payload_ct,
+            "each export re-encrypts the payload (fresh nonce)"
+        );
+        assert_eq!(
+            unseal_local_state_rec(&a, REC).as_deref(),
+            Some(b"bundle-A".as_slice())
+        );
+        assert_eq!(
+            unseal_local_state_rec(&b, REC).as_deref(),
+            Some(b"bundle-B".as_slice())
+        );
     }
 }
