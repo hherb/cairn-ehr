@@ -223,19 +223,20 @@ git commit -m "feat(node): LocalState export bundle type + additive CBOR (ADR-00
 - Modify: `crates/cairn-node/src/localstate.rs` — add the LSK structs + sealing fns + tests.
 
 **Interfaces:**
-- Consumes (from `seal.rs`): `pub(crate) fn derive_kek`, `pub(crate) fn aead_encrypt`, `pub(crate) fn aead_decrypt`, `pub(crate) fn rand_bytes`, `pub(crate) struct Wrap`, `pub(crate) struct ArgonParams` (the last two already `pub`; their fields stay as-is).
+- Consumes (from `seal.rs`, made `pub(crate)`): `wrap_dek`, `try_unwrap`, `aead_encrypt`, `aead_decrypt`, `rand_bytes`; plus the already-`pub` `Wrap`, `ArgonParams`, `normalize_recovery_code`. (`derive_kek` stays private — it is used only inside `wrap_dek`/`try_unwrap`, which we now reuse directly rather than re-deriving KEKs.)
 - Produces: `struct LskWraps`, `struct SealedLocalState`, `fn establish_lsk(op_pass, recovery_code) -> Result<LskWraps, LocalStateError>`, `fn seal_local_state(&LskWraps, op_pass, bundle: &[u8]) -> Result<SealedLocalState, LocalStateError>`, `fn unseal_local_state_op(&SealedLocalState, op_pass) -> Option<Vec<u8>>`, `fn unseal_local_state_rec(&SealedLocalState, recovery_code) -> Option<Vec<u8>>`.
 
 - [ ] **Step 1: Make the `seal.rs` primitives crate-visible**
 
-In `crates/cairn-node/src/seal.rs`, change these signatures (add `pub(crate)`; bodies unchanged):
+In `crates/cairn-node/src/seal.rs`, change these signatures (add `pub(crate)`; bodies unchanged) so `localstate.rs` reuses the SAME audited wrap/unwrap + AEAD logic (no duplicated crypto):
 
 - `fn rand_bytes<const N: usize>() -> ...` → `pub(crate) fn rand_bytes<const N: usize>() -> ...`
-- `fn derive_kek(...) -> ...` → `pub(crate) fn derive_kek(...) -> ...`
 - `fn aead_encrypt(...) -> ...` → `pub(crate) fn aead_encrypt(...) -> ...`
 - `fn aead_decrypt(...) -> ...` → `pub(crate) fn aead_decrypt(...) -> ...`
+- `fn wrap_dek(dek: &[u8; 32], secret: &str, salt: &[u8; 16], p: &ArgonParams) -> Result<Wrap, SealError>` → add `pub(crate)`
+- `fn try_unwrap(w: &Wrap, secret: &str, salt: &[u8; 16], p: &ArgonParams) -> Option<[u8; 32]>` → add `pub(crate)`
 
-`pub struct Wrap` and `pub struct ArgonParams` are already public — leave them. `normalize_recovery_code` is already `pub`. Do NOT touch `seal`/`unseal`/`SealedKey` (the signing-key path stays exactly as-is).
+`pub struct Wrap`, `pub struct ArgonParams`, `pub enum SealError`, and `pub fn normalize_recovery_code` are already public — leave them. `derive_kek` stays private. Do NOT touch `seal`/`unseal`/`SealedKey` (the signing-key path stays exactly as-is).
 
 - [ ] **Step 2: Write the failing tests (LSK lifecycle)**
 
@@ -304,7 +305,7 @@ Expected: FAIL — `cannot find function establish_lsk` etc.
 Insert into `crates/cairn-node/src/localstate.rs` ABOVE the test module (after the `from_cbor` fn):
 
 ```rust
-use crate::seal::{aead_decrypt, aead_encrypt, derive_kek, normalize_recovery_code, rand_bytes,
+use crate::seal::{self, aead_decrypt, aead_encrypt, normalize_recovery_code, rand_bytes,
                   ArgonParams, Wrap};
 
 /// The dual-wraps of a long-lived local-state DEK (LSK), established ONCE at provisioning
@@ -331,34 +332,20 @@ pub struct SealedLocalState {
     pub payload_ct: Vec<u8>,
 }
 
-/// Wrap one 32-byte LSK copy under a secret's Argon2id KEK. Mirrors seal.rs::wrap_dek
-/// (kept here so localstate owns its own envelope assembly while sharing the primitives).
-fn wrap_lsk(lsk: &[u8; 32], secret: &str, salt: &[u8; 16], p: &ArgonParams)
-    -> Result<Wrap, LocalStateError> {
-    let kek = derive_kek(secret, salt, p).map_err(|e| LocalStateError::Seal(e.to_string()))?;
-    let nonce = rand_bytes::<24>().map_err(|e| LocalStateError::Seal(e.to_string()))?;
-    let ct = aead_encrypt(&kek, &nonce, lsk).map_err(|_| LocalStateError::Seal("aead".into()))?;
-    Ok(Wrap { nonce, ct })
-}
-
-/// Recover the LSK from one wrap, secret unknown-but-supplied. None on wrong secret/tamper.
-fn unwrap_lsk(w: &Wrap, secret: &str, salt: &[u8; 16], p: &ArgonParams) -> Option<[u8; 32]> {
-    let kek = derive_kek(secret, salt, p).ok()?;
-    let lsk = aead_decrypt(&kek, &w.nonce, &w.ct)?;
-    lsk.try_into().ok()
-}
-
 /// Establish the long-lived local-state DEK and dual-wrap it. Called ONCE at provisioning
 /// (`init`/`seal-key`/`establish-local-state-key`) when BOTH secrets are in hand. The LSK
 /// itself is discarded after wrapping — every later export re-derives it from the op-pass.
+/// Reuses `seal::wrap_dek` (the same audited Argon2id+AEAD wrap the signing key uses).
 pub fn establish_lsk(op_pass: &str, recovery_code: &str) -> Result<LskWraps, LocalStateError> {
     let argon = ArgonParams::default();
     let lsk = rand_bytes::<32>().map_err(|e| LocalStateError::Seal(e.to_string()))?;
     let salt_op = rand_bytes::<16>().map_err(|e| LocalStateError::Seal(e.to_string()))?;
     let salt_rec = rand_bytes::<16>().map_err(|e| LocalStateError::Seal(e.to_string()))?;
-    let wrap_op = wrap_lsk(&lsk, op_pass, &salt_op, &argon)?;
+    let wrap_op = seal::wrap_dek(&lsk, op_pass, &salt_op, &argon)
+        .map_err(|e| LocalStateError::Seal(e.to_string()))?;
     // Normalize the recovery code so any spacing/case the human re-types still unseals.
-    let wrap_rec = wrap_lsk(&lsk, &normalize_recovery_code(recovery_code), &salt_rec, &argon)?;
+    let wrap_rec = seal::wrap_dek(&lsk, &normalize_recovery_code(recovery_code), &salt_rec, &argon)
+        .map_err(|e| LocalStateError::Seal(e.to_string()))?;
     Ok(LskWraps { argon, salt_op, salt_rec, wrap_op, wrap_rec })
 }
 
@@ -368,7 +355,7 @@ pub fn establish_lsk(op_pass: &str, recovery_code: &str) -> Result<LskWraps, Loc
 /// Errors if the op-pass cannot unwrap the LSK (never seals under a wrong/garbage key).
 pub fn seal_local_state(wraps: &LskWraps, op_pass: &str, bundle: &[u8])
     -> Result<SealedLocalState, LocalStateError> {
-    let lsk = unwrap_lsk(&wraps.wrap_op, op_pass, &wraps.salt_op, &wraps.argon)
+    let lsk = seal::try_unwrap(&wraps.wrap_op, op_pass, &wraps.salt_op, &wraps.argon)
         .ok_or_else(|| LocalStateError::Seal(
             "operational passphrase did not unwrap the local-state key".into()))?;
     let payload_nonce = rand_bytes::<24>().map_err(|e| LocalStateError::Seal(e.to_string()))?;
@@ -379,14 +366,14 @@ pub fn seal_local_state(wraps: &LskWraps, op_pass: &str, bundle: &[u8])
 
 /// Recover the bundle via the operational passphrase (re-export / self-verify path).
 pub fn unseal_local_state_op(s: &SealedLocalState, op_pass: &str) -> Option<Vec<u8>> {
-    let lsk = unwrap_lsk(&s.wraps.wrap_op, op_pass, &s.wraps.salt_op, &s.wraps.argon)?;
+    let lsk = seal::try_unwrap(&s.wraps.wrap_op, op_pass, &s.wraps.salt_op, &s.wraps.argon)?;
     aead_decrypt(&lsk, &s.payload_nonce, &s.payload_ct)
 }
 
 /// Recover the bundle via the recovery code (the disaster-recovery path — the only
 /// guaranteed-available secret after total disk loss). The code is normalized first.
 pub fn unseal_local_state_rec(s: &SealedLocalState, recovery_code: &str) -> Option<Vec<u8>> {
-    let lsk = unwrap_lsk(
+    let lsk = seal::try_unwrap(
         &s.wraps.wrap_rec, &normalize_recovery_code(recovery_code), &s.wraps.salt_rec, &s.wraps.argon)?;
     aead_decrypt(&lsk, &s.payload_nonce, &s.payload_ct)
 }
@@ -811,7 +798,21 @@ git commit -m "feat(node): establish .lsk at provisioning + establish-local-stat
 
 - [ ] **Step 1: `Cmd::Backup` writes the export sibling**
 
-In `crates/cairn-node/src/main.rs`, in the `Cmd::Backup` arm, AFTER the existing `backup_to` call and its two `println!`s, add:
+First, add a passphrase arg to the `Backup` command so the op-pass (which unwraps the LSK) comes from `--passphrase`/`CAIRN_KEY_PASSPHRASE` like `init`/`restore` — never an unattended prompt-hang. In the `Cmd` enum, change the `Backup` variant to:
+
+```rust
+    Backup {
+        /// Path of the backup medium to write (e.g. a mounted encrypted volume).
+        #[arg(long)]
+        to: PathBuf,
+        /// Operational passphrase to seal the local-state export (else CAIRN_KEY_PASSPHRASE,
+        /// else prompt). Only used when a local-state escrow (`.lsk`) exists.
+        #[arg(long, env = "CAIRN_KEY_PASSPHRASE")]
+        passphrase: Option<String>,
+    },
+```
+
+Then change the arm header `Cmd::Backup { to } => {` to `Cmd::Backup { to, passphrase } => {`. AFTER the existing `backup_to` call and its two `println!`s, add:
 
 ```rust
             // ADR-0026 slice D: co-locate the sealed local-state export beside the medium,
@@ -821,7 +822,7 @@ In `crates/cairn-node/src/main.rs`, in the `Cmd::Backup` arm, AFTER the existing
             match std::fs::read(&sidecar).ok()
                 .and_then(|b| cairn_node::localstate::parse_sidecar(&b).ok()) {
                 Some(wraps) => {
-                    let op = resolve_passphrase(None)?; // op-pass unwraps the LSK (unattended-friendly via env)
+                    let op = resolve_passphrase(passphrase)?; // op-pass unwraps the LSK
                     let bundle = cairn_node::localstate::read_local_state(&db).await?;
                     let sealed = cairn_node::localstate::seal_local_state(
                         &wraps, &op, &cairn_node::localstate::to_cbor(&bundle))?;
