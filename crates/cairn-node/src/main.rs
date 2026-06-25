@@ -518,12 +518,22 @@ async fn main() -> anyhow::Result<()> {
                 eprintln!("Local-state export found. Enter the OLD node's recovery code to unseal it:");
                 let old_code = Zeroizing::new(
                     rpassword::prompt_password("old recovery code: ")?);
-                let plaintext = cairn_node::localstate::unseal_local_state_rec(&sealed, &old_code)
-                    .ok_or_else(|| anyhow::anyhow!(
-                        "could not unseal the local-state export with that recovery code"))?;
-                let bundle = cairn_node::localstate::from_cbor(&plaintext)?;
-                cairn_node::localstate::apply_local_state(&db, &bundle).await?;
-                println!("local-state restored from {}", export_path.display());
+                // Local-state is OPTIONAL (and empty today). The node is ALREADY fully
+                // restored at this point (key minted, events applied, identity finalized),
+                // so a wrong recovery-code guess must NOT bail and strand a half-committed
+                // node — it degrades honestly: warn and skip, exactly like the no-sibling
+                // path. Only a non-empty bundle this version cannot apply stays loud (the
+                // `?` on apply_local_state below).
+                match cairn_node::localstate::unseal_local_state_rec(&sealed, &old_code) {
+                    Some(plaintext) => {
+                        let bundle = cairn_node::localstate::from_cbor(&plaintext)?;
+                        cairn_node::localstate::apply_local_state(&db, &bundle).await?;
+                        println!("local-state restored from {}", export_path.display());
+                    }
+                    None => eprintln!(
+                        "WARNING: could not unseal the local-state export — wrong recovery code? \
+                         Skipping local-state; node restores from events alone."),
+                }
             }
 
             println!("restored {applied} event(s) from {}", from.display());
