@@ -158,7 +158,7 @@ impl SealedKey {
     }
 }
 
-fn rand_bytes<const N: usize>() -> Result<[u8; N], SealError> {
+pub(crate) fn rand_bytes<const N: usize>() -> Result<[u8; N], SealError> {
     let mut b = [0u8; N];
     getrandom::fill(&mut b).map_err(|e| SealError::Entropy(e.to_string()))?;
     Ok(b)
@@ -175,19 +175,19 @@ fn derive_kek(secret: &str, salt: &[u8; 16], p: &ArgonParams) -> Result<[u8; 32]
     Ok(kek)
 }
 
-fn aead_encrypt(key: &[u8; 32], nonce: &[u8; 24], pt: &[u8]) -> Result<Vec<u8>, SealError> {
+pub(crate) fn aead_encrypt(key: &[u8; 32], nonce: &[u8; 24], pt: &[u8]) -> Result<Vec<u8>, SealError> {
     let cipher = XChaCha20Poly1305::new(Key::from_slice(key));
     cipher.encrypt(XNonce::from_slice(nonce), pt).map_err(|_| SealError::Aead)
 }
 
-fn aead_decrypt(key: &[u8; 32], nonce: &[u8; 24], ct: &[u8]) -> Option<Vec<u8>> {
+pub(crate) fn aead_decrypt(key: &[u8; 32], nonce: &[u8; 24], ct: &[u8]) -> Option<Vec<u8>> {
     let cipher = XChaCha20Poly1305::new(Key::from_slice(key));
     cipher.decrypt(XNonce::from_slice(nonce), ct).ok()
 }
 
 /// Wrap one DEK copy under a secret. The recovery code is normalized first so any
 /// spacing/case the human re-types still derives the same KEK.
-fn wrap_dek(dek: &[u8; 32], secret: &str, salt: &[u8; 16], p: &ArgonParams)
+pub(crate) fn wrap_dek(dek: &[u8; 32], secret: &str, salt: &[u8; 16], p: &ArgonParams)
     -> Result<Wrap, SealError> {
     let kek = derive_kek(secret, salt, p)?;
     let nonce = rand_bytes::<24>()?;
@@ -195,7 +195,7 @@ fn wrap_dek(dek: &[u8; 32], secret: &str, salt: &[u8; 16], p: &ArgonParams)
     Ok(Wrap { nonce, ct })
 }
 
-fn try_unwrap(w: &Wrap, secret: &str, salt: &[u8; 16], p: &ArgonParams) -> Option<[u8; 32]> {
+pub(crate) fn try_unwrap(w: &Wrap, secret: &str, salt: &[u8; 16], p: &ArgonParams) -> Option<[u8; 32]> {
     let kek = derive_kek(secret, salt, p).ok()?;
     let dek = aead_decrypt(&kek, &w.nonce, &w.ct)?;
     dek.try_into().ok()
