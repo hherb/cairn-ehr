@@ -196,6 +196,23 @@ pub(crate) fn aead_decrypt(key: &[u8; 32], nonce: &[u8; 24], ct: &[u8]) -> Optio
     cipher.decrypt(XNonce::from_slice(nonce), ct).ok()
 }
 
+/// Copy a 32-byte key out of a slice into a `Zeroizing` buffer **without** ever
+/// materializing a bare `[u8; 32]` on the stack (issue #54). `<[u8;32]>::try_from`
+/// would return a plain array by value, and moving that into `Zeroizing::new` leaves
+/// the moved-from stack slot un-wiped — a lingering plaintext copy of the very key we
+/// are trying to protect. Instead we allocate the zeroizing buffer first and
+/// `copy_from_slice` into it, so the only copy of the key lives inside the wrapper that
+/// wipes it (the same discipline `derive_kek` uses when it derives in-place). Returns
+/// `None` on a wrong-length slice, mirroring the old `try_into().ok()`.
+fn key_into_zeroizing(bytes: &[u8]) -> Option<Zeroizing<[u8; 32]>> {
+    if bytes.len() != 32 {
+        return None;
+    }
+    let mut out = Zeroizing::new([0u8; 32]);
+    out.copy_from_slice(bytes);
+    Some(out)
+}
+
 /// Wrap one DEK copy under a secret. The recovery code is normalized first so any
 /// spacing/case the human re-types still derives the same KEK.
 pub(crate) fn wrap_dek(dek: &[u8; 32], secret: &str, salt: &[u8; 16], p: &ArgonParams)
@@ -209,11 +226,10 @@ pub(crate) fn wrap_dek(dek: &[u8; 32], secret: &str, salt: &[u8; 16], p: &ArgonP
 pub(crate) fn try_unwrap(w: &Wrap, secret: &str, salt: &[u8; 16], p: &ArgonParams)
     -> Option<Zeroizing<[u8; 32]>> {
     let kek = derive_kek(secret, salt, p).ok()?;
-    // Hold the decrypted bytes in `Zeroizing` so the plaintext DEK on the heap is wiped
-    // even though we copy it out into the fixed-size array we return.
+    // Hold the decrypted bytes in `Zeroizing` so the plaintext DEK on the heap is wiped,
+    // then copy straight into a zeroizing fixed-size array (no bare `[u8;32]` intermediate).
     let dek = Zeroizing::new(aead_decrypt(&kek, &w.nonce, &w.ct)?);
-    let arr: [u8; 32] = dek.as_slice().try_into().ok()?;
-    Some(Zeroizing::new(arr))
+    key_into_zeroizing(&dek)
 }
 
 /// Seal a 32-byte signing seed under two independent secrets (dual-recipient).
@@ -241,10 +257,10 @@ pub fn seal(seed: &[u8; 32], op_pass: &str, recovery_code: &str) -> Result<Seale
 pub fn unseal_op(s: &SealedKey, op_pass: &str) -> Option<Zeroizing<[u8; 32]>> {
     let dek = try_unwrap(&s.wrap_op, op_pass, &s.salt_op, &s.argon)?;
     // `Zeroizing` the decrypted seed wipes the heap plaintext; the returned array stays
-    // wrapped so the seed is never bare in the caller's frame (e.g. `keystore::load`).
+    // wrapped (via `key_into_zeroizing`, no bare intermediate) so the seed is never bare
+    // in the caller's frame (e.g. `keystore::load`).
     let seed = Zeroizing::new(aead_decrypt(&dek, &s.seed_nonce, &s.seed_ct)?);
-    let arr: [u8; 32] = seed.as_slice().try_into().ok()?;
-    Some(Zeroizing::new(arr))
+    key_into_zeroizing(&seed)
 }
 
 /// Recover the seed via ONLY the recovery-code recipient: exactly one Argon2
@@ -252,8 +268,7 @@ pub fn unseal_op(s: &SealedKey, op_pass: &str) -> Option<Zeroizing<[u8; 32]>> {
 pub fn unseal_rec(s: &SealedKey, recovery_code: &str) -> Option<Zeroizing<[u8; 32]>> {
     let dek = try_unwrap(&s.wrap_rec, &normalize_recovery_code(recovery_code), &s.salt_rec, &s.argon)?;
     let seed = Zeroizing::new(aead_decrypt(&dek, &s.seed_nonce, &s.seed_ct)?);
-    let arr: [u8; 32] = seed.as_slice().try_into().ok()?;
-    Some(Zeroizing::new(arr))
+    key_into_zeroizing(&seed)
 }
 
 /// Recover the seed from either recipient, secret unknown. Tries the operational
@@ -304,6 +319,19 @@ mod tests {
         assert_eq!(*any, SEED);
         assert_eq!(*via_op, SEED);
         assert_eq!(*via_rec, SEED);
+    }
+
+    #[test]
+    fn key_into_zeroizing_copies_exact_len_and_rejects_others() {
+        // Exactly 32 bytes round-trips into the wrapped array...
+        let src = [9u8; 32];
+        let out = key_into_zeroizing(&src).expect("32-byte slice must convert");
+        assert_eq!(*out, src);
+        // ...and any other length is rejected (mirrors the old `try_into().ok()` guard),
+        // so a truncated/over-long plaintext can never silently yield a partial key.
+        assert!(key_into_zeroizing(&[9u8; 31]).is_none());
+        assert!(key_into_zeroizing(&[9u8; 33]).is_none());
+        assert!(key_into_zeroizing(&[]).is_none());
     }
 
     #[test]
