@@ -14,12 +14,19 @@ derivable from events. New **`crates/cairn-node/src/medium.rs`** (the medium con
 never inserted/synced) or **Unsigned** (self node-id, operator-error-safe). `restore::resolve_dead_node` reads the
 marker (Signed → authoritative; explicit `--superseded-node` validated against it, a peer/off-medium id rejected
 fail-closed `NotSelf`; Unsigned/legacy flagged for confirmation). The signed attestation is **unforgeable** (no private
-key on the medium) AND **medium-bound** — a sorted `event_set_commitment` ties it to this exact event set, closing a
-**cross-medium splice** an adversarial review caught — so tamper can only **withhold** (→ manual `--superseded-node`),
-never **misdirect**. Unsigned never blocks a backup (just flagged); legacy `CAIRNB1` media degrade honestly. `backup`
-signs when the key is non-interactively available else unsigned+warning; `restore` warns per provenance + echoes the
-adopted identity (paper-parity). Brainstorm→TDD, `medium.rs` pure (no DB); full `cairn-node` suite green (74 lib + all
-integration), clippy clean. Adversarial subagent review found the splice vector → fixed with the commitment bind.
+key on the medium) AND **event-set-bound** — a sorted `event_set_commitment` ties it to this exact set, rejecting a
+marker spliced from a backup with a *different* set. **Known residual (caught in code review of this PR):** the
+commitment binds to set *content*, and two fully-converged peers hold *byte-identical* sets, so it **cannot** reject a
+peer's genuine marker spliced between converged media. That splice is impossible on a **sole-enroll** medium (foreign id
+absent → fail closed), so the risk is exactly the **multi-enroll/federated** case → restore reports
+`Provenance::SignedFederated` and asks the operator to confirm the echoed name/address (defence: confirm-on-restore +
+physical custody, not the commitment). So: **forgery-proof always; misdirect-proof for sole-enroll media and
+different-set splices; a converged-peer splice is a confirm-on-restore residual, never a silent misdirect.** Unsigned
+never blocks a backup (just flagged); legacy `CAIRNB1` media degrade honestly. `backup` signs when the key is
+non-interactively available else unsigned+warning; `restore` warns per provenance + echoes the adopted identity
+(paper-parity). Brainstorm→TDD, `medium.rs` no-DB; full `cairn-node` suite green (76 lib + all integration), clippy
+clean. An adversarial subagent review caught the different-set splice (→ commitment bind); the PR code review then caught
+the converged-identical-set residual (→ honest `SignedFederated` provenance + tests pinning the limitation).
 
 **Prior session (2026-06-26):** closed [issue #54](https://github.com/cairn-ehr/cairn-ehr/issues/54) — **uniform
 key-material zeroization** across `seal.rs` + `localstate.rs`: every transient secret (Argon2id KEKs, DEK, recovered

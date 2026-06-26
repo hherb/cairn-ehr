@@ -304,10 +304,11 @@ async fn federated_medium_resolves_self_and_rejects_a_peer() {
     };
 
     // Omitting --superseded-node resolves to SELF via the signed marker (the events alone
-    // cannot — A and B are symmetric on the medium).
+    // cannot — A and B are symmetric on the medium). A multi-enroll/federated medium is reported
+    // as SignedFederated (resolves self, but confirm-on-restore for the residual splice risk).
     let dead = cairn_node::restore::resolve_dead_node(&container, None).unwrap();
     assert_eq!(dead.node_id_hex, self_id, "signed marker resolves this node's own genesis");
-    assert_eq!(dead.provenance, cairn_node::restore::Provenance::Signed);
+    assert_eq!(dead.provenance, cairn_node::restore::Provenance::SignedFederated);
 
     // Naming the PEER's real node-id is rejected fail-closed (the issue #53 footgun).
     let err = cairn_node::restore::resolve_dead_node(&container, Some(&peer_id)).unwrap_err();

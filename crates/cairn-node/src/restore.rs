@@ -11,9 +11,13 @@
 //! Identifying self is NOT derivable from the events: by set-union sync a node's `node_event`
 //! set CONVERGES with its peers', so the events alone cannot say which enroll is local. Self
 //! is read from the medium's container-level self-marker, written at backup time (see
-//! [`crate::medium`]). A SIGNED marker is authoritative and tamper-evident; an UNSIGNED marker
-//! still pins self (operator-error-safe) but is flagged for caution; a marker-less legacy
-//! medium falls back to an explicit `--superseded-node` (or a sole-enroll medium).
+//! [`crate::medium`]). A SIGNED marker on a SOLE-enroll medium is authoritative and tamper-evident.
+//! A SIGNED marker on a MULTI-enroll (federated/converged) medium still resolves self correctly
+//! absent an adversary, but cannot — by construction — rule out a peer-medium splice (converged
+//! peers hold byte-identical event sets; see [`crate::medium`]), so it is surfaced as
+//! [`Provenance::SignedFederated`] for operator confirmation. An UNSIGNED marker pins self
+//! (operator-error-safe) but is flagged; a marker-less legacy medium falls back to an explicit
+//! `--superseded-node` (or a sole-enroll medium).
 
 use crate::medium::{enrolls, verify_self_attestation, Container, SelfMarker};
 
@@ -40,9 +44,10 @@ pub enum RestoreError {
     )]
     NotSelf { wanted: String, self_id: String },
     /// The medium's self-marker did not verify: a SIGNED marker failed its signature/bind check
-    /// (tampered, or signed by a key that is not the named genesis's), or an UNSIGNED marker
-    /// names an enroll absent from the medium. Tamper can only WITHHOLD self-detection (fail
-    /// closed → name the node explicitly), never misdirect it.
+    /// (tampered, corrupt, signed by a key that is not the named genesis's, or committing to a
+    /// different event set), or an UNSIGNED marker names an enroll absent from the medium. A
+    /// failed marker WITHHOLDS self-detection (fail closed → name the node explicitly); it cannot
+    /// be turned into a wrong-but-valid identity (that would need a forged signature).
     #[error("medium self-marker did not verify (tampered or mismatched); pass --superseded-node to override")]
     InvalidSelfMarker,
 }
@@ -50,8 +55,15 @@ pub enum RestoreError {
 /// How "self" was determined for a restore — surfaced so the CLI can warn appropriately.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Provenance {
-    /// A valid SIGNED self-attestation — tamper-evident.
+    /// A valid SIGNED self-attestation on a SOLE-enroll medium — fully tamper-evident: no peer
+    /// genesis is present, so a foreign/spliced marker would name an absent enroll and fail closed.
     Signed,
+    /// A valid SIGNED self-attestation on a MULTI-enroll (federated/converged) medium. It resolves
+    /// self correctly absent an adversary, but converged peers hold byte-identical event sets, so
+    /// an attacker holding a PEER's genuine cold medium could splice that peer's valid marker here
+    /// and the commitment cannot distinguish them (see [`crate::medium`]). Not a silent misdirect
+    /// — surfaced so the CLI asks the operator to confirm the echoed name/address.
+    SignedFederated,
     /// An UNSIGNED self-marker — operator-error-safe, not tamper-evident. Warn the operator to
     /// confirm the restored identity's name/address.
     Unsigned,
@@ -98,8 +110,11 @@ fn confirm_explicit(
 /// Resolve which enroll on the cold medium is THIS node (the dead node a restore supersedes),
 /// using the container's self-marker as the source of truth.
 ///
-/// - SIGNED marker: verified against an enroll on the medium signed by the same key — fully
-///   authoritative. A tampered/forged marker fails closed (`InvalidSelfMarker`).
+/// - SIGNED marker: verified against an enroll on the medium signed by the same key. A
+///   tampered/forged marker fails closed (`InvalidSelfMarker`). Fully authoritative on a
+///   sole-enroll medium (`Provenance::Signed`); on a multi-enroll medium it resolves self but
+///   carries a residual peer-medium splice risk, so it is reported as `Provenance::SignedFederated`
+///   for operator confirmation (see [`Provenance`] / [`crate::medium`]).
 /// - UNSIGNED marker: pins self (closes the operator-typo footgun) but is not tamper-evident;
 ///   the named id must be an enroll on the medium, else `InvalidSelfMarker`.
 /// - No marker (legacy/pre-enrollment): self is not derivable from the events, so require an
@@ -122,9 +137,20 @@ pub fn resolve_dead_node(
             let self_id = verify_self_attestation(att, &container.events)
                 .ok_or(RestoreError::InvalidSelfMarker)?;
             confirm_explicit(explicit, &self_id, &all)?;
+            // A signed marker is fully tamper-evident only on a SOLE-enroll medium: with no peer
+            // genesis present, a spliced foreign marker would name an absent enroll and fail
+            // closed. On a multi-enroll (federated/converged) medium a peer's genuine marker could
+            // be spliced (the commitment cannot distinguish byte-identical converged sets), so we
+            // downgrade to SignedFederated to prompt operator confirmation. Conservative: it flags
+            // every multi-enroll medium, including ones not actually converged with the peer.
+            let provenance = if all.len() == 1 {
+                Provenance::Signed
+            } else {
+                Provenance::SignedFederated
+            };
             Ok(DeadNode {
                 node_id_hex: self_id,
-                provenance: Provenance::Signed,
+                provenance,
             })
         }
         Some(SelfMarker::Unsigned(id)) => {
@@ -292,12 +318,32 @@ mod tests {
     #[test]
     fn signed_marker_resolves_self_on_a_federated_medium() {
         // A converged federated medium: self + a peer, indistinguishable from the events alone.
-        // The SIGNED marker resolves self unambiguously.
+        // The SIGNED marker resolves self unambiguously, but a multi-enroll medium carries a
+        // residual peer-medium splice risk, so provenance is SignedFederated (confirm on restore).
         let self_k = sk();
         let self_ev = enroll(&self_k, "Self");
         let peer_ev = enroll(&sk(), "Peer");
         let self_id = node_id(&self_ev);
         let c = signed_container(&self_k, vec![self_ev, peer_ev], &self_id);
+
+        let got = resolve_dead_node(&c, None).unwrap();
+        assert_eq!(got.node_id_hex, self_id);
+        assert_eq!(
+            got.provenance,
+            Provenance::SignedFederated,
+            "a multi-enroll medium is flagged for confirmation, not claimed fully tamper-evident"
+        );
+    }
+
+    #[test]
+    fn signed_marker_on_a_sole_enroll_medium_is_fully_signed() {
+        // The genuinely-solo clinic (ADR-0026's primary case): one enroll on the medium, so a
+        // spliced foreign marker would name an absent enroll and fail closed. The signed marker is
+        // therefore fully tamper-evident → Provenance::Signed.
+        let self_k = sk();
+        let self_ev = enroll(&self_k, "Solo");
+        let self_id = node_id(&self_ev);
+        let c = signed_container(&self_k, vec![self_ev], &self_id);
 
         let got = resolve_dead_node(&c, None).unwrap();
         assert_eq!(got.node_id_hex, self_id);

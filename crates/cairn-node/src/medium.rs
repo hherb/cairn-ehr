@@ -10,12 +10,28 @@
 //! The marker is SIGNED when the node's key is available at backup, UNSIGNED otherwise — an
 //! unsigned marker never blocks a backup, it just travels flagged for caution. The safety
 //! asymmetry we want (mirrors "uncertainty can only withhold an auto-link"): tampering with a
-//! SIGNED marker can only WITHHOLD (delete → restore fails closed to a manual choice), never
-//! MISDIRECT — an attacker holds no private key (the signing key is never backed up), so a
-//! *wrong* self-attestation cannot be forged.
+//! SIGNED marker can only WITHHOLD (delete/corrupt → restore fails closed to a manual choice),
+//! and an attacker holds no private key (the signing key is never backed up) so a *wrong*
+//! self-attestation cannot be FORGED.
 //!
-//! This module is PURE (no DB, no I/O): serialization, parsing, and signature checks only,
-//! so it is trivially unit-testable and reusable by both the backup and restore paths.
+//! KNOWN LIMITATION — the converged-peer splice (issue #53 follow-up). The "never misdirect"
+//! property is NOT absolute. The medium bind ([`event_set_commitment`]) ties a marker to the
+//! exact event SET it sits beside, which rejects a marker lifted from a backup with a *different*
+//! set. But two fully-converged mutual peers hold BYTE-IDENTICAL event sets (that is the very
+//! premise of this marker), so their commitments are identical too. An attacker who physically
+//! holds a PEER's genuine cold medium can therefore splice that peer's valid signed marker onto
+//! this one and `verify_self_attestation` cannot tell them apart — there is no signal in the
+//! shared bytes that distinguishes the two media. The splice is IMPOSSIBLE on a sole-enroll
+//! medium (a foreign marker would name an absent enroll → fail closed), so the residual risk is
+//! exactly the multi-enroll / federated case. Its defences are not in this module: restore-time
+//! provenance ([`crate::restore::Provenance::SignedFederated`] → confirm the echoed name/address)
+//! plus physical custody of the medium. So: forgery-proof always; misdirect-proof for sole-enroll
+//! media and for splices from a *different* set; a peer-medium splice between converged peers is a
+//! confirm-on-restore residual, not a silent misdirect.
+//!
+//! This module does no DB and no I/O (serialization, parsing, and signature checks only), so it
+//! is trivially unit-testable and reusable by both the backup and restore paths. It is *mostly*
+//! pure — [`build_self_attestation`] is the one exception (it mints a fresh UUID, see its docs).
 
 use cairn_event::{event_address, sign, verify_self_described, EventBody, Hlc, SigningKey};
 
@@ -55,8 +71,9 @@ pub enum SelfMarker {
     /// The self node-id (hex content-address), recorded without a signature — closes the
     /// operator-typo footgun but is not tamper-evident.
     Unsigned(String),
-    /// A signed `node.self_attested` event (bytes) authored by the live node key — tamper can
-    /// only withhold it, never forge a wrong one (see module docs).
+    /// A signed `node.self_attested` event (bytes) authored by the live node key. Cannot be
+    /// FORGED (no off-medium private key) and is bound to its event set; the residual is a
+    /// converged-peer splice on a multi-enroll medium (see module docs) — never a silent forge.
     Signed(Vec<u8>),
 }
 
@@ -89,11 +106,13 @@ pub fn enrolls(events: &[Vec<u8>]) -> Vec<(String, EventBody)> {
 // Self-attestation (the SIGNED marker payload).
 // ---------------------------------------------------------------------------
 
-/// A deterministic, order-independent commitment to a medium's event set. Each event's
+/// A deterministic, order-independent commitment to a medium's event SET. Each event's
 /// content-address is sorted (frame reordering — harmless under set-union — does not change it),
-/// concatenated, and hashed. Pure. BINDS a self-attestation to the exact medium it was written
-/// for: a genuine attestation lifted from another node's backup commits to a different set, and
-/// adding/removing any event changes the commitment — both then fail closed.
+/// concatenated, and hashed. Pure. BINDS a self-attestation to the exact event set it was written
+/// for: a genuine attestation lifted from a backup whose set DIFFERS commits to a different value,
+/// and adding/removing any event changes it — both then fail closed. Caveat (see module docs): two
+/// fully-converged peers hold IDENTICAL sets, so this commitment is identical on both and cannot
+/// distinguish their media — it binds to set CONTENT, not to a node.
 pub fn event_set_commitment(events: &[Vec<u8>]) -> String {
     let mut addresses: Vec<Vec<u8>> = events.iter().map(|e| event_address(e)).collect();
     addresses.sort();
@@ -102,11 +121,15 @@ pub fn event_set_commitment(events: &[Vec<u8>]) -> String {
 }
 
 /// Build a signed self-attestation naming `self_node_id_hex`, authored by the live node key and
-/// BOUND to the `events` it will be stored alongside (via [`event_set_commitment`]). Pure (no
-/// DB): the attestation is never ordered against anything, so it carries a fixed 0/0 HLC. It
+/// BOUND to the `events` it will be stored alongside (via [`event_set_commitment`]). No DB, but
+/// NOT pure: it mints a fresh `event_id` (`Uuid::now_v7`, i.e. wall-clock + randomness), so two
+/// calls differ. That is harmless — the `event_id` is neither committed nor checked on verify;
+/// the attestation's authority comes entirely from its signature + the commitment + the signer
+/// bind. The attestation is never ordered against anything, so it carries a fixed 0/0 HLC. It
 /// lives in the backup container only — never inserted into `node_event`, never synced — so it
-/// cannot converge away the local self-distinction it records, and the commitment ties it to
-/// THIS medium so it cannot be replayed onto another.
+/// cannot converge away the local self-distinction it records, and the commitment ties it to this
+/// medium's event SET so it cannot be replayed onto a backup with a DIFFERENT set (a converged
+/// peer's identical-set medium is the documented exception — see module docs).
 pub fn build_self_attestation(
     sk: &SigningKey,
     key_id: &str,
@@ -133,13 +156,15 @@ pub fn build_self_attestation(
 }
 
 /// Verify a signed self-attestation against the medium it sits on. Returns `Some(self_id_hex)`
-/// IFF every check holds, else `None` (fail closed — a tampered, mismatched, or foreign marker
-/// withholds the auto-detection, never misdirects it):
+/// IFF every check holds, else `None` (fail closed — a tampered, mismatched, or foreign-set
+/// marker withholds the auto-detection rather than misdirecting it):
 ///   - the attestation's own signature verifies and it is a `node.self_attested`;
 ///   - it names a `self_node_id_hex`;
-///   - its `event_set_commitment` matches THIS medium's events (the MEDIUM bind: a genuine
-///     attestation lifted from another backup commits to a different set and is rejected —
-///     closes the cross-medium splice the signature/signer bind alone cannot);
+///   - its `event_set_commitment` matches THIS medium's event set (the MEDIUM-SET bind: a genuine
+///     attestation lifted from a backup whose set DIFFERS commits to a different value and is
+///     rejected). NOTE: this binds to set CONTENT, so it CANNOT reject a peer's genuine marker
+///     spliced from a byte-identical converged medium — that residual is handled at restore time
+///     (see [`crate::restore::Provenance::SignedFederated`] and the module docs), not here;
 ///   - that id is the content-address of an enroll ON THIS medium; AND
 ///   - that enroll's genesis signer == the attestation's signer (the UNFORGEABLE bind: only the
 ///     node that signed its own genesis could have signed this attestation).
@@ -497,24 +522,50 @@ mod tests {
     }
 
     #[test]
-    fn signed_attestation_rejected_when_spliced_onto_a_foreign_medium() {
-        // Cross-medium splice: lift node B's GENUINE attestation+genesis onto a DIFFERENT
-        // medium (here A's medium, which also holds B's genesis after federation). The
-        // attestation's signature and signer-bind both pass — but it commits to B's OWN event
-        // set, not this medium's, so it must fail closed. Tamper can only WITHHOLD, never
-        // misdirect (the property the Signed path claims).
+    fn signed_attestation_rejected_when_spliced_onto_a_medium_with_a_different_set() {
+        // Cross-medium splice onto a medium whose event SET DIFFERS: lift node B's GENUINE
+        // attestation+genesis onto A's medium, which holds A's genesis + B's genesis. The
+        // attestation's signature and signer-bind both pass — but it commits to B's OWN (smaller)
+        // event set, not this medium's, so the MEDIUM-SET bind rejects it. This is the splice the
+        // commitment DOES close. The converged-identical-set case is the documented residual the
+        // commitment cannot close — see the next test.
         let b = sk();
         let g_b = enroll(&b, "B");
         let b_events = vec![g_b.clone()];
         let att_b = build_self_attestation(&b, &kid(&b), &node_id(&g_b), &b_events);
-        // Target medium: A's genesis + B's genesis (a federated set B's attestation did NOT
-        // commit to). The splice must NOT resolve B as self here.
+        // Target medium: A's genesis + B's genesis (a set B's attestation did NOT commit to).
         let a = sk();
         let foreign_medium = vec![enroll(&a, "A"), g_b];
         assert_eq!(
             verify_self_attestation(&att_b, &foreign_medium),
             None,
-            "a foreign attestation spliced onto another medium must fail the commitment check"
+            "a marker committing to a DIFFERENT set must fail the commitment check"
+        );
+    }
+
+    #[test]
+    fn signed_attestation_cannot_reject_a_peer_marker_on_a_byte_identical_converged_medium() {
+        // KNOWN LIMITATION (issue #53 follow-up — surfaced by code review): two fully-converged
+        // mutual peers hold BYTE-IDENTICAL event sets, so `event_set_commitment` is identical on
+        // both media. A peer's GENUINE signed marker therefore verifies against this medium's
+        // (identical) set — the commitment binds to set CONTENT and so cannot tell the two media
+        // apart. This test pins that reality honestly: the Signed path is forgery-proof and
+        // splice-proof for a DIFFERENT set, but it CANNOT, on its own, reject a peer's valid
+        // marker spliced between converged peers. The defence lives at restore time
+        // (`Provenance::SignedFederated` → confirm name/address) + physical custody, NOT here.
+        let a = sk();
+        let b = sk();
+        let g_a = enroll(&a, "A");
+        let g_b = enroll(&b, "B");
+        // The converged set both peers hold (identical bytes on each peer's own medium).
+        let converged = vec![g_a, g_b.clone()];
+        // B's GENUINE marker, built over the converged set as B's own backup would build it.
+        let att_b = build_self_attestation(&b, &kid(&b), &node_id(&g_b), &converged);
+        // Spliced onto A's medium, which holds the IDENTICAL converged set → still verifies as B.
+        assert_eq!(
+            verify_self_attestation(&att_b, &converged),
+            Some(node_id(&g_b)),
+            "on a byte-identical converged medium the commitment cannot reject a peer's genuine marker"
         );
     }
 

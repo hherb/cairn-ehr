@@ -471,11 +471,13 @@ async fn main() -> anyhow::Result<()> {
                 to.display()
             );
             // How trustworthy is this medium's identity marker? An unsigned medium travels
-            // flagged for extra care (the safety asymmetry: tampering with a signed marker can
-            // only WITHHOLD self-detection on restore, never misdirect it — see crate::medium).
+            // flagged for extra care. A signed marker is UNFORGEABLE (no off-medium private key)
+            // and bound to its event set; on a sole-enroll medium it is fully tamper-evident, on a
+            // federated medium restore will ask for confirmation (a converged peer's medium could
+            // be spliced — see crate::medium / restore::Provenance). Store any medium with care.
             match report.marker {
                 cairn_node::backup::WrittenMarker::Signed =>
-                    println!("self-marker  SIGNED (tamper-evident on restore)"),
+                    println!("self-marker  SIGNED (unforgeable; identity confirmed on restore)"),
                 cairn_node::backup::WrittenMarker::Unsigned => eprintln!(
                     "WARNING: self-marker UNSIGNED — this medium is operator-error-safe but NOT \
                      tamper-evident; set CAIRN_KEY_PASSPHRASE / --passphrase (or use a plaintext \
@@ -545,15 +547,23 @@ async fn main() -> anyhow::Result<()> {
             }
             // 2. Resolve this node's OWN genesis on the medium (the dead node to supersede),
             //    from the medium's container-level self-marker — the events alone cannot say
-            //    which enroll is self (set-union convergence; issue #53). A SIGNED marker is
-            //    authoritative + tamper-evident; UNSIGNED / no marker is flagged for operator
-            //    confirmation below. An explicit --superseded-node is validated against the
-            //    marker and rejected fail-closed if it names a peer or an off-medium id.
+            //    which enroll is self (set-union convergence; issue #53). A SIGNED marker on a
+            //    sole-enroll medium is authoritative + tamper-evident; on a federated/converged
+            //    (multi-enroll) medium it resolves self but carries a residual peer-medium splice
+            //    risk (confirm below); UNSIGNED / no marker is flagged for confirmation too. An
+            //    explicit --superseded-node is validated against the marker and rejected
+            //    fail-closed if it names a peer or an off-medium id.
             let dead = cairn_node::restore::resolve_dead_node(&container, superseded_node.as_deref())?;
             use cairn_node::restore::Provenance;
             match dead.provenance {
                 Provenance::Signed =>
                     println!("self-identity confirmed by a signed self-marker (tamper-evident)"),
+                Provenance::SignedFederated => eprintln!(
+                    "WARNING: this is a FEDERATED medium (carries peers' genesis too). The signed \
+                     self-marker resolves self, but a converged peer's medium holds a byte-identical \
+                     event set, so a peer's genuine marker could be spliced here — the signature \
+                     alone cannot rule that out. Confirm the restored node's name/address printed \
+                     below match THIS node before relying on it."),
                 Provenance::Unsigned => eprintln!(
                     "WARNING: this medium's self-marker is UNSIGNED (not tamper-evident). Confirm \
                      the restored node's name/address printed below match THIS node before relying on it."),
