@@ -482,7 +482,7 @@ not NVMe**. The run surfaced a real, **deployment-relevant power finding** worth
 with only a `pg16` feature** — it **does not build against PostgreSQL 18**, the deployment floor the runbook
 tells you to install. So the DB-backed gates (B1/B2/B5) were run on **PG 16.14** (PG 18.4 was also installed,
 but only the crypto-only B3/B4 path, which needs no DB, can use it). This is a genuine inconsistency between
-[`PI-RUNBOOK.md`](../../poc/walking-skeleton/PI-RUNBOOK.md) ("record on PG 18") and the code, and a **build-prep
+`poc/walking-skeleton/PI-RUNBOOK.md` ("record on PG 18") and the code, and a **build-prep
 to-do: port `cairn_pgx` to a pgrx release with PG 18 support** before the clean re-run.
 
 **Bonus validation:** `cairn_pgx` *built, linked, installed, and loaded cleanly on Pi 5 arm64* (1.08 MB `.so`,
