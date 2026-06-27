@@ -1,8 +1,8 @@
 //! Integration coverage for the §4.4 demographic identifier assertion: the in-DB
 //! floor + the set-union patient_identifier projection. Real Postgres, gated on
-//! $CAIRN_TEST_PG, serialized cluster-wide via db::test_serial_guard (the shared-DB
-//! + TRUNCATE pattern, identical to attestation.rs). Matching/veto is a separate
-//! subsystem and is NOT exercised here.
+//! `$CAIRN_TEST_PG`, serialized cluster-wide via `db::test_serial_guard` (the
+//! shared-DB + TRUNCATE pattern, identical to `attestation.rs`). Matching/veto is
+//! a separate subsystem and is NOT exercised here.
 use cairn_event::demographics::{identifier_assertion_body, render_identifier_twin, IdentifierAssertion};
 use cairn_event::{generate_key, sign, EventBody, Hlc, SigningKey};
 use cairn_node::db;
@@ -127,4 +127,119 @@ async fn honest_degradation_no_normalized_no_profile_accepted() {
         "SELECT match_key FROM patient_identifier WHERE patient_id::text=$1", &[&p_str])
         .await.unwrap().get(0);
     assert_eq!(mk, "OLD-CARD-77", "match_key falls back to value when normalized absent");
+}
+
+// ── Task 4: floor rejection tests + legacy derived-twin regression ────────────
+
+/// Submit a raw body (bypassing the typed builder) so we can author floor-violating
+/// payloads the safe builder would never produce.  Returns the submit result so the
+/// caller can assert the error and inspect side-effects.
+async fn submit_raw_demographic(
+    c: &Client, sk: &SigningKey, kid: &str, patient: Uuid,
+    payload: serde_json::Value, twin: Option<&str>,
+) -> Result<u64, tokio_postgres::Error> {
+    let body = EventBody {
+        event_id: Uuid::now_v7().to_string(),
+        patient_id: patient.to_string(),
+        event_type: "demographic.identifier.asserted".into(),
+        schema_version: "demographic.identifier/1".into(),
+        hlc: Hlc { wall: 1, counter: 0, node_origin: "n".into() },
+        t_effective: None, signer_key_id: kid.into(),
+        contributors: serde_json::json!([{"actor_id": kid, "role": "recorded"}]),
+        payload, attachments: vec![],
+        plaintext_twin: twin.map(|t| t.to_string()),
+    };
+    let signed = sign(&body, sk).unwrap();
+    c.execute("SELECT submit_event($1)", &[&signed.signed_bytes]).await
+}
+
+/// Assert that the floor REJECTS the payload (submit errors) AND that nothing was
+/// written — neither to `event_log` nor to the `patient_identifier` projection.
+/// Uses `patient_id::text = $1` (string param) matching the project's tokio-postgres
+/// convention (no uuid ToSql feature in this project).
+async fn assert_rejected_and_empty(
+    c: &Client, sk: &SigningKey, kid: &str, p: Uuid,
+    payload: serde_json::Value, twin: Option<&str>, label: &str,
+) {
+    let r = submit_raw_demographic(c, sk, kid, p, payload, twin).await;
+    assert!(r.is_err(), "{label}: must be rejected by the floor");
+    let p_str = p.to_string();
+    let n: i64 = c.query_one(
+        "SELECT count(*) FROM event_log WHERE patient_id::text=$1", &[&p_str])
+        .await.unwrap().get(0);
+    assert_eq!(n, 0, "{label}: nothing appended to event_log");
+    let m: i64 = c.query_one(
+        "SELECT count(*) FROM patient_identifier WHERE patient_id::text=$1", &[&p_str])
+        .await.unwrap().get(0);
+    assert_eq!(m, 0, "{label}: nothing projected");
+}
+
+/// Adversarial gate: prove the in-DB floor rejects every structural violation that
+/// the safe typed builder (`identifier_assertion_body`) would never produce.  Each
+/// sub-case gets its own fresh UUID so failures are independent and the TRUNCATE /
+/// serial-guard scope covers all of them.
+#[tokio::test]
+async fn floor_rejects_each_invariant_violation() {
+    let Some(base) = cs() else { eprintln!("skipped: set CAIRN_TEST_PG"); return; };
+    let _guard = db::test_serial_guard(&base).await.unwrap();
+    let c = db::connect_and_load_schema(&base).await.unwrap();
+    let (sk, kid) = setup(&c).await;
+    // A valid authored twin used for cases where only the payload is malformed.
+    let good_twin = Some("nhs-number, document-verified: x");
+
+    // value empty — §4.4 mandatory, non-empty string
+    assert_rejected_and_empty(&c, &sk, &kid, Uuid::now_v7(),
+        serde_json::json!({"field":"identifier","value":"","system":"nhs-number","provenance":"x"}),
+        good_twin, "value-empty").await;
+    // system missing — §4.4 mandatory
+    assert_rejected_and_empty(&c, &sk, &kid, Uuid::now_v7(),
+        serde_json::json!({"field":"identifier","value":"v","provenance":"x"}),
+        good_twin, "system-missing").await;
+    // provenance missing — §4.1 ladder mandatory
+    assert_rejected_and_empty(&c, &sk, &kid, Uuid::now_v7(),
+        serde_json::json!({"field":"identifier","value":"v","system":"nhs-number"}),
+        good_twin, "provenance-missing").await;
+    // normalized non-text — §4.4 requires string when present
+    assert_rejected_and_empty(&c, &sk, &kid, Uuid::now_v7(),
+        serde_json::json!({"field":"identifier","value":"v","system":"s","provenance":"x","normalized":123,"profile":"p@h"}),
+        good_twin, "normalized-non-text").await;
+    // normalized without profile — §4.4 materialised-key rule: profile names the bundle
+    assert_rejected_and_empty(&c, &sk, &kid, Uuid::now_v7(),
+        serde_json::json!({"field":"identifier","value":"v","system":"s","provenance":"x","normalized":"vv"}),
+        good_twin, "normalized-without-profile").await;
+    // empty authored twin — §4.5: demographic assertions must carry a non-empty twin
+    assert_rejected_and_empty(&c, &sk, &kid, Uuid::now_v7(),
+        serde_json::json!({"field":"identifier","value":"v","system":"s","provenance":"x"}),
+        Some(""), "empty-twin").await;
+}
+
+/// Regression guard: a legacy event type with NO authored twin must still be accepted
+/// by the updated submit_event and receive the derived skeleton twin (not a panic or
+/// a rejection).  Proves the §4.5 demographic branch does not break ordinary events.
+#[tokio::test]
+async fn legacy_patient_created_still_uses_derived_twin() {
+    let Some(base) = cs() else { eprintln!("skipped: set CAIRN_TEST_PG"); return; };
+    let _guard = db::test_serial_guard(&base).await.unwrap();
+    let c = db::connect_and_load_schema(&base).await.unwrap();
+    let (sk, kid) = setup(&c).await;
+    let p = Uuid::now_v7();
+    // A legacy additive event with NO authored twin must still be accepted and get
+    // the derived skeleton twin (the demographics-only twin scope, regression guard).
+    let body = EventBody {
+        event_id: Uuid::now_v7().to_string(), patient_id: p.to_string(),
+        event_type: "patient.created".into(), schema_version: "demo/1".into(),
+        hlc: Hlc { wall: 1, counter: 0, node_origin: "n".into() }, t_effective: None,
+        signer_key_id: kid.clone(),
+        contributors: serde_json::json!([{"actor_id": kid, "role": "recorded"}]),
+        payload: serde_json::json!({"name":"A B","dob":"1980","sex":"x"}),
+        attachments: vec![], plaintext_twin: None,
+    };
+    let signed = sign(&body, &sk).unwrap();
+    c.execute("SELECT submit_event($1)", &[&signed.signed_bytes]).await
+        .expect("legacy event with no authored twin still accepted");
+    // Retrieve the derived twin using event_id::text cast (no uuid ToSql in this project).
+    let twin: String = c.query_one(
+        "SELECT plaintext_twin FROM event_log WHERE event_id::text=$1",
+        &[&body.event_id]).await.unwrap().get(0);
+    assert!(twin.starts_with("[patient.created]"), "legacy derives the skeleton twin");
 }
