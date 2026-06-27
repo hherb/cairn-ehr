@@ -80,7 +80,7 @@ An identifier is a §4.1 assertion whose value has these facets:
 
 ## Matching & honest degradation (the safety-critical rule)
 
-**Same-system mismatch veto.** Per identity §4.2/§5.2, *same `system`, different value* is
+**Same-system mismatch veto.** Per demographics §4.2 / identity §5.2, *same `system`, different value* is
 very strong evidence against link — a hard veto that **forces a human decision, never an
 auto-link and never an auto-reject** (an auto-reject is itself a silent false split).
 "Different value" means **different `normalized` forms**, not different `value` strings —
