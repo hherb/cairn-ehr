@@ -24,6 +24,8 @@ use serde::{Deserialize, Serialize};
 // directly — the keypair type travels with this crate's signing API.
 pub use ed25519_dalek::{SigningKey, VerifyingKey};
 
+pub mod demographics;
+
 pub const SHA2_256_MULTIHASH_PREFIX: [u8; 2] = [0x12, 0x20]; // sha2-256, 32 bytes
 pub const BLAKE3_MULTIHASH_PREFIX: [u8; 2] = [0x1e, 0x20]; // blake3, 32 bytes
 
