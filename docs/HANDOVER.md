@@ -284,7 +284,8 @@ Medium-style write-up. **Remaining non-load-bearing gaps:** from-source PG build
   **names/DOB/sex** fields (these add provenance-precedence + recency projection rules); then the §5.2 **matching
   pipeline + the §4.4 hard veto** (advisory matcher — Python/fit-for-purpose); then **globalise the authored twin** to
   every event type (retire the `db/010` step-7 `ELSE` skeleton-twin + its TODO). DB-gated tests need
-  `CAIRN_TEST_PG="host=127.0.0.1 port=5532 user=hherb dbname=cairn_test"` (PG18+cairn_pgx). Resolve **[issue #67](https://github.com/cairn-ehr/cairn-ehr/issues/67)** (db/008 SCHEMA gap) along the way.
+  `CAIRN_TEST_PG="host=127.0.0.1 port=5532 user=hherb dbname=cairn_test"` (PG18+cairn_pgx). ([Issue #67](https://github.com/cairn-ehr/cairn-ehr/issues/67),
+  the db/008 SCHEMA gap, is **closed** — confirmed intentional, db/008 is a Bet-B spike artefact, documented in `db.rs`.)
 - **Clinical case-mining** — historically the highest-signal generative mode; the event-overlay + key-custody +
   actor primitives have absorbed every case so far without new architecture. Bring a real ED/hospital failure mode.
 - **Dedupe transitive RustCrypto dep versions** in `Cargo.lock` ([issue #11](https://github.com/cairn-ehr/cairn-ehr/issues/11)) — supply-chain
