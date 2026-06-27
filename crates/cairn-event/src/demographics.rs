@@ -41,6 +41,51 @@ pub fn render_identifier_twin(a: &IdentifierAssertion) -> String {
     format!("{}, {}: {}", a.system, a.provenance, a.value)
 }
 
+/// Build a generic §4.2 demographic-field assertion payload (the value of
+/// `EventBody.payload`). `field` is the discriminator a node's projection keys on;
+/// `facets` is an optional per-field bag (DOB's precision/basis), omitted entirely
+/// when absent so the in-DB floor's key-presence checks see exactly what was asserted.
+pub fn demographic_field_body(
+    field: &str, value: &str, facets: Option<Value>, provenance: &str,
+) -> Value {
+    let mut p = json!({ "field": field, "provenance": provenance, "value": value });
+    let obj = p.as_object_mut().expect("json! built an object");
+    if let Some(f) = facets { obj.insert("facets".into(), f); }
+    p
+}
+
+/// One §4.2 date-of-birth assertion. `precision` is mandatory (principle 4 — a date
+/// must declare how precise it is; the in-DB floor rejects a dob with no precision).
+/// `basis` (how the date was derived) is optional and omitted when `None`.
+pub fn dob_assertion_body(
+    value: &str, precision: &str, basis: Option<&str>, provenance: &str,
+) -> Value {
+    let mut facets = json!({ "precision": precision });
+    if let Some(b) = basis {
+        facets.as_object_mut().expect("json! built an object").insert("basis".into(), json!(b));
+    }
+    demographic_field_body("dob", value, Some(facets), provenance)
+}
+
+/// One §4.2 sex-at-birth assertion. `value` is an OPEN string — intersex /
+/// indeterminate / unknown must be recordable (principle 4); never a closed enum.
+pub fn sex_at_birth_assertion_body(value: &str, provenance: &str) -> Value {
+    demographic_field_body("sex-at-birth", value, None, provenance)
+}
+
+/// Render the §4.5 materialised legibility twin for a date of birth:
+/// `"Date of birth (<provenance>): <value> (<precision>)"`. Profile-independent —
+/// readable on a node that has never seen the dob field's schema.
+pub fn render_dob_twin(value: &str, precision: &str, provenance: &str) -> String {
+    format!("Date of birth ({provenance}): {value} ({precision})")
+}
+
+/// Render the §4.5 legibility twin for sex-at-birth:
+/// `"Sex at birth (<provenance>): <value>"`.
+pub fn render_sex_at_birth_twin(value: &str, provenance: &str) -> String {
+    format!("Sex at birth ({provenance}): {value}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -84,6 +129,46 @@ mod tests {
         assert_eq!(
             render_identifier_twin(&sample()),
             "nhs-number, document-verified: 943 476 5919"
+        );
+    }
+
+    #[test]
+    fn dob_body_carries_field_value_provenance_and_facets() {
+        let v = dob_assertion_body("1980-07-15", "day", Some("document"), "document-verified");
+        assert_eq!(v["field"], "dob");
+        assert_eq!(v["value"], "1980-07-15");
+        assert_eq!(v["provenance"], "document-verified");
+        assert_eq!(v["facets"]["precision"], "day");
+        assert_eq!(v["facets"]["basis"], "document");
+    }
+
+    #[test]
+    fn dob_body_omits_absent_basis_never_null() {
+        let v = dob_assertion_body("1980", "year", None, "patient-stated");
+        assert_eq!(v["facets"]["precision"], "year");
+        let facets = v["facets"].as_object().unwrap();
+        assert!(!facets.contains_key("basis"), "absent basis must be omitted, not null");
+    }
+
+    #[test]
+    fn sex_at_birth_body_has_no_facets() {
+        let v = sex_at_birth_assertion_body("female", "clinician-observed");
+        assert_eq!(v["field"], "sex-at-birth");
+        assert_eq!(v["value"], "female");
+        assert_eq!(v["provenance"], "clinician-observed");
+        let obj = v.as_object().unwrap();
+        assert!(!obj.contains_key("facets"), "sex-at-birth carries no facets bag");
+    }
+
+    #[test]
+    fn dob_and_sex_at_birth_twins_render_profile_independent_plaintext() {
+        assert_eq!(
+            render_dob_twin("1980", "year", "patient-stated"),
+            "Date of birth (patient-stated): 1980 (year)"
+        );
+        assert_eq!(
+            render_sex_at_birth_twin("female", "clinician-observed"),
+            "Sex at birth (clinician-observed): female"
         );
     }
 }
