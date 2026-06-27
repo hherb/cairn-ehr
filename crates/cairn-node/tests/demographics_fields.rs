@@ -200,6 +200,12 @@ async fn floor_rejects_each_invariant_violation() {
     assert_rejected_and_empty(&c, &sk, &kid, Uuid::now_v7(),
         serde_json::json!({"field":"dob","value":"1980","provenance":"document-verified"}),
         good, "dob-missing-precision").await;
+    // dob facets present but not an object — the precision check sees a non-object
+    // facets (precision resolves to NULL), so the dob structural floor rejects it.
+    // (The safe builder can't produce this; a raw/hostile client could.)
+    assert_rejected_and_empty(&c, &sk, &kid, Uuid::now_v7(),
+        serde_json::json!({"field":"dob","value":"1980","provenance":"document-verified","facets":"oops"}),
+        good, "dob-facets-not-object").await;
     // empty authored twin — §4.5
     assert_rejected_and_empty(&c, &sk, &kid, Uuid::now_v7(),
         serde_json::json!({"field":"sex-at-birth","value":"female","provenance":"clinician-observed"}),
@@ -297,4 +303,27 @@ async fn regression_identifier_and_legacy_patient_created_still_work() {
         "SELECT plaintext_twin FROM event_log WHERE event_id::text=$1", &[&body2.event_id])
         .await.unwrap().get(0);
     assert!(twin.starts_with("[patient.created]"), "legacy still derives the skeleton twin");
+}
+
+#[tokio::test]
+async fn fact_proven_displaces_document_verified() {
+    let Some(base) = cs() else { eprintln!("skipped: set CAIRN_TEST_PG"); return; };
+    let _guard = db::test_serial_guard(&base).await.unwrap();
+    let c = db::connect_and_load_schema(&base).await.unwrap();
+    let (sk, kid) = setup(&c).await;
+    let p = Uuid::now_v7();
+
+    // A document-verified dob (rank 60), then a later fact-proven dob (rank 70).
+    // fact-proven is the new top tier, so it WINS — it can override what an official
+    // document merely attests. This pins the mechanical winner; the design doc flags
+    // the clinical contestability of fact-proven auto-override as a deferred,
+    // sex-expansion-slice decision (legibility/event_log retains both regardless).
+    submit_field(&c, &sk, &kid, p, 1,
+        dob_assertion_body("1980-07-15", "day", Some("document"), "document-verified"),
+        Some(&render_dob_twin("1980-07-15", "day", "document-verified"))).await.unwrap();
+    assert_eq!(dob_value(&c, p).await, "1980-07-15");
+    submit_field(&c, &sk, &kid, p, 2,
+        dob_assertion_body("1979-03-02", "day", Some("genetic-test"), "fact-proven"),
+        Some(&render_dob_twin("1979-03-02", "day", "fact-proven"))).await.unwrap();
+    assert_eq!(dob_value(&c, p).await, "1979-03-02", "fact-proven (70) displaces document-verified (60)");
 }
