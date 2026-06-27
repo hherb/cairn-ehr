@@ -788,19 +788,34 @@ mod tests {
     }
 
     // Bytes authored before the field existed must still decode (forward-compat).
+    // Encode from a GENUINE pre-field struct (no `plaintext_twin` at all) so this test
+    // is self-contained: it proves the decode path defaults a missing key to None on
+    // its own, and would still catch a regression even if `skip_serializing_if` were
+    // removed (it does not rely on the wire-identity test holding).
     #[test]
     fn legacy_bytes_decode_with_twin_none() {
-        let body = EventBody {
-            event_id: "e".into(), patient_id: "p".into(), event_type: "note.added".into(),
-            schema_version: "advisory/1".into(),
-            hlc: Hlc { wall: 1, counter: 0, node_origin: "n".into() }, t_effective: None,
-            signer_key_id: "k".into(),
-            contributors: serde_json::json!([]), payload: serde_json::json!({}),
-            attachments: vec![], plaintext_twin: None,
+        #[derive(serde::Serialize)]
+        struct LegacyBody<'a> {
+            event_id: &'a str, patient_id: &'a str, event_type: &'a str,
+            schema_version: &'a str, hlc: &'a Hlc, t_effective: Option<String>,
+            signer_key_id: &'a str, contributors: &'a serde_json::Value,
+            payload: &'a serde_json::Value, attachments: &'a Vec<AttachmentRef>,
+        }
+        let hlc = Hlc { wall: 1, counter: 0, node_origin: "n".into() };
+        let contributors = serde_json::json!([]);
+        let payload = serde_json::json!({});
+        let attachments: Vec<AttachmentRef> = vec![];
+        let legacy = LegacyBody {
+            event_id: "e", patient_id: "p", event_type: "note.added",
+            schema_version: "advisory/1", hlc: &hlc, t_effective: None,
+            signer_key_id: "k", contributors: &contributors, payload: &payload,
+            attachments: &attachments,
         };
-        let bytes = canonical_cbor(&body).unwrap();
+        let mut bytes = Vec::new();
+        ciborium::into_writer(&legacy, &mut bytes).unwrap();
         let decoded: EventBody = ciborium::from_reader(&bytes[..]).unwrap();
-        assert_eq!(decoded.plaintext_twin, None);
+        assert_eq!(decoded.plaintext_twin, None,
+                   "a missing plaintext_twin key must decode to None (serde default)");
     }
 
     #[test]
