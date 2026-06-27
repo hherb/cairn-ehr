@@ -62,18 +62,23 @@ async fn happy_path_appends_and_projects_with_authored_twin() {
 
     // Projection: one row, keyed on the normalized match_key. Compare UUID columns
     // as text (cast the column) since tokio-postgres has no uuid ToSql in this project.
+    // Two single-table queries (not a join): the projection columns live on
+    // patient_identifier, the authored twin on event_log — joining them would fan out
+    // once a patient carries more than one identifier event.
     let p_str = p.to_string();
     let row = c.query_one(
-        "SELECT match_key, value, profile, provenance, plaintext_twin
-           FROM patient_identifier pi JOIN event_log el ON el.patient_id = pi.patient_id
-          WHERE pi.patient_id::text = $1", &[&p_str]).await.unwrap();
+        "SELECT match_key, value FROM patient_identifier WHERE patient_id::text = $1",
+        &[&p_str]).await.unwrap();
     let match_key: String = row.get(0);
     let value: String = row.get(1);
-    let twin: String = row.get(4);
     assert_eq!(match_key, "9434765919");
     assert_eq!(value, "943 476 5919");
-    assert_eq!(twin, "nhs-number, document-verified: 943 476 5919",
-               "the AUTHORED twin is stored (cairn_body passed the top-level field through)");
+    // The AUTHORED twin is stored verbatim (proving cairn_body passed the top-level
+    // plaintext_twin field through to submit_event, which carried it for a demographic event).
+    let twin: String = c.query_one(
+        "SELECT plaintext_twin FROM event_log WHERE patient_id::text = $1", &[&p_str])
+        .await.unwrap().get(0);
+    assert_eq!(twin, "nhs-number, document-verified: 943 476 5919");
 }
 
 #[tokio::test]
