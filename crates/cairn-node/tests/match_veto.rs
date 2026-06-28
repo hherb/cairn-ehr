@@ -255,3 +255,36 @@ async fn sex_at_birth_hard_veto_when_both_verified_differ() {
     assert_eq!(rows, vec![("sex-at-birth".into(), "hard_veto".into(), "sex-at-birth".into())]);
     assert!(has_hard_veto(&c, a, b).await);
 }
+
+#[tokio::test]
+async fn multiple_findings_identifier_and_dob() {
+    let Some(base) = cs() else { eprintln!("skipped: set CAIRN_TEST_PG"); return; };
+    let _guard = db::test_serial_guard(&base).await.unwrap();
+    let c = db::connect_and_load_schema(&base).await.unwrap();
+    let (sk, kid) = setup(&c).await;
+    let (a, b) = (Uuid::now_v7(), Uuid::now_v7());
+    submit_identifier(&c, &sk, &kid, a, 1, &idassert("medicare-au", "1000000000", Some("1000000000"))).await;
+    submit_identifier(&c, &sk, &kid, b, 2, &idassert("medicare-au", "2000000000", Some("2000000000"))).await;
+    submit_dob(&c, &sk, &kid, a, 3, "1980-03-15", "day", "document-verified").await;
+    submit_dob(&c, &sk, &kid, b, 4, "1980-03-16", "day", "document-verified").await;
+    let rows = veto_rows(&c, a, b).await;
+    // ORDER BY veto_kind, subject -> dob row before identifier row.
+    assert_eq!(rows, vec![
+        ("dob".into(), "hard_veto".into(), "dob".into()),
+        ("identifier".into(), "hard_veto".into(), "medicare-au".into()),
+    ]);
+    assert!(has_hard_veto(&c, a, b).await);
+}
+
+#[tokio::test]
+async fn veto_is_symmetric() {
+    let Some(base) = cs() else { eprintln!("skipped: set CAIRN_TEST_PG"); return; };
+    let _guard = db::test_serial_guard(&base).await.unwrap();
+    let c = db::connect_and_load_schema(&base).await.unwrap();
+    let (sk, kid) = setup(&c).await;
+    let (a, b) = (Uuid::now_v7(), Uuid::now_v7());
+    submit_identifier(&c, &sk, &kid, a, 1, &idassert("medicare-au", "1000000000", Some("1000000000"))).await;
+    submit_identifier(&c, &sk, &kid, b, 2, &idassert("medicare-au", "2000000000", Some("2000000000"))).await;
+    assert_eq!(veto_rows(&c, a, b).await, veto_rows(&c, b, a).await,
+               "cairn_match_veto(a,b) must equal cairn_match_veto(b,a)");
+}
