@@ -73,6 +73,22 @@ pub fn sex_at_birth_assertion_body(value: &str, provenance: &str) -> Value {
     demographic_field_body("sex-at-birth", value, None, provenance)
 }
 
+/// One §4.2 administrative-sex assertion — the legal/forms/billing gender marker
+/// (M/F/X on documents). `value` is an OPEN string (principle 4); the projection
+/// treats it provenance-first (db/013): a document-anchored marker an unverified
+/// self-claim must not displace.
+pub fn administrative_sex_assertion_body(value: &str, provenance: &str) -> Value {
+    demographic_field_body("administrative-sex", value, None, provenance)
+}
+
+/// One §4.2 gender-identity assertion — the patient's stated gender. `value` is an
+/// OPEN string (principle 4: non-binary / questioning / unknown all recordable).
+/// The projection treats it recency-first (db/013): the newest assertion wins
+/// regardless of provenance, so the patient's current stated identity always displays.
+pub fn gender_identity_assertion_body(value: &str, provenance: &str) -> Value {
+    demographic_field_body("gender-identity", value, None, provenance)
+}
+
 /// One §4.2 name assertion. `value` is the authored display string, carried
 /// verbatim ("田中 太郎", a mononym, a patronymic — culture-neutral as-authored;
 /// the core never parses or normalises it). `use_` is the recommended-but-open
@@ -104,6 +120,18 @@ pub fn render_dob_twin(value: &str, precision: &str, provenance: &str) -> String
 /// `"Sex at birth (<provenance>): <value>"`.
 pub fn render_sex_at_birth_twin(value: &str, provenance: &str) -> String {
     format!("Sex at birth ({provenance}): {value}")
+}
+
+/// Render the §4.5 legibility twin for administrative sex:
+/// `"Administrative sex (<provenance>): <value>"`.
+pub fn render_administrative_sex_twin(value: &str, provenance: &str) -> String {
+    format!("Administrative sex ({provenance}): {value}")
+}
+
+/// Render the §4.5 legibility twin for gender identity:
+/// `"Gender identity (<provenance>): <value>"`.
+pub fn render_gender_identity_twin(value: &str, provenance: &str) -> String {
+    format!("Gender identity ({provenance}): {value}")
 }
 
 #[cfg(test)]
@@ -219,6 +247,38 @@ mod tests {
         assert_eq!(
             render_name_twin("Mary", None, "patient-stated"),
             "Name (patient-stated): Mary"
+        );
+    }
+
+    #[test]
+    fn administrative_sex_body_has_no_facets() {
+        let v = administrative_sex_assertion_body("M", "document-verified");
+        assert_eq!(v["field"], "administrative-sex");
+        assert_eq!(v["value"], "M");
+        assert_eq!(v["provenance"], "document-verified");
+        let obj = v.as_object().unwrap();
+        assert!(!obj.contains_key("facets"), "administrative-sex carries no facets bag");
+    }
+
+    #[test]
+    fn gender_identity_body_has_no_facets() {
+        let v = gender_identity_assertion_body("non-binary", "patient-stated");
+        assert_eq!(v["field"], "gender-identity");
+        assert_eq!(v["value"], "non-binary");
+        assert_eq!(v["provenance"], "patient-stated");
+        let obj = v.as_object().unwrap();
+        assert!(!obj.contains_key("facets"), "gender-identity carries no facets bag");
+    }
+
+    #[test]
+    fn sex_gender_twins_render_profile_independent_plaintext() {
+        assert_eq!(
+            render_administrative_sex_twin("M", "document-verified"),
+            "Administrative sex (document-verified): M"
+        );
+        assert_eq!(
+            render_gender_identity_twin("non-binary", "patient-stated"),
+            "Gender identity (patient-stated): non-binary"
         );
     }
 }

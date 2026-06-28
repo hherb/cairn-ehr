@@ -1,11 +1,28 @@
 # HANDOVER — Cairn
 
-**Session date:** 2026-06-28 · **Spec/ADRs:** v0.37 · **Phase:** architecture complete; **first production clinical
-surface under construction** — the demographics tier on `cairn-node` (slice 1 = §4.4 identifiers; slice 2 = §4.2 DOB +
-sex-at-birth; **slice 3 = §4.2 names, this session**). Viability proven by spikes (walking skeleton, advisory-actor
-contract, a first federating node, Postgres-on-Android).
+**Session date:** 2026-06-28 · **Spec/ADRs:** v0.38 · **Phase:** architecture complete; **first production clinical
+surface under construction** — the demographics tier on `cairn-node` (slices 1–4 done; §4.3 address + §5.2 matcher next).
+Viability proven by spikes (walking skeleton, advisory-actor contract, a first federating node, Postgres-on-Android).
 
-**This session (2026-06-28):** built demographics **slice 3 = the §4.2 names field** — a retained-set
+**This session (2026-06-28):** built demographics **slice 4 = the two remaining §4.2 sex/gender fields** on the existing
+`demographic.field.asserted` spine (`db/011`). **Administrative-sex** → provenance-first (document-anchored marker; recency
+wins among equal provenance — the same ordering as DOB/sex-at-birth). **Gender-identity** → recency-first regardless of
+provenance (the inverse: the patient's current stated identity always wins; provenance still feeds the §5.2 matcher).
+Mechanism: one IMMUTABLE `cairn_demographic_field_policy(field)` classifier (`db/013_demographics_sex_gender.sql`) drives
+BOTH the projection gate and the winner ordering; supersedes db/011's `patient_demographic_apply` via CREATE OR REPLACE;
+db/012 untouched; SCHEMA array 11→12. db/013 also adds an idempotent `cairn_demographic_backfill()` (called once at load)
+that re-folds events ALREADY in `event_log` for a now-projectable field — the ADR-0012 "carry now, project once the node
+understands the field" catch-up; without it a federated node that carried gender-identity/administrative-sex under db/011
+would never surface them on upgrade until a fresh assertion arrived (review fix on PR #73). **Karyotype resolved** (the
+slice-2 deferred decision): a distinct field, never
+displaces sex-at-birth (= assigned at birth); a `fact-proven` karyotype auto-displacing a `document-verified` assigned-sex
+is a field-semantics error — they record different facts. Spec/ADR only, no karyotype code. New
+**[ADR-0037](spec/decisions/0037-demographic-administrative-sex-and-per-field-winner-policy.md)**; spec 0.37 → 0.38. Additive-only: no new
+event type, no floor change, no `patient_demographic` schema change. **cairn-event** 3 new unit tests (29/29 suite green);
+**cairn-node** 6 new integration tests (`demographics_sex_gender` — incl. apply-order convergence + the backfill catch-up),
+slices 1–3 regress green; clippy clean. PR on `demographics-sex-gender`.
+
+**Prior session (2026-06-28):** built demographics **slice 3 = the §4.2 names field** — a retained-set
 `patient_name` projection (every asserted name kept as evidence) plus a `patient_name_current` display-winner VIEW.
 Display-winner rule: **recency-first within the legal-use tier** (HLC wall-clock wins; provenance/origin break ties);
 falls back to the most-recent name of any `use` when no legal name exists (the alias/transliteration-only case).
@@ -20,8 +37,9 @@ the same retained set. New **[ADR-0036](spec/decisions/0036-demographic-name-dis
 `name_assertion_body`/`render_name_twin` builders, and 8 integration + 3 unit tests (all green; slices 1–2 regress
 green; clippy clean). The display tier folds `use_key` to lower-case (deterministic `COLLATE "C"`) so the open `use`
 vocabulary's legal token is recognised case-insensitively ("Legal"/"LEGAL") and convergently across nodes, with
-`use_raw` preserving the authored casing. **Note:** #71 was merged early (before the review fix landed), so that
-case-insensitivity fix + this currency note ship in a small **follow-up PR** off `demographics-names`, not in #71.
+`use_raw` preserving the authored casing. **Note:** #71 merged early (before the review fix landed), so that
+case-insensitivity fix shipped in a small **follow-up [PR #72](https://github.com/cairn-ehr/cairn-ehr/pull/72)** off
+`demographics-names` (merged 2026-06-28). **Both #71 and #72 are now merged; slice 3 is complete on `main`.**
 
 **Prior session (2026-06-27):** built demographics **slice 2 = the §4.2 DOB + sex-at-birth provenance-locked fields**
 (brainstorm→spec→plan→subagent-SDD, 5 TDD tasks; spec+plan under `docs/superpowers/`). Introduces the **new mechanic
@@ -320,17 +338,13 @@ Medium-style write-up. **Remaining non-load-bearing gaps:** from-source PG build
 ## Open threads — pick one (today's-work menu)
 
 **Desk-doable now (no external dependency):**
-- **Demographics build — next slices** (the live build front; reuse the spine in `db/010`/`db/011` +
-  `cairn-event::demographics`). Slice 1 (§4.4 identifiers, set-union), slice 2 (§4.2 DOB + sex-at-birth,
-  provenance-precedence), and **slice 3 (§4.2 names, retained-set + recency-first display-winner) are done.**
-  Remaining: **administrative-sex** + **gender-identity** (new `field` values reusing the slice-2 spine;
-  gender-identity is the inverse *recency-wins* toggle) · the §4.3 **address** three-facet value
-  (display/geo/structured + locale profile). Then the §5.2 **matching pipeline + the §4.4 hard veto**
-  (advisory matcher — Python/fit-for-purpose) and **globalising the authored twin** to every event type
-  (retire the `cairn_event_twin` skeleton fallback + its TODO). The slice-2 design carries a **deferred
-  decision** for the sex-expansion slice: whether a `fact-proven` karyotype is the *same field* as assigned
-  sex-at-birth (it currently auto-displaces in the projection) or a distinct field. DB-gated tests need
-  `CAIRN_TEST_PG="host=127.0.0.1 port=5532 user=hherb dbname=cairn_test"` (PG18+cairn_pgx).
+- **Demographics build — next slices** (the live build front; reuse the spine in `db/010`/`db/011`/`db/013` +
+  `cairn-event::demographics`). Slices 1–4 are done (§4.4 identifiers, §4.2 DOB + sex-at-birth, §4.2 names,
+  §4.2 administrative-sex + gender-identity). **Karyotype** is resolved as a distinct field ([ADR-0037](spec/decisions/0037-demographic-administrative-sex-and-per-field-winner-policy.md)) — no code yet.
+  **Next:** the §4.3 **address** three-facet value (display/geo/structured + locale profile) · the §5.2
+  **matching pipeline + §4.4 hard veto** (advisory matcher — Python/fit-for-purpose) · **globalising the
+  authored twin** to every event type (retire the `cairn_event_twin` skeleton fallback + its TODO).
+  DB-gated tests need `CAIRN_TEST_PG="host=127.0.0.1 port=5532 user=hherb dbname=cairn_test"` (PG18+cairn_pgx).
 - **Clinical case-mining** — historically the highest-signal generative mode; the event-overlay + key-custody +
   actor primitives have absorbed every case so far without new architecture. Bring a real ED/hospital failure mode.
 - **Dedupe transitive RustCrypto dep versions** in `Cargo.lock` ([issue #11](https://github.com/cairn-ehr/cairn-ehr/issues/11)) — supply-chain
@@ -436,6 +450,7 @@ ADR before reopening any of these.
 | [0034](spec/decisions/0034-demographic-legibility-twin.md) | The demographic legibility twin: every demographic assertion legible without its profile | §4.5 (refines 0012) |
 | [0035](spec/decisions/0035-entities-relationships-and-provider-numbers.md) | The entity/relationship model + provider-number person×org (subject-kind partitioning) | §4.6 (refines 0033) |
 | [0036](spec/decisions/0036-demographic-name-display-recency-first.md) | Demographic name display: recency-first within the legal tier (diverges from DOB's provenance-lock by design) | §4.2 (refines 0014) |
+| [0037](spec/decisions/0037-demographic-administrative-sex-and-per-field-winner-policy.md) | Sex/gender/karyotype field semantics: per-field winner policy; karyotype is a distinct field, never displaces assigned sex-at-birth | §4.2 (refines 0011/0014) |
 
 **Ecosystem evals** (`docs/ecosystem/`, neither spec nor ADR): 0001 (kastellan/localmail plugins), 0003
 (reference-data sourcing — medicines/terminologies, fed ADR-0025).
