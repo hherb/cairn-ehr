@@ -14,8 +14,13 @@ is **NOT stored** — it is derivable from the immutable signed body via `cairn_
 Improved `cairn_twin_skeleton` now renders the payload — **closes the `db/005:29` TODO**. `cairn-event` gained pure
 `resolve_twin` + `materialise_generic_twin` (the single rule both cairn-sync and the SQL floor follow); `cairn-sync` now
 carries the authored twin on apply and materialises it on authoring. Tests: cairn-event 3 unit (36/36 suite green); cairn-node
-3 integration (`twin_globalise` — authored verbatim+flag; twin-less degrade+flag+payload; twin-less demographic hard-reject
-triple-gated); demographics + attestation regress green; clippy clean. **The "globalise the authored twin" deferral is now CLOSED.**
+4 integration (`twin_globalise` — authored verbatim+flag; twin-less degrade+flag+payload; twin-less demographic hard-reject
+triple-gated; + a whitespace-twin demographic hard-reject); demographics + attestation regress green; clippy clean. A
+**floor bug** surfaced by the whitespace hardening test was fixed in the same branch: PG `trim()` strips only ASCII space
+(not `\n`/`\t`), so the blank-test used `length(regexp_replace(x,'\s+','','g'))>0` in **both** the write gate (`v_authored`)
+and read predicate (`cairn_twin_is_authored`), realigning them with Rust `str::trim()`. Residual Unicode-whitespace
+asymmetry (PG `\s` ⊂ Rust `char::is_whitespace`; degrades safe) tracked as [issue #75](https://github.com/cairn-ehr/cairn-ehr/issues/75).
+**The "globalise the authored twin" deferral is now CLOSED.**
 
 **Prior session (2026-06-28):** built demographics **slice 5 = §4.3 address three-facet value** (per-use recency-first winner).
 `cairn-event::demographics` address builders: `AddressAssertion`/`Geo`/`StructuredAddress` + `address_assertion_body` +
