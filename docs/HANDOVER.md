@@ -1,11 +1,25 @@
 # HANDOVER — Cairn
 
-**Session date:** 2026-06-27 · **Spec/ADRs:** v0.36 · **Phase:** architecture complete; **first production clinical
-surface under construction** — the demographics tier on `cairn-node` (slice 1 = §4.4 identifiers; **slice 2 = §4.2 DOB +
-sex-at-birth, this session**). Viability proven by spikes (walking skeleton, advisory-actor contract, a first federating
-node, Postgres-on-Android).
+**Session date:** 2026-06-28 · **Spec/ADRs:** v0.37 · **Phase:** architecture complete; **first production clinical
+surface under construction** — the demographics tier on `cairn-node` (slice 1 = §4.4 identifiers; slice 2 = §4.2 DOB +
+sex-at-birth; **slice 3 = §4.2 names, this session**). Viability proven by spikes (walking skeleton, advisory-actor
+contract, a first federating node, Postgres-on-Android).
 
-**This session (2026-06-27):** built demographics **slice 2 = the §4.2 DOB + sex-at-birth provenance-locked fields**
+**This session (2026-06-28):** built demographics **slice 3 = the §4.2 names field** — a retained-set
+`patient_name` projection (every asserted name kept as evidence) plus a `patient_name_current` display-winner VIEW.
+Display-winner rule: **recency-first within the legal-use tier** (HLC wall-clock wins; provenance/origin break ties);
+falls back to the most-recent name of any `use` when no legal name exists (the alias/transliteration-only case).
+This deliberately **diverges from DOB's provenance-lock** — names are a volatile, legitimately-changing field
+(marriage, gender transition); provenance-first pins a stale married name or a deadname over the current
+patient-stated legal name (a dignity and safety failure, paper-parity violation). All names are retained as
+evidence regardless; provenance still feeds the §5.2 matcher. The displayed name is the legal-preferred reference
+point; surfacing a preferred/chosen "a.k.a." name is **UI soft-policy above the floor** (principle 12), reading
+the same retained set. Spec-only session: ADR + §4.2 refinement + doc currency (no code). New
+**[ADR-0036](spec/decisions/0036-demographic-name-display-recency-first.md)**; spec 0.36 → 0.37. **Explicit
+deferrals:** the `patient_name`/`patient_name_current` implementation code and integration tests are Task 1/2 of
+the sdd-plan; this session is Task 3 (doc currency) only — code committed separately.
+
+**Prior session (2026-06-27):** built demographics **slice 2 = the §4.2 DOB + sex-at-birth provenance-locked fields**
 (brainstorm→spec→plan→subagent-SDD, 5 TDD tasks; spec+plan under `docs/superpowers/`). Introduces the **new mechanic
 slice 1 deliberately avoided**: *provenance-precedence projection*. A generic **`demographic.field.asserted`** event (a
 `field` discriminator) flows through the **reused** `submit_event` door (never re-declared); **`db/011_demographics_fields.sql`**
@@ -303,15 +317,15 @@ Medium-style write-up. **Remaining non-load-bearing gaps:** from-source PG build
 
 **Desk-doable now (no external dependency):**
 - **Demographics build — next slices** (the live build front; reuse the spine in `db/010`/`db/011` +
-  `cairn-event::demographics`). Slice 1 (§4.4 identifiers, set-union) and **slice 2 (§4.2 DOB + sex-at-birth,
-  provenance-precedence) are done.** Remaining: **slice 3 candidates** — the §4.2 **names** field (multi-valued retained
-  set **+** a display-winner pointer — a *different* projection shape) · **administrative-sex** + **gender-identity**
-  (new `field` values reusing the slice-2 spine; gender-identity is the inverse *recency-wins* toggle) · the §4.3
-  **address** three-facet value (display/geo/structured + locale profile). Then the §5.2 **matching pipeline + the §4.4
-  hard veto** (advisory matcher — Python/fit-for-purpose) and **globalising the authored twin** to every event type
-  (retire the `cairn_event_twin` skeleton fallback + its TODO). The slice-2 design carries a **deferred decision** for the
-  sex-expansion slice: whether a `fact-proven` karyotype is the *same field* as assigned sex-at-birth (it currently
-  auto-displaces in the projection) or a distinct field. DB-gated tests need
+  `cairn-event::demographics`). Slice 1 (§4.4 identifiers, set-union), slice 2 (§4.2 DOB + sex-at-birth,
+  provenance-precedence), and **slice 3 (§4.2 names, retained-set + recency-first display-winner) are done.**
+  Remaining: **administrative-sex** + **gender-identity** (new `field` values reusing the slice-2 spine;
+  gender-identity is the inverse *recency-wins* toggle) · the §4.3 **address** three-facet value
+  (display/geo/structured + locale profile). Then the §5.2 **matching pipeline + the §4.4 hard veto**
+  (advisory matcher — Python/fit-for-purpose) and **globalising the authored twin** to every event type
+  (retire the `cairn_event_twin` skeleton fallback + its TODO). The slice-2 design carries a **deferred
+  decision** for the sex-expansion slice: whether a `fact-proven` karyotype is the *same field* as assigned
+  sex-at-birth (it currently auto-displaces in the projection) or a distinct field. DB-gated tests need
   `CAIRN_TEST_PG="host=127.0.0.1 port=5532 user=hherb dbname=cairn_test"` (PG18+cairn_pgx).
 - **Clinical case-mining** — historically the highest-signal generative mode; the event-overlay + key-custody +
   actor primitives have absorbed every case so far without new architecture. Bring a real ED/hospital failure mode.
@@ -417,6 +431,7 @@ ADR before reopening any of these.
 | [0033](spec/decisions/0033-patient-identifier-representation.md) | Patient-identifier representation: namespace/profile split + matching-survivable normalized form | §4.4 (refines 0014) |
 | [0034](spec/decisions/0034-demographic-legibility-twin.md) | The demographic legibility twin: every demographic assertion legible without its profile | §4.5 (refines 0012) |
 | [0035](spec/decisions/0035-entities-relationships-and-provider-numbers.md) | The entity/relationship model + provider-number person×org (subject-kind partitioning) | §4.6 (refines 0033) |
+| [0036](spec/decisions/0036-demographic-name-display-recency-first.md) | Demographic name display: recency-first within the legal tier (diverges from DOB's provenance-lock by design) | §4.2 (refines 0014) |
 
 **Ecosystem evals** (`docs/ecosystem/`, neither spec nor ADR): 0001 (kastellan/localmail plugins), 0003
 (reference-data sourcing — medicines/terminologies, fed ADR-0025).

@@ -12,7 +12,7 @@ Each change is an immutable **assertion event**: *source S asserts at HLC t that
 ## 4.2 Per-field projection policy
 | Field | Nature | Projection rule | Conflict across linked records means |
 |---|---|---|---|
-| Names | Multi-valued set (legal, maiden, alias, transliteration) | All retained; display = highest-provenance recent legal name | Weak evidence |
+| Names | Multi-valued set (legal, maiden, alias, transliteration) | All retained; display = **most-recent legal name (recency-first; provenance and origin break ties)**, falling back to the most-recent name of any `use` when no legal name exists ([ADR-0036](decisions/0036-demographic-name-display-recency-first.md)) | Weak evidence |
 | DOB | Stable, precision-aware: `(value, precision, basis)` | Provenance beats recency; verified value locks vs. lower provenance | **Strong evidence against link** |
 | Sex / gender | Three fields: sex-at-birth, administrative sex, gender identity | Sex-at-birth provenance-locked; gender identity patient-stated authoritative, recency wins | Sex-at-birth conflict: strong evidence against link |
 | Identifiers (national ID, insurance, program IDs) | Multi-valued set keyed by issuing system; representation per [§4.4](#44-identifiers-representation) | Set union, never LWW | Same-system different-value = **very strong evidence against link** (a hard veto; keys on the [§4.4](#44-identifiers-representation) normalized form, degrades honestly) |
@@ -24,6 +24,10 @@ Each change is an immutable **assertion event**: *source S asserts at HLC t that
 Notes:
 - DOB precision is first-class ("age about 40, recorded 2026-06"). Default 01-01 birthdays are down-weighted by the matcher (overrepresented in low-resource registries).
 - Conflicting "corrections" at equal provenance during a partition are **not** auto-resolved: project prior stable value, flag for human review. Rule: *recency resolves volatile fields; humans resolve identity-bearing fields.*
+- Names are recency-first (not provenance-locked like DOB): names legitimately change
+  (marriage, transition), so the current name the patient goes by displays; the old name
+  is retained as evidence. A verified document does not pin a stale name or a deadname
+  ([ADR-0036](decisions/0036-demographic-name-display-recency-first.md)).
 
 ## 4.3 Address: the three-facet value
 
