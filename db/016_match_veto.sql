@@ -124,10 +124,17 @@ LANGUAGE sql STABLE AS $$
         p_field,
         'hard_veto'::text,
         p_field,
+        -- The clashing values are reported in a deterministic (least, greatest)
+        -- order, NOT call-argument order, so the whole row — detail included — is
+        -- symmetric: cairn_match_veto(a,b) and (b,a) return identical row sets. The
+        -- detail never labels which patient holds which value (it is a human-readable
+        -- reason, not an attribution), so ordering them loses nothing. Both values are
+        -- NOT NULL and distinct here (the WHERE guarantees it), so least/greatest are
+        -- well-defined.
         format('verified %s clash (precision %s): %L vs %L',
                p_field,
                coalesce(x.facets ->> 'precision', 'none'),
-               x.value, y.value)
+               least(x.value, y.value), greatest(x.value, y.value))
     FROM patient_demographic x
     JOIN patient_demographic y ON y.field = x.field
     WHERE x.patient_id = p_a

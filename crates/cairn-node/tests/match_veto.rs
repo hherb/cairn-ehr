@@ -75,6 +75,19 @@ async fn veto_rows(c: &Client, a: Uuid, b: Uuid) -> Vec<(String, String, String)
     rows.iter().map(|r| (r.get(0), r.get(1), r.get(2))).collect()
 }
 
+/// Like `veto_rows` but includes the human-readable `detail` column, so a test can
+/// assert FULL-row symmetry — `detail` is the one column that historically diverged
+/// under argument swap (it embedded the clashing values in call-argument order).
+async fn veto_rows_full(c: &Client, a: Uuid, b: Uuid) -> Vec<(String, String, String, String)> {
+    let a_s = a.to_string();
+    let b_s = b.to_string();
+    let rows = c.query(
+        "SELECT veto_kind, severity, subject, detail FROM cairn_match_veto($1::text::uuid, $2::text::uuid) \
+         ORDER BY veto_kind, subject",
+        &[&a_s, &b_s]).await.unwrap();
+    rows.iter().map(|r| (r.get(0), r.get(1), r.get(2), r.get(3))).collect()
+}
+
 async fn has_hard_veto(c: &Client, a: Uuid, b: Uuid) -> bool {
     let a_s = a.to_string();
     let b_s = b.to_string();
@@ -303,6 +316,11 @@ async fn veto_is_symmetric() {
     let (a, b) = (Uuid::now_v7(), Uuid::now_v7());
     submit_identifier(&c, &sk, &kid, a, 1, &idassert("medicare-au", "1000000000", Some("1000000000"))).await;
     submit_identifier(&c, &sk, &kid, b, 2, &idassert("medicare-au", "2000000000", Some("2000000000"))).await;
-    assert_eq!(veto_rows(&c, a, b).await, veto_rows(&c, b, a).await,
-               "cairn_match_veto(a,b) must equal cairn_match_veto(b,a)");
+    // Include a DOB clash: its `detail` embeds the two clashing values, so it is the
+    // case that would expose any argument-order dependence in the row set. Assert
+    // FULL-row equality (detail included), not just the (kind, severity, subject) key.
+    submit_dob(&c, &sk, &kid, a, 3, "1980-03-15", "day", "document-verified").await;
+    submit_dob(&c, &sk, &kid, b, 4, "1980-03-16", "day", "document-verified").await;
+    assert_eq!(veto_rows_full(&c, a, b).await, veto_rows_full(&c, b, a).await,
+               "cairn_match_veto(a,b) must equal cairn_match_veto(b,a) as full rows, detail included");
 }
