@@ -129,3 +129,41 @@ async fn twinless_demographic_is_still_hard_rejected() {
         .await.unwrap().get(0);
     assert_eq!(n, 0, "rejected demographic event is not stored");
 }
+
+#[tokio::test]
+async fn whitespace_twin_demographic_is_still_hard_rejected() {
+    let Some(base) = cs() else { eprintln!("skipped: set CAIRN_TEST_PG"); return; };
+    let _guard = db::test_serial_guard(&base).await.unwrap();
+    let c = db::connect_and_load_schema(&base).await.unwrap();
+    let (sk, kid) = setup(&c).await;
+    let p = Uuid::now_v7();
+    // A structurally VALID identifier assertion, but with a WHITESPACE-ONLY authored twin.
+    // The floor must treat a blank twin as equivalent to an absent twin (ADR-0039).
+    let a = IdentifierAssertion {
+        value: "943 476 5920", system: "nhs-number", provenance: "document-verified",
+        normalized: Some("9434765920"), profile: Some("nhs-number@b3-abc"), use_: Some("national-id"),
+    };
+    let body = EventBody {
+        event_id: Uuid::now_v7().to_string(),
+        patient_id: p.to_string(),
+        event_type: "demographic.identifier.asserted".into(),
+        schema_version: "demographic.identifier/1".into(),
+        hlc: Hlc { wall: 1, counter: 0, node_origin: "n".into() },
+        t_effective: None,
+        signer_key_id: kid.clone(),
+        contributors: serde_json::json!([{"actor_id": kid, "role": "recorded"}]),
+        payload: identifier_assertion_body(&a),
+        attachments: vec![],
+        plaintext_twin: Some("   \n".into()), // <-- whitespace-only; must be treated as blank
+    };
+    let signed = sign(&body, &sk).unwrap();
+    let err = c.execute("SELECT submit_event($1)", &[&signed.signed_bytes])
+        .await.expect_err("whitespace-only twin demographic must be rejected");
+    let msg = err.as_db_error().map(|e| e.message()).unwrap_or("<no db message>");
+    assert!(msg.contains("authored twin") || msg.contains("§4.5"), "rejection cites the twin: {msg}");
+    // Triple-gate: nothing landed in the log.
+    let n: i64 = c.query_one(
+        "SELECT count(*) FROM event_log WHERE patient_id::text=$1", &[&p.to_string()])
+        .await.unwrap().get(0);
+    assert_eq!(n, 0, "rejected demographic event is not stored");
+}

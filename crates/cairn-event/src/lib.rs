@@ -301,6 +301,9 @@ fn twin_is_present(twin: &Option<String>) -> bool {
 /// understand); fall back to the mechanically-derived twin only when the author left it absent
 /// or blank (an older / non-conformant peer). The in-DB floor (db/015 `cairn_event_twin`)
 /// mirrors this exact rule for the validated write door — keep the two in sync.
+/// Note: the derived (fallback) twin is a non-authoritative LOCAL projection — two nodes may
+/// render a twin-less event's derived twin differently, but the signed body is the convergent
+/// artifact, so this never breaks set-union.
 pub fn resolve_twin(body: &EventBody) -> String {
     if twin_is_present(&body.plaintext_twin) {
         // Safe: twin_is_present guarantees Some(non-blank).

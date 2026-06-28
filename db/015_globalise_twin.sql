@@ -10,6 +10,8 @@ BEGIN;
 
 -- Improved mechanical fallback: now renders the PAYLOAD too (closes the db/005 TODO), so a
 -- derived twin is still genuinely legible. Crude + deterministic by design.
+-- NOTE: this is a LOCAL projection — another node's renderer may produce a different derived twin
+-- for the same twin-less event; the signed body (not the twin) is the convergent set-union artifact.
 CREATE OR REPLACE FUNCTION cairn_twin_skeleton(p_type text, b jsonb)
 RETURNS text LANGUAGE sql IMMUTABLE AS $$
     SELECT format('[%s] %s for patient %s%s',
@@ -28,7 +30,7 @@ CREATE OR REPLACE FUNCTION cairn_event_twin(p_type text, b jsonb)
 RETURNS text LANGUAGE plpgsql AS $$
 DECLARE
     v_twin        text    := b ->> 'plaintext_twin';
-    v_authored    boolean := v_twin IS NOT NULL AND length(trim(v_twin)) > 0;
+    v_authored    boolean := v_twin IS NOT NULL AND length(regexp_replace(v_twin, '\s+', '', 'g')) > 0;
     v_demographic boolean := false;
 BEGIN
     -- Per-type structural floor (demographics only, for now).
@@ -61,7 +63,7 @@ $$;
 -- not), so no stored flag is needed. cairn_body is the pgrx COSE/CBOR parser (db/005 dependency).
 CREATE OR REPLACE FUNCTION cairn_twin_is_authored(p_signed bytea)
 RETURNS boolean LANGUAGE sql STABLE AS $$
-    SELECT t IS NOT NULL AND length(trim(t)) > 0
+    SELECT t IS NOT NULL AND length(regexp_replace(t, '\s+', '', 'g')) > 0
     FROM (SELECT cairn_body(p_signed) ->> 'plaintext_twin' AS t) s;
 $$;
 
