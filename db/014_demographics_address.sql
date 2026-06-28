@@ -88,8 +88,14 @@ BEGIN
                OR jsonb_typeof(geo -> 'lon') IS DISTINCT FROM 'number' THEN
                 RAISE EXCEPTION 'demographic field assertion: address geo.lat/geo.lon must be numbers';
             END IF;
-            IF jsonb_typeof(geo -> 'accuracy_m') IS DISTINCT FROM 'number'
-               OR (geo ->> 'accuracy_m')::numeric < 0 THEN
+            -- Two-step so the ::numeric cast only runs once the value is confirmed a JSON
+            -- number: PostgreSQL does NOT guarantee short-circuit OR, so a single
+            -- `typeof <> 'number' OR ::numeric < 0` could attempt the cast on a string
+            -- (e.g. "north") and raise a raw cast error instead of this clean message.
+            IF jsonb_typeof(geo -> 'accuracy_m') IS DISTINCT FROM 'number' THEN
+                RAISE EXCEPTION 'demographic field assertion: address geo.accuracy_m must be a non-negative number';
+            END IF;
+            IF (geo ->> 'accuracy_m')::numeric < 0 THEN
                 RAISE EXCEPTION 'demographic field assertion: address geo.accuracy_m must be a non-negative number';
             END IF;
             IF jsonb_typeof(geo -> 'basis') IS DISTINCT FROM 'string'

@@ -219,10 +219,13 @@ async fn floor_rejects_malformed_geo() {
     let p = Uuid::now_v7();
 
     // Each malformed geo is its own isolated rejection: non-number lat, negative
-    // accuracy_m, empty basis. None may append or project.
+    // accuracy_m, non-number accuracy_m (must yield the clean floor message, not a raw
+    // ::numeric cast error — the floor checks typeof before casting), empty basis. None
+    // may append or project.
     for facets in [
         json!({"geo":{"lat":"north","lon":151.2,"accuracy_m":10.0,"basis":"device_gps"}}),
         json!({"geo":{"lat":-33.8,"lon":151.2,"accuracy_m":-5.0,"basis":"device_gps"}}),
+        json!({"geo":{"lat":-33.8,"lon":151.2,"accuracy_m":"north","basis":"device_gps"}}),
         json!({"geo":{"lat":-33.8,"lon":151.2,"accuracy_m":10.0,"basis":""}}),
     ] {
         let r = submit(&c, &sk, &kid, p, 1, 0,
