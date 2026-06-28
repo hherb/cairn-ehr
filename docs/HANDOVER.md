@@ -20,8 +20,9 @@ the same retained set. New **[ADR-0036](spec/decisions/0036-demographic-name-dis
 `name_assertion_body`/`render_name_twin` builders, and 8 integration + 3 unit tests (all green; slices 1–2 regress
 green; clippy clean). The display tier folds `use_key` to lower-case (deterministic `COLLATE "C"`) so the open `use`
 vocabulary's legal token is recognised case-insensitively ("Legal"/"LEGAL") and convergently across nodes, with
-`use_raw` preserving the authored casing. **Note:** #71 was merged early (before the review fix landed), so that
-case-insensitivity fix + this currency note ship in a small **follow-up PR** off `demographics-names`, not in #71.
+`use_raw` preserving the authored casing. **Note:** #71 merged early (before the review fix landed), so that
+case-insensitivity fix shipped in a small **follow-up [PR #72](https://github.com/cairn-ehr/cairn-ehr/pull/72)** off
+`demographics-names` (merged 2026-06-28). **Both #71 and #72 are now merged; slice 3 is complete on `main`.**
 
 **Prior session (2026-06-27):** built demographics **slice 2 = the §4.2 DOB + sex-at-birth provenance-locked fields**
 (brainstorm→spec→plan→subagent-SDD, 5 TDD tasks; spec+plan under `docs/superpowers/`). Introduces the **new mechanic
