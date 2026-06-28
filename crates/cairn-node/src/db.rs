@@ -1,6 +1,6 @@
 use tokio_postgres::{Client, NoTls};
 
-const SCHEMA: [(&str, &str); 11] = [
+const SCHEMA: [(&str, &str); 12] = [
     ("001_envelope",      include_str!("../../../db/001_envelope.sql")),
     ("002_projection",    include_str!("../../../db/002_projection.sql")),
     ("003_blobs",         include_str!("../../../db/003_blobs.sql")),
@@ -16,6 +16,7 @@ const SCHEMA: [(&str, &str); 11] = [
     ("010_demographics",  include_str!("../../../db/010_demographics.sql")),
     ("011_demographics_fields", include_str!("../../../db/011_demographics_fields.sql")),
     ("012_demographics_names",  include_str!("../../../db/012_demographics_names.sql")),
+    ("013_demographics_sex_gender", include_str!("../../../db/013_demographics_sex_gender.sql")),
 ];
 
 pub async fn connect(conn: &str) -> anyhow::Result<Client> {
