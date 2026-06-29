@@ -96,7 +96,9 @@ WHERE m1 < m2
 """
 
 
-def generate_candidate_pairs(conn, *, max_block_size: int = 100):
+def generate_candidate_pairs(
+    conn, *, max_block_size: int = 100
+) -> tuple[list[tuple[str, str]], list[tuple[str, str, int]]]:
     """Generate the canonical candidate pairs worth scoring, via three blocking passes.
 
     Returns (pairs, skipped_blocks): `pairs` is a list of unique canonical
