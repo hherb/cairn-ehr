@@ -1,5 +1,5 @@
 from cairn_matcher.agreement import AgreementLevel
-from cairn_matcher.orchestrator import DEFAULT_CONFIG, field_comparisons
+from cairn_matcher.orchestrator import field_comparisons
 from cairn_matcher.records import CandidateRecord, DateValue, FieldValue, Name
 
 
