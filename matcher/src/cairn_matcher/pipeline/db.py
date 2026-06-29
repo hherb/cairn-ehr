@@ -51,6 +51,68 @@ def match_veto(conn, a, b) -> list[VetoFinding]:
         return [VetoFinding(*row) for row in cur.fetchall()]
 
 
+# The three blocking passes share one shape: group patients by a blocking value, keep
+# groups with >= 2 members, and emit every within-group pair. Group-based (not direct
+# self-joins) because Task 2's oversized-block guard needs each group's member count.
+#
+# Canonical order is enforced in SQL by m1 < m2 on the uuid VALUES (Postgres uuid byte
+# order == uuid.UUID 128-bit order == runner.canonical_pair), so a pair is one stable row.
+# Blocking is RECALL-oriented and advisory: the SQL name tokenizer is deliberately simple
+# (lower + whitespace split); the Python scorer remains the source of truth for comparison.
+_CANDIDATE_SQL = """
+WITH ident_groups AS (
+    SELECT array_agg(patient_id) AS members
+    FROM patient_identifier
+    WHERE system <> 'unknown'
+    GROUP BY system, match_key
+    HAVING count(DISTINCT patient_id) >= 2
+),
+dob_groups AS (
+    SELECT array_agg(patient_id) AS members
+    FROM patient_demographic
+    WHERE field = 'dob'
+    GROUP BY value
+    HAVING count(DISTINCT patient_id) >= 2
+),
+name_tokens AS (
+    SELECT DISTINCT patient_id, token
+    FROM patient_name, regexp_split_to_table(lower(value), '\\s+') AS token
+    WHERE token <> ''
+),
+name_groups AS (
+    SELECT array_agg(patient_id) AS members
+    FROM name_tokens
+    GROUP BY token
+    HAVING count(*) >= 2
+),
+all_groups AS (
+    SELECT members FROM ident_groups
+    UNION ALL SELECT members FROM dob_groups
+    UNION ALL SELECT members FROM name_groups
+)
+SELECT DISTINCT m1::text AS patient_low, m2::text AS patient_high
+FROM all_groups g, unnest(g.members) m1, unnest(g.members) m2
+WHERE m1 < m2
+"""
+
+
+def generate_candidate_pairs(conn, *, max_block_size: int = 100):
+    """Generate the canonical candidate pairs worth scoring, via three blocking passes.
+
+    Returns (pairs, skipped_blocks): `pairs` is a list of unique canonical
+    (patient_low, patient_high) lowercase-uuid-text tuples; `skipped_blocks` reports
+    oversized blocks excluded from generation (empty until the cap is wired in).
+
+    Read-only — opens a read transaction the CALLER must close (sweep does conn.rollback
+    before its write loop, so a long sweep does not pin the xmin horizon).
+    """
+    with conn.cursor() as cur:
+        cur.execute(_CANDIDATE_SQL)
+        pairs = [(low, high) for low, high in cur.fetchall()]
+    skipped_blocks: list[tuple[str, str, int]] = []
+    return pairs, skipped_blocks
+
+
 def upsert_proposal(conn, low, high, payload: ProposalPayload) -> None:
     """Write (or refresh) the advisory proposal for a canonical-ordered pair.
 
