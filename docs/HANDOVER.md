@@ -35,8 +35,11 @@ projecting structured role-tagged name tokens; **B3** — locale comparator pack
 profiles), weight-learning, eval harness, hub duplicate-sweep (the false-split backstop + proposal retraction), full
 §7.5 matcher actor registration/signing; **piece C** — the proposal→`link` apply seam (needs the §5.7 identity event
 algebra, unbuilt); a `compare_address` comparator; a clutch of non-blocking Minors → **[issue #79](https://github.com/cairn-ehr/cairn-ehr/issues/79)** (Thresholds
-`review<auto` guard, `band` CHECK, `updated_at` UPDATE trigger, pair-order str-vs-uuid M1, conftest env read-at-import).
-**The §5.2 veto-gated pairwise pipeline (B2) is now BUILT.**
+`review<auto` guard, `band` CHECK, `updated_at` UPDATE trigger, conftest env read-at-import).
+**Post-review fixes (in-branch, this session):** pair-order now compares `uuid` values not text
+(`runner.canonical_pair`, closes the #79 M1); `propose` rolls back the read txn on the sub-threshold
+(no-proposal) path so a batch driver can't pin the xmin horizon; `parse_dob` range-checks month/day
+(out-of-range → safe `None`). **The §5.2 veto-gated pairwise pipeline (B2) is now BUILT.**
 
 **Earlier today (2026-06-29):** built the **§5.2/§5.13 advisory matcher scoring core — piece B1** (the first
 **Python** component): a new top-level **`matcher/`** uv project, package `cairn-matcher`, **AGPL-3.0, zero runtime
@@ -395,7 +398,7 @@ Medium-style write-up. **Remaining non-load-bearing gaps:** from-source PG build
   registration); **piece C** — the §5.7 identity-event link-apply seam (the destination for match proposals; needs the
   `link`/`unlink`/… algebra, unbuilt). Deferred: deceased-status veto (no projection yet; stub in db/016); a
   `compare_address` comparator; B2 follow-up Minors (Thresholds `review<auto` guard, `band` CHECK, `updated_at`
-  trigger, pair-order str-vs-uuid, conftest env read-at-import) → [issue #79](https://github.com/cairn-ehr/cairn-ehr/issues/79).
+  trigger, conftest env read-at-import) → [issue #79](https://github.com/cairn-ehr/cairn-ehr/issues/79) (pair-order str-vs-uuid M1 fixed in-branch post-review).
   Rust DB-gated tests + the matcher integration tests need `CAIRN_TEST_PG="host=127.0.0.1 port=5532 user=hherb
   dbname=cairn_test"` (PG18+cairn_pgx); matcher integration: `cd matcher && CAIRN_TEST_PG=… uv run --extra pipeline
   pytest`. The pure matcher suite is dependency-free: `cd matcher && uv run pytest` (uv, never venv/pip).

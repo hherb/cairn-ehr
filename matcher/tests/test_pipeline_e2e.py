@@ -58,6 +58,18 @@ def test_weak_pair_persists_nothing(pg_conn):
     assert _row(pg_conn) is None
 
 
+def test_weak_pair_leaves_no_open_transaction(pg_conn):
+    # The sub-threshold (None) path reads but persists nothing; it must still close the
+    # transaction it opened, or a batch driver pins the xmin horizon across every weak
+    # pair (the majority). After propose returns None the connection must be IDLE.
+    from psycopg.pq import TransactionStatus
+
+    for p in (PA, PB):
+        seed_patient(pg_conn, p, sex=("female", 0))
+    assert propose(pg_conn, PA, PB) is None
+    assert pg_conn.info.transaction_status == TransactionStatus.IDLE
+
+
 def test_rerun_preserves_human_status(pg_conn):
     for p in (PA, PB):
         seed_patient(pg_conn, p, names=[("Alex Smith", 20)],

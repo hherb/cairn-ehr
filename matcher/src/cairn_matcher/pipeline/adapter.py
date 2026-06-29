@@ -37,6 +37,13 @@ def parse_dob(value: str | None, precision: str | None) -> DateValue | None:
     year = nums[0]
     month = nums[1] if needed >= 2 else None
     day = nums[2] if needed >= 3 else None
+    # Numeric but out-of-range fields (e.g. month 13, day 45) are not a real date; degrade
+    # rather than emit a wrong DateValue. We range-check only — calendar validity per month
+    # (e.g. 30 Feb) is a B3/locale-pack concern, not this precision-gated field extractor's.
+    if month is not None and not 1 <= month <= 12:
+        return None
+    if day is not None and not 1 <= day <= 31:
+        return None
     return DateValue(year=year, month=month, day=day)
 
 

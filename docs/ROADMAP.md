@@ -84,7 +84,8 @@ blocking/candidate-pair generation across the patient set (B2 is pairwise — it
 comparator packs (phonetic/nickname + content-addressed profiles) + weight-learning + eval harness + hub duplicate-sweep +
 full §7.5 matcher actor registration; **piece C** — the **§5.7 link-apply seam** (needs the identity event algebra).
 **Next:** piece B2b and/or piece C; a `compare_address` comparator; B2 follow-up Minors (Thresholds `review<auto` guard,
-`band` CHECK, `updated_at` trigger, pair-order str-vs-uuid, conftest env read-at-import). ([Issue #69](https://github.com/cairn-ehr/cairn-ehr/issues/69): codebase-wide projection-tiebreak collation canonicalization, deferred.)
+`band` CHECK, `updated_at` trigger, conftest env read-at-import) — pair-order str-vs-uuid M1, sub-threshold txn-leak, and
+`parse_dob` range-check all fixed in-branch post-review. ([Issue #69](https://github.com/cairn-ehr/cairn-ehr/issues/69): codebase-wide projection-tiebreak collation canonicalization, deferred.)
 - **Point-of-care identity, possession semantics, `sign-as` salvage** ([ADR-0008](spec/decisions/0008-point-of-care-identity-possession-and-salvage.md)).
 - **Locale-pluggable matcher comparators** — *advisory only* (Python/ML); comparator-profile tag travels with each demographic assertion, degrades honestly to human review ([ADR-0014](spec/decisions/0014-locale-pluggable-matcher-comparators.md)).
 

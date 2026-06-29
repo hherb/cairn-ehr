@@ -41,3 +41,15 @@ def test_value_too_coarse_for_declared_precision_degrades():
 
 def test_unknown_precision_token_degrades_to_none():
     assert parse_dob("1980-07-15", "hour") is None
+
+
+def test_out_of_range_month_degrades_to_none():
+    # Numeric but not a real month -> a wrong DateValue, so degrade (honour the contract).
+    assert parse_dob("1980-13-01", "month") is None
+    assert parse_dob("1980-00-01", "month") is None
+
+
+def test_out_of_range_day_degrades_to_none():
+    # Numeric but not a real day-of-month -> degrade rather than emit a wrong DateValue.
+    assert parse_dob("1980-07-45", "day") is None
+    assert parse_dob("1980-07-00", "day") is None
