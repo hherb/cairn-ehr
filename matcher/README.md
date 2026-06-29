@@ -8,9 +8,10 @@ Fellegi–Sunter combiner producing an explainable `MatchScore`.
 classification, no veto logic (that is the in-DB floor, `db/016`), and no link
 decision. It only *scores*.
 
-**Pure functions only** — no Postgres, no I/O. Inputs are plain dataclasses; the DB
-adapter, blocking, the veto-gate call, and locale comparator packs are later slices
-(B2/B3). See `docs/superpowers/specs/2026-06-29-matcher-scoring-core-design.md`.
+**Pure functions only** — no Postgres, no I/O. Inputs are plain dataclasses. The DB
+adapter and the veto-gate call now live in the `pipeline/` sub-package (piece B2, below);
+blocking (candidate-pair generation) and locale comparator packs are still later slices
+(B2b/B3). See `docs/superpowers/specs/2026-06-29-matcher-scoring-core-design.md`.
 
 ## pipeline/ (piece B2 — advisory pairwise pipeline)
 
@@ -30,7 +31,7 @@ threshold nothing is persisted (the B3 hub duplicate-sweep is the backstop).
 
 - Pure suite (no DB): `uv run pytest`
 - Integration (gated): needs PostgreSQL ≥ 18 + `cairn_pgx`; skips when `CAIRN_TEST_PG` is unset:
-  `CAIRN_TEST_PG="host=127.0.0.1 port=5532 user=hherb dbname=cairn_test" uv run --extra pipeline pytest`
+  `CAIRN_TEST_PG="host=127.0.0.1 port=5532 user=<your-pg-user> dbname=cairn_test" uv run --extra pipeline pytest`
 
 ## Develop
 
