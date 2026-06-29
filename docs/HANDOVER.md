@@ -2,10 +2,46 @@
 
 **Session date:** 2026-06-29 · **Spec/ADRs:** v0.40 · **Phase:** architecture complete; **first production clinical
 surface under construction** — demographics on `cairn-node` (slices 1–5 done) + the §5.2 matcher (piece A in-DB
-veto floor done; **piece B1 advisory scoring core done this session**; B2 adapter / piece C link-seam next).
+veto floor done; piece B1 advisory scoring core done; **piece B2 veto-gated pairwise pipeline + proposal worklist
+done this session**; B2b blocking / B3 locale packs / piece C link-seam next).
 Viability proven by spikes (walking skeleton, advisory-actor contract, a first federating node, Postgres-on-Android).
 
-**This session (2026-06-29):** built the **§5.2/§5.13 advisory matcher scoring core — piece B1** (the first
+**This session (2026-06-29):** built the **§5.2 advisory matcher pipeline — piece B2** (the veto-gated pairwise
+pipeline + advisory proposal worklist), via **brainstorm→spec→plan→subagent-SDD** (7 TDD tasks; spec+plan under
+`docs/superpowers/`). A new IO-bearing sub-package **`cairn_matcher/pipeline/`** beside B1's untouched pure core:
+**`adapter.py`** (pure — `patient_*` projection rows → B1 `CandidateRecord`: precision-gated **ISO** DOB extraction
+that *parses no locale date strings* — non-ISO degrades to `None`; untagged whitespace token-bag names canonicalised
+via `sorted()` so order-permuted names dedupe; identifier sets keyed on `match_key`, skipping `unknown`; safe-degrade
+on absence, `MatcherTypeError` on wrong type); **`banding.py`** (pure — `MatchScore` + db/016 veto findings → a band:
+`auto_candidate` iff `score ≥ T_auto` **and no veto**, else `review`, else `None`; **any** veto, hard *or*
+degrade_hold, caps at `review` — never auto-link, never auto-reject; below `T_review` persists nothing; conservative
+shipped thresholds, B3 learns; `matcher_version` = pkg version + weights digest, ADR-0014 pinning); **`db.py`**
+(the only psycopg module — load projections, call the in-DB `cairn_match_veto`, upsert a proposal; **commit owned by
+the runner, not here**); **`runner.py`** (`propose` = load→score→veto→band→[if not None] upsert→commit, one txn,
+pair stored canonical `(low,high)`). New **`db/017_match_proposal.sql`** (SCHEMA array 15→16): an **advisory**
+worklist table (PK `(patient_low,patient_high)`, `CHECK(low<high)`, `veto_findings`/`evidence` JSONB, `matcher_version`,
+human `status` preserved on re-run via `ON CONFLICT DO UPDATE` excluding `status`) — *not a safety gate, no validation
+door*. **psycopg** is the only new dep and is **optional** (`[project.optional-dependencies] pipeline`; LGPL→AGPL-ok),
+so B1's pure zero-dep core is unchanged. Tests: **92 with DB** (5 gated integration: seed `patient_*` directly →
+`propose` → assert the proposal; strong→`review`/pending, verified-DOB clash→hard_veto capped at `review` never auto,
+weak→no row, re-run preserves human `status`), **87 + 5 skipped** without (`uv run pytest`; integration skips cleanly
+without `CAIRN_TEST_PG`); `cargo build`+`clippy -p cairn-node` clean. **No new ADR, no spec bump** (implements settled
+§5.2/§5.13/ADR-0014). Final opus whole-branch review: **MERGE-READY, 0 Critical/0 Important** (all 6 safety behaviours
+verified from code). One **Important fixed in-branch**: the proposal `commit` was moved out of `upsert_proposal` into
+`runner.propose` (explicit txn boundary — a future batch caller wrapping `propose()` is no longer silently committed).
+**Deferred (recorded, not lost):** **B2b** — blocking/candidate-pair generation across the whole patient set (this
+slice is *pairwise* only — it scores a given pair; an external driver must currently supply the pairs) + optionally
+projecting structured role-tagged name tokens; **B3** — locale comparator packs (phonetic/nickname + content-addressed
+profiles), weight-learning, eval harness, hub duplicate-sweep (the false-split backstop + proposal retraction), full
+§7.5 matcher actor registration/signing; **piece C** — the proposal→`link` apply seam (needs the §5.7 identity event
+algebra, unbuilt); a `compare_address` comparator; a clutch of non-blocking Minors → **[issue #79](https://github.com/cairn-ehr/cairn-ehr/issues/79)** (Thresholds
+`review<auto` guard, `band` CHECK, `updated_at` UPDATE trigger, conftest env read-at-import).
+**Post-review fixes (in-branch, this session):** pair-order now compares `uuid` values not text
+(`runner.canonical_pair`, closes the #79 M1); `propose` rolls back the read txn on the sub-threshold
+(no-proposal) path so a batch driver can't pin the xmin horizon; `parse_dob` range-checks month/day
+(out-of-range → safe `None`). **The §5.2 veto-gated pairwise pipeline (B2) is now BUILT.**
+
+**Earlier today (2026-06-29):** built the **§5.2/§5.13 advisory matcher scoring core — piece B1** (the first
 **Python** component): a new top-level **`matcher/`** uv project, package `cairn-matcher`, **AGPL-3.0, zero runtime
 deps**, **pure functions only — no Postgres/IO/thresholds/link-decisions** (the fit-for-purpose §9 tier; a defect is
 a bad *proposal* a human reviews). It turns two already-projected patient records into an **explainable `MatchScore`**.
@@ -354,15 +390,18 @@ Medium-style write-up. **Remaining non-load-bearing gaps:** from-source PG build
 - **Demographics build — next slices** (the live build front; reuse the spine in `db/010`/`db/011`/`db/013`/`db/014` +
   `cairn-event::demographics`). Slices 1–5 are done (§4.4 identifiers, §4.2 DOB + sex-at-birth, §4.2 names,
   §4.2 administrative-sex + gender-identity, §4.3 address). **Karyotype** is resolved as a distinct field ([ADR-0037](spec/decisions/0037-demographic-administrative-sex-and-per-field-winner-policy.md)) — no code yet.
-  **§5.2 matcher:** piece A (in-DB hard-veto floor, `db/016`, SCHEMA 14→15) **and** piece B1 (advisory **Python**
-  scoring core, `matcher/`, `cairn-matcher`) are now BUILT. **Next:** **piece B2** — the PG adapter populating
-  `CandidateRecord` from the `patient_*` projections + blocking/candidate generation + the `db/016` veto-gate call +
-  banding/threshold + an advisory proposal worklist; and/or **piece B3** (locale comparator packs / weight-learning /
-  eval harness / hub duplicate-sweep) and **piece C** — the §5.7 identity-event link-apply seam (the destination for
-  match proposals; needs the `link`/`unlink`/… algebra, unbuilt). Deferred: deceased-status veto (no projection yet;
-  stub in db/016); a `compare_address` comparator; B1 follow-up Minors (see the B1 PR).
-  Rust DB-gated tests need `CAIRN_TEST_PG="host=127.0.0.1 port=5532 user=hherb dbname=cairn_test"` (PG18+cairn_pgx);
-  the `matcher/` Python tests are pure — `cd matcher && uv run pytest` (uv, never venv/pip).
+  **§5.2 matcher:** piece A (in-DB hard-veto floor, `db/016`), piece B1 (advisory **Python** scoring core), **and
+  piece B2** (the veto-gated **pairwise** pipeline + `db/017` advisory proposal worklist, `cairn_matcher/pipeline/`)
+  are now BUILT. **Next:** **piece B2b** — blocking / candidate-pair generation across the whole patient set (B2 is
+  pairwise: it scores a *given* pair, so something must currently supply the pairs); **piece B3** (locale comparator
+  packs / weight-learning / eval harness / hub duplicate-sweep + proposal retraction / full §7.5 matcher actor
+  registration); **piece C** — the §5.7 identity-event link-apply seam (the destination for match proposals; needs the
+  `link`/`unlink`/… algebra, unbuilt). Deferred: deceased-status veto (no projection yet; stub in db/016); a
+  `compare_address` comparator; B2 follow-up Minors (Thresholds `review<auto` guard, `band` CHECK, `updated_at`
+  trigger, conftest env read-at-import) → [issue #79](https://github.com/cairn-ehr/cairn-ehr/issues/79) (pair-order str-vs-uuid M1 fixed in-branch post-review).
+  Rust DB-gated tests + the matcher integration tests need `CAIRN_TEST_PG="host=127.0.0.1 port=5532 user=hherb
+  dbname=cairn_test"` (PG18+cairn_pgx); matcher integration: `cd matcher && CAIRN_TEST_PG=… uv run --extra pipeline
+  pytest`. The pure matcher suite is dependency-free: `cd matcher && uv run pytest` (uv, never venv/pip).
 - **Clinical case-mining** — historically the highest-signal generative mode; the event-overlay + key-custody +
   actor primitives have absorbed every case so far without new architecture. Bring a real ED/hospital failure mode.
 - **Dedupe transitive RustCrypto dep versions** in `Cargo.lock` ([issue #11](https://github.com/cairn-ehr/cairn-ehr/issues/11)) — supply-chain
