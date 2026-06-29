@@ -102,7 +102,8 @@ def generate_candidate_pairs(
     by hundreds of people is non-discriminating (a group of size k contributes C(k,2)
     pairs), and the §5.13 hub duplicate-sweep is the declared backstop for what it drops.
 
-    Read-only — opens a read transaction the CALLER must close.
+    Read-only — opens a read transaction the CALLER must close (sweep does conn.rollback
+    before its write loop, so a long sweep does not pin the xmin horizon).
     """
     pairs: set[tuple[str, str]] = set()
     skipped_blocks: list[tuple[str, str, int]] = []

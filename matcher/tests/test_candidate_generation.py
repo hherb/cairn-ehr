@@ -5,6 +5,8 @@ Seed patient_* projection rows directly, then assert which canonical pairs the t
 blocking passes (identifier / exact-DOB / name-token) generate. Gated on CAIRN_TEST_PG.
 """
 
+import uuid
+
 from cairn_matcher.pipeline.runner import canonical_pair
 from tests.conftest import seed_patient
 
@@ -17,6 +19,11 @@ def _pairs(conn, **kw):
     from cairn_matcher.pipeline.db import generate_candidate_pairs
     pairs, _skipped = generate_candidate_pairs(conn, **kw)
     return pairs
+
+
+def _gen(conn, **kw):
+    from cairn_matcher.pipeline.db import generate_candidate_pairs
+    return generate_candidate_pairs(conn, **kw)
 
 
 def test_shared_identifier_generates_the_pair(pg_conn):
@@ -67,7 +74,7 @@ def test_pairs_are_canonical_and_self_excluded(pg_conn):
     pairs = _pairs(pg_conn)
     assert len(pairs) == 3
     for low, high in pairs:
-        assert low < high
+        assert uuid.UUID(low) < uuid.UUID(high)
 
 
 PD = "dddddddd-dddd-dddd-dddd-dddddddddddd"
@@ -77,9 +84,7 @@ def test_oversized_block_is_skipped_and_reported(pg_conn):
     # cap=2: three patients share one DOB -> group size 3 > 2 -> skipped, no pairs from it.
     for p in (PA, PB, PC):
         seed_patient(pg_conn, p, dob=("1980-07-15", 20))
-    pairs, skipped = __import__(
-        "cairn_matcher.pipeline.db", fromlist=["generate_candidate_pairs"]
-    ).generate_candidate_pairs(pg_conn, max_block_size=2)
+    pairs, skipped = _gen(pg_conn, max_block_size=2)
     assert pairs == []
     assert any(pn == "dob" and sz == 3 for pn, _key, sz in skipped)
 
@@ -97,8 +102,6 @@ def test_cap_is_per_group_not_global(pg_conn):
                     "(%s,'mrn:a','55','55','55',NULL,NULL,'seed',0,0,'seed'),"
                     "(%s,'mrn:a','55','55','55',NULL,NULL,'seed',0,0,'seed')", (PA, PD))
     pg_conn.commit()
-    pairs, skipped = __import__(
-        "cairn_matcher.pipeline.db", fromlist=["generate_candidate_pairs"]
-    ).generate_candidate_pairs(pg_conn, max_block_size=2)
+    pairs, skipped = _gen(pg_conn, max_block_size=2)
     assert canonical_pair(PA, PD) in pairs
     assert any(pn == "dob" and sz == 3 for pn, _key, sz in skipped)
