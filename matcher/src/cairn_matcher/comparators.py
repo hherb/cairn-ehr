@@ -10,7 +10,7 @@ hygiene, house rule #1).
 """
 
 from cairn_matcher.agreement import AgreementLevel, Context
-from cairn_matcher.records import MatcherTypeError
+from cairn_matcher.records import DateValue, MatcherTypeError
 
 
 def jaro_winkler(s1: str, s2: str, prefix_scale: float = 0.1) -> float:
@@ -115,3 +115,35 @@ def compare_edit_distance(a: str | None, b: str | None, ctx: Context) -> Agreeme
     if jaro_winkler(sa, sb) >= ctx.edit_distance_threshold:
         return AgreementLevel.EDIT_DISTANCE
     return AgreementLevel.DISAGREE
+
+
+# DOB parts compared, coarsest to finest. Precision = the prefix of these present.
+_DOB_PARTS = ("year", "month", "day")
+
+
+def compare_dob(a: DateValue | None, b: DateValue | None, ctx: Context) -> AgreementLevel:
+    """Precision-aware DOB agreement that PARSES NO DATE STRINGS.
+
+    Compares only the parts BOTH sides carry:
+      * every shared part equal AND same precision depth -> EXACT
+      * every shared part equal BUT different depth (year-only vs full) -> PARTIAL
+        (a consistent coarsening; principle 4 — imprecision is partial agreement)
+      * any shared part differs -> DISAGREE
+      * a side absent, or no part in common -> INSUFFICIENT_DATA (never a penalty)
+    """
+    if a is None or b is None:
+        return AgreementLevel.INSUFFICIENT_DATA
+    if not isinstance(a, DateValue) or not isinstance(b, DateValue):
+        raise MatcherTypeError("compare_dob expects DateValue or None")
+
+    shared = [p for p in _DOB_PARTS if getattr(a, p) is not None and getattr(b, p) is not None]
+    if not shared:
+        return AgreementLevel.INSUFFICIENT_DATA
+
+    if any(getattr(a, p) != getattr(b, p) for p in shared):
+        return AgreementLevel.DISAGREE
+
+    # All shared parts agree. Same precision depth on both sides -> EXACT, else PARTIAL.
+    depth_a = sum(1 for p in _DOB_PARTS if getattr(a, p) is not None)
+    depth_b = sum(1 for p in _DOB_PARTS if getattr(b, p) is not None)
+    return AgreementLevel.EXACT if depth_a == depth_b else AgreementLevel.PARTIAL
