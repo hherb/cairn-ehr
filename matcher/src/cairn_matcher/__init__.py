@@ -8,4 +8,31 @@ conservative auto-link threshold and the proposal -> link apply seam are separat
 slices. A defect here yields a bad *proposal* a human reviews, never record corruption.
 """
 
+from cairn_matcher.agreement import AgreementLevel, Context
+from cairn_matcher.orchestrator import DEFAULT_CONFIG, field_comparisons
+from cairn_matcher.records import (
+    CandidateRecord,
+    DateValue,
+    FieldComparison,
+    FieldValue,
+    Name,
+)
+from cairn_matcher.scoring import DEFAULT_WEIGHTS, MatchScore, score
+
 __version__ = "0.1.0"
+
+__all__ = [
+    "AgreementLevel",
+    "Context",
+    "CandidateRecord",
+    "DateValue",
+    "FieldComparison",
+    "FieldValue",
+    "Name",
+    "DEFAULT_CONFIG",
+    "field_comparisons",
+    "DEFAULT_WEIGHTS",
+    "MatchScore",
+    "score",
+    "__version__",
+]
