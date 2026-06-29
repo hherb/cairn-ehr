@@ -7,8 +7,6 @@ hard veto caps the band at 'review' (never auto, never dropped); a weak pair -> 
 re-running preserves a human-set status (latest-wins but status-preserving).
 """
 
-import json
-
 from cairn_matcher.pipeline.banding import Band
 from cairn_matcher.pipeline.runner import propose
 from tests.conftest import seed_patient

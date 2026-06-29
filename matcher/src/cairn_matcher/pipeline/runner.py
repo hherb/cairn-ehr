@@ -44,4 +44,7 @@ def propose(
     low, high = (str(a), str(b)) if str(a) < str(b) else (str(b), str(a))
     payload = build_payload(match_score, vetoes, band_value, weights)
     db.upsert_proposal(conn, low, high, payload)
+    # Commit boundary owned here: a batch caller wrapping propose() is not silently
+    # committed mid-transaction by a helper function it doesn't control.
+    conn.commit()
     return band_value

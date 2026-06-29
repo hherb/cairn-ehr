@@ -56,6 +56,8 @@ def upsert_proposal(conn, low, high, payload: ProposalPayload) -> None:
 
     Latest-wins on (patient_low, patient_high), but a non-'pending' status (a human's
     decision) is PRESERVED — a re-run refreshes the score/band/evidence, never a verdict.
+
+    Does NOT commit. The caller owns the transaction boundary.
     """
     with conn.cursor() as cur:
         cur.execute(
@@ -70,4 +72,3 @@ def upsert_proposal(conn, low, high, payload: ProposalPayload) -> None:
              json.dumps(list(payload.veto_findings)), json.dumps(list(payload.evidence)),
              payload.matcher_version),
         )
-    conn.commit()
