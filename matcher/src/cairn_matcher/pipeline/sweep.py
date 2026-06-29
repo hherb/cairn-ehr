@@ -43,7 +43,7 @@ class SweepError:
 class SweepResult:
     """Summary of one sweep: the observability surface and the 'log what was dropped' record."""
 
-    generated: int                                   # candidate pairs scored
+    generated: int                                   # candidate pairs attempted (scored + errored)
     auto_candidate: int                              # proposals written in the AUTO_CANDIDATE band
     review: int                                      # proposals written in the REVIEW band
     below_threshold: int                             # pairs that persisted nothing

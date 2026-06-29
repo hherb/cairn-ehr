@@ -41,6 +41,7 @@ def test_sweep_writes_nothing_for_a_no_signal_population(pg_conn):
     result = sweep(pg_conn)
     assert result.generated == 0
     assert result.review == 0 and result.auto_candidate == 0
+    assert result.below_threshold == 0 and result.errors == []
 
 
 def test_sweep_is_idempotent_and_preserves_human_status(pg_conn):
