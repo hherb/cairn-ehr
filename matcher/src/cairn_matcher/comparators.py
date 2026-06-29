@@ -163,13 +163,15 @@ def _name_token_bag(name: Name) -> list[str]:
     return bag
 
 
-def _compare_two_names(a: Name, b: Name, ctx: Context) -> AgreementLevel:
-    """Best agreement between two single names, comparing token bags order-tolerantly.
+def _compare_two_names_greedy(a: Name, b: Name, ctx: Context) -> AgreementLevel:
+    """Greedy one-to-one token pairing from A's perspective — ORDER-DEPENDENT.
 
-    Greedy one-to-one token pairing: each a-token claims its best-agreeing unused
-    b-token. The name's level is the WEAKEST link across the bag (every token must find
-    a partner), and the bags must be the same size — a missing/extra token is a real
-    difference, not a free pass.
+    Each token in bag_a claims its best-agreeing unused token from bag_b. The name's
+    level is the WEAKEST link across all pairs. Bags must be the same size — a
+    missing/extra token is a real difference, not a free pass.
+
+    This helper is intentionally NOT called directly from outside this module.
+    Use _compare_two_names, which neutralises the order-dependency.
     """
     bag_a = _name_token_bag(a)
     bag_b = list(_name_token_bag(b))
@@ -192,6 +194,26 @@ def _compare_two_names(a: Name, b: Name, ctx: Context) -> AgreementLevel:
         bag_b.pop(best_idx)
         worst = min(worst, best_level)
     return worst
+
+
+def _compare_two_names(a: Name, b: Name, ctx: Context) -> AgreementLevel:
+    """Best agreement between two single names, comparing token bags order-tolerantly.
+
+    The spec (design §7) requires score(A,B) == score(B,A).  Greedy token pairing is
+    inherently order-dependent: which side iterates first determines which tokens get
+    paired, and the weakest-link result can differ between the two traversal orders.
+
+    Fix: run the greedy pairing in BOTH directions (A→B and B→A) and return the MAXIMUM
+    (strongest) result.  AgreementLevel is an IntEnum so max() is a plain integer
+    comparison.  Taking the best of both directions is symmetric by construction — the
+    same two directions are always available regardless of which argument is called 'a'.
+    This is still greedy/best-effort (not Hungarian-optimal), which is appropriate for
+    an advisory matcher, and the result is now invariant to argument order.
+    """
+    return max(
+        _compare_two_names_greedy(a, b, ctx),
+        _compare_two_names_greedy(b, a, ctx),
+    )
 
 
 def compare_name_set(
