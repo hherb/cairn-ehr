@@ -68,3 +68,19 @@ def test_default_weights_cover_the_default_fields():
 def test_match_score_is_returned():
     assert isinstance(score([], WEIGHTS), MatchScore)
     assert score([], WEIGHTS).total == 0.0
+
+
+def test_default_weights_tables_are_immutable():
+    # DEFAULT_WEIGHTS is a process-wide singleton. frozen=True only blocks attribute
+    # rebinding, not mutation of the wrapped dicts — so without an immutable wrapper a
+    # caller (e.g. a B3 locale tweak) could silently poison scoring for every other
+    # record/tenant in the process. Both layers must reject mutation.
+    with pytest.raises(TypeError):
+        DEFAULT_WEIGHTS.per_field["dob"] = None  # outer table
+    with pytest.raises(TypeError):
+        DEFAULT_WEIGHTS.per_field["dob"].weights[AgreementLevel.EXACT] = 999.0  # inner
+
+    # A freshly constructed Weights/FieldWeights from a plain dict is frozen too.
+    fw = FieldWeights({AgreementLevel.EXACT: 1.0})
+    with pytest.raises(TypeError):
+        fw.weights[AgreementLevel.EXACT] = 2.0

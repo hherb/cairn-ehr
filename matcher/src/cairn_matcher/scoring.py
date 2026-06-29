@@ -18,6 +18,7 @@ data is a later slice (B3).
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from cairn_matcher.agreement import AgreementLevel
 from cairn_matcher.records import FieldComparison
@@ -41,6 +42,17 @@ class FieldWeights:
 
     weights: Mapping[AgreementLevel, float]
 
+    def __post_init__(self) -> None:
+        """Wrap a plain dict in MappingProxyType so the table is truly immutable.
+
+        frozen=True only blocks rebinding the `weights` attribute, not mutating the dict
+        it points at. Since DEFAULT_WEIGHTS is a process-wide singleton, an unwrapped
+        dict would let any caller silently poison scoring for every other record/tenant
+        in the process. Same idiom as records.Name.
+        """
+        if isinstance(self.weights, dict):
+            object.__setattr__(self, "weights", MappingProxyType(self.weights))
+
     def weight_for(self, level: AgreementLevel) -> float:
         return self.weights.get(level, 0.0)
 
@@ -50,6 +62,11 @@ class Weights:
     """The deployment's per-field weight table (its locale tuning). Learning is B3."""
 
     per_field: Mapping[str, FieldWeights]
+
+    def __post_init__(self) -> None:
+        """Wrap the outer per-field dict immutably too (see FieldWeights.__post_init__)."""
+        if isinstance(self.per_field, dict):
+            object.__setattr__(self, "per_field", MappingProxyType(self.per_field))
 
 
 @dataclass(frozen=True)

@@ -170,12 +170,18 @@ def _compare_two_names_greedy(a: Name, b: Name, ctx: Context) -> AgreementLevel:
     level is the WEAKEST link across all pairs. Bags must be the same size — a
     missing/extra token is a real difference, not a free pass.
 
+    An EMPTY token bag is ABSENCE, not a clash: a name that projected to no tokens
+    grades INSUFFICIENT_DATA (zero evidence, §3.7), never DISAGREE. Only two non-empty
+    bags of DIFFERING size count as a real difference (DISAGREE).
+
     This helper is intentionally NOT called directly from outside this module.
     Use _compare_two_names, which neutralises the order-dependency.
     """
     bag_a = _name_token_bag(a)
     bag_b = list(_name_token_bag(b))
-    if not bag_a or not bag_b or len(bag_a) != len(bag_b):
+    if not bag_a or not bag_b:
+        return AgreementLevel.INSUFFICIENT_DATA
+    if len(bag_a) != len(bag_b):
         return AgreementLevel.DISAGREE
 
     worst = AgreementLevel.EXACT
@@ -225,10 +231,15 @@ def compare_name_set(
     bearing (§4.2 / ADR-0014): maiden/married switching, changed family names, and
     discarded aliases still match. Returns the BEST agreement across the cross-product;
     an empty/absent set on either side -> INSUFFICIENT_DATA (zero evidence, not a clash).
+
+    The floor is INSUFFICIENT_DATA, not DISAGREE: if every comparable pair carries an
+    empty-token name (no real data), the result stays INSUFFICIENT_DATA (§3.7). A real
+    name vs a real non-matching name returns DISAGREE (> INSUFFICIENT_DATA), so genuine
+    clashes still surface as DISAGREE.
     """
     if not a or not b:
         return AgreementLevel.INSUFFICIENT_DATA
-    best = AgreementLevel.DISAGREE
+    best = AgreementLevel.INSUFFICIENT_DATA
     for name_a in a:
         for name_b in b:
             best = max(best, _compare_two_names(name_a, name_b, ctx))

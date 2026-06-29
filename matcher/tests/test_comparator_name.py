@@ -51,3 +51,19 @@ def test_empty_set_is_insufficient_data():
     a = frozenset({n(["alex"], ["kim"])})
     assert compare_name_set(frozenset(), a, CTX) is AgreementLevel.INSUFFICIENT_DATA
     assert compare_name_set(None, a, CTX) is AgreementLevel.INSUFFICIENT_DATA
+
+
+def test_empty_token_name_is_insufficient_data_not_disagree():
+    # §3.7 (no-data-is-never-disagreement): a name that projected to NO tokens is
+    # absence, not a clash. It must contribute zero evidence, never the DISAGREE penalty.
+    a = frozenset({n(["alice"], ["kim"])})
+    b = frozenset({Name(tokens={})})  # a present name record carrying no tokens
+    assert compare_name_set(a, b, CTX) is AgreementLevel.INSUFFICIENT_DATA
+
+
+def test_real_name_rescues_a_co_present_empty_token_name():
+    # If one side carries both an empty-token name AND a real matching name, the real
+    # pair must still win (best across the history-set cross-product).
+    a = frozenset({Name(tokens={}), n(["alex"], ["kim"])})
+    b = frozenset({n(["alex"], ["kim"])})
+    assert compare_name_set(a, b, CTX) is AgreementLevel.EXACT
