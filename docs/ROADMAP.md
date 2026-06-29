@@ -68,11 +68,23 @@ DISAGREE — mismatch stays db/016's job) + the field→comparator registry seam
 combiner (`scoring.py`; `provenance_factor` scaling, `INSUFFICIENT_DATA`→0) producing an explainable `MatchScore`. The three
 principle-bearing invariants hold end-to-end (no-data-never-disagreement §3.7; provenance-aware §4.2; name-history-set). 55
 pure tests (`uv run pytest`); brainstorm→spec→plan→subagent-SDD; final opus review caught + fixed one Critical (score
-symmetry under greedy name-pairing). No new ADR, no spec bump. **Remaining matcher pieces:** **B2** — PG adapter (populate
-`CandidateRecord` from `patient_*`) + blocking + the `db/016` veto-gate call + banding/threshold + proposal worklist; **B3**
-— locale comparator packs (phonetic/nickname + content-addressed profiles) + weight-learning + eval harness + hub
-duplicate-sweep; **piece C** — the **§5.7 link-apply seam** (needs the identity event algebra). **Next:** piece B2 and/or
-piece C; a `compare_address` comparator. ([Issue #69](https://github.com/cairn-ehr/cairn-ehr/issues/69): codebase-wide projection-tiebreak collation canonicalization, deferred.)
+symmetry under greedy name-pairing). No new ADR, no spec bump.
+**Slice 8 — §5.2 advisory matcher pipeline (piece B2)** (`cairn_matcher/pipeline/`, new `db/017_match_proposal.sql`,
+SCHEMA 15→16): the veto-gated **pairwise** pipeline. Pure `adapter.py` (`patient_*` projection rows → B1 `CandidateRecord`;
+precision-gated **ISO** DOB extraction — parses no locale date strings, non-ISO→`None`; untagged `sorted()` token-bag names;
+identifier sets on `match_key`) + pure `banding.py` (`MatchScore` + db/016 veto findings → `auto_candidate` iff `≥ T_auto`
+**and no veto**, else `review`, else `None` — any veto caps at `review`, never auto-link/auto-reject; below `T_review`
+persists nothing; `matcher_version` = pkg+weights digest, ADR-0014) + `db.py`/`runner.py` (the only psycopg modules —
+`propose` = load→score→call in-DB `cairn_match_veto`→band→[if not None] upsert→commit, one txn, commit owned by the
+runner). `db/017` is an **advisory** worklist (PK `(low,high)`, `CHECK(low<high)`, JSONB veto/evidence, human `status`
+preserved on re-run) — *not a safety gate*. **psycopg** optional (`pipeline` extra; LGPL→AGPL-ok), B1's pure core
+unchanged. 92 tests with DB (5 gated integration) / 87 + 5 skipped without; opus whole-branch review MERGE-READY (0
+Critical/0 Important; one Important — commit moved to runner — fixed in-branch). **Remaining matcher pieces:** **B2b** —
+blocking/candidate-pair generation across the patient set (B2 is pairwise — it scores a given pair); **B3** — locale
+comparator packs (phonetic/nickname + content-addressed profiles) + weight-learning + eval harness + hub duplicate-sweep +
+full §7.5 matcher actor registration; **piece C** — the **§5.7 link-apply seam** (needs the identity event algebra).
+**Next:** piece B2b and/or piece C; a `compare_address` comparator; B2 follow-up Minors (Thresholds `review<auto` guard,
+`band` CHECK, `updated_at` trigger, pair-order str-vs-uuid, conftest env read-at-import). ([Issue #69](https://github.com/cairn-ehr/cairn-ehr/issues/69): codebase-wide projection-tiebreak collation canonicalization, deferred.)
 - **Point-of-care identity, possession semantics, `sign-as` salvage** ([ADR-0008](spec/decisions/0008-point-of-care-identity-possession-and-salvage.md)).
 - **Locale-pluggable matcher comparators** — *advisory only* (Python/ML); comparator-profile tag travels with each demographic assertion, degrades honestly to human review ([ADR-0014](spec/decisions/0014-locale-pluggable-matcher-comparators.md)).
 
