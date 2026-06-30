@@ -62,7 +62,7 @@ uv run python -m cairn_matcher.eval
 uv run python -m cairn_matcher.eval path/to/dataset.json
 
 # also run blocking-recall metrics (needs a DB + the pipeline extra):
-CAIRN_TEST_PG="host=127.0.0.1 port=5532 user=hherb dbname=cairn_test" \
+CAIRN_TEST_PG="host=127.0.0.1 port=5532 user=<your-pg-user> dbname=cairn_test" \
   uv run --extra pipeline python -m cairn_matcher.eval
 ```
 
