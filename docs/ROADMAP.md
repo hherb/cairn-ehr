@@ -90,12 +90,25 @@ backstop). New `pipeline/sweep.py` — `SkippedBlock`/`SweepError`/`SweepResult`
 generate→`rollback` (close read snapshot, xmin guard), phase 2 loop the existing `runner.propose()` per pair (one txn each,
 idempotent, human `status` preserved) with **skip-and-report** errors (never aborts the batch). Recall-oriented blocking;
 the pure scorer stays the source of truth. No new dep. 113 tests with DB (9 candidate-gen + 5 sweep, incl. a real-monkeypatch
-failing-pair) / 93 + 20 skipped without; opus whole-branch review READY-TO-MERGE (0 Critical/0 Important). **Remaining
-matcher pieces:** **B3** — compound blocking keys (token+birth-year to shrink blocks, measurement-driven) + locale
-comparator packs (phonetic/nickname + content-addressed profiles) + weight-learning + eval harness + hub-tier aggressive
-duplicate-sweep + proposal retraction + full §7.5 matcher actor registration; **piece C** — the **§5.7 link-apply seam**
-(needs the identity event algebra). **Next:** piece C and/or B3; a `compare_address` comparator; a CLI sweep entry; a
-`SweepResult` dropped-*pair* estimate for B3 miss-rate telemetry; B2 follow-up Minors → [issue #79](https://github.com/cairn-ehr/cairn-ehr/issues/79).
+failing-pair) / 93 + 20 skipped without; opus whole-branch review READY-TO-MERGE (0 Critical/0 Important).
+**Slice 10 — §5.2 matcher eval harness (piece B3 keystone)** (`cairn_matcher/eval/`, **no `db/` file, no SCHEMA bump**
+— advisory measurement substrate): unblocks the measurement-driven B3 items (compound blocking keys, weight-learning).
+A new pure-by-default sub-package mirroring `pipeline/`'s pure-core + optional-DB split: `dataset.py` (entity-cluster
+JSON format + loader; `record_to_candidate` **reuses the real `candidate_from_rows`** — no drift; `truth_pairs`/`all_pairs`
+ground truth), `metrics.py` (confusion + precision/recall/F1 at strict+lenient operating points + auto-false-link-rate +
+missed-match-rate + score separation; zero-denominator→0.0, never NaN), `scorer_eval.py` (`evaluate_scorer` runs the
+**real** `field_comparisons→score→band`; `weights`/`thresholds`/`config` are params — the weight-learning lever),
+`report.py` (+ honest "regression/tuning instrument, not a statistical accuracy claim" caveat), `__main__.py`
+(`python -m cairn_matcher.eval`; psycopg lazy so the pure path never imports it), `blocking_eval.py` (DB-gated, `pipeline`
+extra: seeds `patient_*` label→uuid5, calls the **real** `generate_candidate_pairs`, `rollback` xmin-guard → pair-completeness
+/ reduction-ratio / dropped-true-matches / Σ`C(size,2)` estimate) + a culture-plural `gold_v1.json` fixture. No new dep
+(pure core stdlib-only). 143 with DB / 121 + 22 skipped without; opus whole-branch review READY-TO-MERGE (0 Critical/0
+Important). **Remaining matcher pieces:** **B3** — compound blocking keys + weight-learning (both now measurable via the
+harness) + locale comparator packs (phonetic/nickname + content-addressed profiles) + hub-tier aggressive duplicate-sweep
++ proposal retraction + full §7.5 matcher actor registration; **piece C** — the **§5.7 link-apply seam** (needs the
+identity event algebra). **Next:** compound blocking keys / weight-learning, or piece C; a synthetic corruption generator
+(same dataset format) + veto-aware scorer mode; a `compare_address` comparator; a CLI sweep entry; B2 follow-up Minors →
+[issue #79](https://github.com/cairn-ehr/cairn-ehr/issues/79).
 ([Issue #69](https://github.com/cairn-ehr/cairn-ehr/issues/69): codebase-wide projection-tiebreak collation canonicalization, deferred.)
 - **Point-of-care identity, possession semantics, `sign-as` salvage** ([ADR-0008](spec/decisions/0008-point-of-care-identity-possession-and-salvage.md)).
 - **Locale-pluggable matcher comparators** — *advisory only* (Python/ML); comparator-profile tag travels with each demographic assertion, degrades honestly to human review ([ADR-0014](spec/decisions/0014-locale-pluggable-matcher-comparators.md)).
