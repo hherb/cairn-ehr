@@ -105,3 +105,21 @@ def test_cap_is_per_group_not_global(pg_conn):
     pairs, skipped = _gen(pg_conn, max_block_size=2)
     assert canonical_pair(PA, PD) in pairs
     assert any(pn == "dob" and sz == 3 for pn, _key, sz in skipped)
+
+
+def test_name_year_rescues_pair_from_oversized_name_block(pg_conn):
+    # Three patients share the name token "smith" -> the single-token 'name' block is
+    # size 3. At cap=2 that block is oversized and skipped today, dropping every pair in
+    # it. PA and PB also share a birth-year (1980) but NOT an exact DOB, so only the new
+    # 'name+year' compound pass can rescue their pair.
+    seed_patient(pg_conn, PA, dob=("1980-01-01", 20), names=[("Smith", 20)])
+    seed_patient(pg_conn, PB, dob=("1980-06-06", 20), names=[("Smith", 20)])
+    seed_patient(pg_conn, PC, dob=("1991-01-01", 20), names=[("Smith", 20)])
+    pairs, skipped = _gen(pg_conn, max_block_size=2)
+    # The oversized single-token block is still reported as skipped...
+    assert any(pn == "name" and sz == 3 for pn, _key, sz in skipped)
+    # ...but the same-year sub-block (smith|1980) survives and yields PA-PB.
+    assert canonical_pair(PA, PB) in pairs
+    # The different-year patient (PC, 1991) is alone in its sub-block -> no pair with it.
+    assert canonical_pair(PA, PC) not in pairs
+    assert canonical_pair(PB, PC) not in pairs
