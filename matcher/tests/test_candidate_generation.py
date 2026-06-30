@@ -1,8 +1,9 @@
 # matcher/tests/test_candidate_generation.py
 """Integration tests for db.generate_candidate_pairs (blocking).
 
-Seed patient_* projection rows directly, then assert which canonical pairs the three
-blocking passes (identifier / exact-DOB / name-token) generate. Gated on CAIRN_TEST_PG.
+Seed patient_* projection rows directly, then assert which canonical pairs the four
+blocking passes (identifier / exact-DOB / name-token / name-token+birth-year) generate.
+Gated on CAIRN_TEST_PG.
 """
 
 import uuid
