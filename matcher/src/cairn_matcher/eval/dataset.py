@@ -102,3 +102,69 @@ def load_dataset(obj: Mapping) -> LabelledDataset:
         description=str(obj.get("description", "")),
         entities=tuple(entities),
     )
+
+
+import itertools
+
+from cairn_matcher.pipeline.adapter import candidate_from_rows
+from cairn_matcher.records import CandidateRecord
+
+
+def record_to_candidate(rec: DatasetRecord) -> CandidateRecord:
+    """Map a dataset record to a B1 CandidateRecord via the REAL projection adapter.
+
+    The eval scores the same path production does: the only transform here is reshaping
+    the dataset's flat dob dict into the projection's {value, facets:{precision}, ...}
+    row shape candidate_from_rows expects. Everything else (DOB precision-gating, name
+    token-bagging, identifier keying, safe degrade on absence) is the adapter's, reused
+    verbatim so the eval can never drift from the production mapping.
+    """
+    dob_row = None
+    if rec.dob is not None:
+        dob_row = {
+            "value": rec.dob.get("value"),
+            "facets": {"precision": rec.dob.get("precision")},
+            "provenance_rank": rec.dob.get("provenance_rank", 0),
+        }
+    sex_row = None
+    if rec.sex_at_birth is not None:
+        sex_row = {
+            "value": rec.sex_at_birth.get("value"),
+            "provenance_rank": rec.sex_at_birth.get("provenance_rank", 0),
+        }
+    name_rows = [
+        {"value": n["value"], "provenance_rank": n.get("provenance_rank", 0)} for n in rec.names
+    ]
+    identifier_rows = [
+        {"system": i["system"], "match_key": i["match_key"]} for i in rec.identifiers
+    ]
+    return candidate_from_rows(
+        dob_row=dob_row, sex_row=sex_row, name_rows=name_rows, identifier_rows=identifier_rows
+    )
+
+
+def canonical_label_pair(a: str, b: str) -> tuple[str, str]:
+    """Order two record_id labels (low, high) so a pair has one identity regardless of
+    argument order. Lexical order on labels — the blocking layer maps to uuid order and
+    reverse-maps back, so the two spaces never need to agree on ordering."""
+    return (a, b) if a < b else (b, a)
+
+
+def truth_pairs(ds: LabelledDataset) -> frozenset[tuple[str, str]]:
+    """Every true-match pair: all within-cluster unordered record pairs, canonicalised.
+
+    Cross-cluster pairs are, by construction, the non-matches; we never enumerate them
+    here (the universe is all_pairs; non-matches = all_pairs - truth_pairs).
+    """
+    out: set[tuple[str, str]] = set()
+    for ent in ds.entities:
+        ids = [r.record_id for r in ent.records]
+        for a, b in itertools.combinations(ids, 2):
+            out.add(canonical_label_pair(a, b))
+    return frozenset(out)
+
+
+def all_pairs(ds: LabelledDataset) -> list[tuple[str, str]]:
+    """The full comparison universe: every unordered record pair, canonicalised."""
+    ids = [r.record_id for r in ds.all_records()]
+    return [canonical_label_pair(a, b) for a, b in itertools.combinations(ids, 2)]
