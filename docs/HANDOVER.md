@@ -1,73 +1,55 @@
 # HANDOVER — Cairn
 
 **Session date:** 2026-06-30 · **Spec/ADRs:** v0.40 · **Phase:** architecture complete; **first production clinical
-surface under construction** — demographics on `cairn-node` (slices 1–5 done) + the §5.2 matcher (piece A in-DB
-veto floor done; piece B1 advisory scoring core done; piece B2 veto-gated pairwise pipeline + proposal worklist
-done; **piece B2b blocking / candidate-pair generation + batch sweep done this session**; B3 locale packs / piece C
-link-seam next). Viability proven by spikes (walking skeleton, advisory-actor contract, a first federating node, Postgres-on-Android).
+surface under construction** — demographics on `cairn-node` (slices 1–5 done) + the §5.2 matcher (piece A in-DB veto
+floor · B1 advisory scoring core · B2 veto-gated pairwise pipeline + proposal worklist · B2b blocking / candidate-pair
+generation + batch sweep · **B3 eval harness — scorer + blocking-recall measurement — done this session**; remaining
+B3 compound-blocking-keys / weight-learning / locale packs + piece C link-seam next). Viability proven by spikes
+(walking skeleton, advisory-actor contract, a first federating node, Postgres-on-Android).
 
-**This session (2026-06-30):** built the **§5.2 advisory matcher — piece B2b** (blocking / candidate-pair generation
-+ a batch sweep driver), via **brainstorm→spec→plan→subagent-SDD** (3 TDD tasks; spec+plan under `docs/superpowers/`).
-B2 scored a *given* pair; B2b decides **which** pairs to score across the whole patient set (no O(n²) all-pairs).
-Two additions to `cairn_matcher/pipeline/`, both **advisory** — **no `db/` floor file, no SCHEMA bump, no spec/ADR
-change** (implements settled §5.2/§5.13/ADR-0014, like B1/B2): **`db.generate_candidate_pairs(conn, *, max_block_size=100)`**
-(the one new query, in the only-IO module so policy can't fork the safety floor) — a read-only **3-pass blocking
-disjunction** (shared identifier `(system,match_key)` excl. `unknown` · exact-DOB `value` · shared name token via
-`regexp_split_to_table(lower(value),'\s+')`), group-based CTEs, deduped to one **canonical** `(low,high)` per pair by
-**uuid VALUE** order (== `runner.canonical_pair`, not text), self-pairs structurally excluded; an **oversized-block
-guard** skips any blocking-value group with `> max_block_size` members and **reports it** in `skipped_blocks`
-(`(pass_name,key,size)`) — never a silent cap (a block of size *k* is *C(k,2)* pairs; a value shared by hundreds is
-non-discriminating; the §5.13 hub sweep is the declared backstop). New **`pipeline/sweep.py`** — `SkippedBlock`/`SweepError`/`SweepResult`
-frozen dataclasses + **`sweep(conn, *, max_block_size=100, thresholds, weights)`**: phase 1 generate→`conn.rollback()`
-(close the read snapshot before the write loop, xmin-horizon guard), phase 2 loop the existing `runner.propose()` per
-pair (one txn each; idempotent, human `status` preserved) with **skip-and-report** errors (a failing pair → `rollback`
-+ `SweepError`, never aborts the batch; catches `Exception` not `BaseException`). Blocking is **recall-oriented**: the
-SQL tokenizer is deliberately simple; the pure scorer stays the source of truth. **No new dep** (psycopg already the
-optional `pipeline` extra; pure core untouched). Tests: **113 with DB** (9 candidate-gen + 5 sweep integration incl. a
-real-monkeypatch failing-pair proving error-capture + connection recovery) / **93 + 20 skipped** without (`uv run
-pytest`). Final **opus whole-branch review: READY-TO-MERGE, 0 Critical / 0 Important** (SQL recall/dedup/self+unknown
-exclusion/per-group cap all verified; zero `db/` floor changes; no psycopg leak; sweep connection-safe). Post-review
-nits applied in-branch: `SweepResult.generated` comment → "attempted (scored+errored)"; no-signal test also asserts
-`below_threshold==0`/`errors==[]`; README documents B2b. **Deferred (recorded, not lost):** **compound blocking keys**
-(token+birth-year to shrink blocks — B3, measurement-driven), a **CLI** sweep entry, the **hub-tier** aggressive sweep
-+ proposal retraction (B3), and a `SweepResult` dropped-*pair* estimate (Σ`C(size,2)`) for B3 miss-rate telemetry;
-**piece C** — the proposal→`link` apply seam (still needs the §5.7 identity event algebra, unbuilt). **The §5.2 blocking
-/ candidate-pair generation (B2b) is now BUILT.**
+**This session (2026-06-30):** built the **§5.2 matcher eval harness (piece B3 keystone)** — a labelled-dataset
+measurement substrate to unblock the measurement-driven B3 items (compound blocking keys, weight-learning), via
+**brainstorm→spec→plan→subagent-SDD** (8 TDD tasks + final review; spec+plan under `docs/superpowers/`). New
+pure-by-default **`matcher/src/cairn_matcher/eval/`** sub-package mirroring the `pipeline/` pure-core + optional-DB split:
+**`dataset.py`** (entity-cluster JSON format + loader; `record_to_candidate` *reuses the real `candidate_from_rows`
+adapter* — no drift; `truth_pairs`/`all_pairs` ground truth), **`metrics.py`** (confusion + precision/recall/F1 at
+strict+lenient operating points + auto-false-link-rate + missed-match-rate + score separation; zero-denominator → 0.0,
+never NaN), **`scorer_eval.py`** (`evaluate_scorer` runs the *real* `field_comparisons→score→band` path; `weights`/
+`thresholds`/`config` are params — the weight-learning lever; banding with no veto = documented pure-eval simplification),
+**`report.py`** (plain-text report incl. the honest "regression/tuning instrument, not a statistical accuracy claim"
+caveat), **`__main__.py`** (`python -m cairn_matcher.eval` — scorer always; blocking when `CAIRN_TEST_PG`, psycopg
+**lazy-imported** so the pure path never touches it), **`blocking_eval.py`** (DB-gated, `pipeline` extra: seeds `patient_*`
+label→uuid5, calls the *real* `generate_candidate_pairs`, `conn.rollback()` xmin-guard, computes pair-completeness /
+reduction-ratio / dropped-true-matches / Σ`C(size,2)` dropped-pair estimate), + a hand-authored **culture-plural gold
+fixture** (`eval/fixtures/gold_v1.json`: mononym / patronymic+diacritic / multi-token). **Advisory only — no `db/` floor
+file, no SCHEMA bump, no spec/ADR change** (implements settled §5.2/§5.13/ADR-0014). **No new dep** (pure core stdlib-only;
+blocking under existing `pipeline`/psycopg extra). Tests: **146 with DB** / **123 + 23 skipped** without (`uv run pytest`);
+purity probe confirms the pure surface (incl. `__main__`) imports no psycopg. Final **opus whole-branch review:
+READY-TO-MERGE, 0 Critical / 0 Important** (real-path reuse/no-drift, purity, advisory-only, metric math all verified;
+two cosmetic Minors applied in-branch). **Post-review fixes (in-branch, PR #83):** `blocking_eval.seed_dataset` no longer
+`conn.commit()`s — the seed now lives in the read txn that `evaluate_blocking`'s `rollback()` discards, so the DB-gated
+eval is **idempotent + leaves no synthetic patients** (a committed seed would re-hit `patient_demographic`'s
+`PK(patient_id, field)` on a second run, since `uuid5` labels are deterministic); the dataset loader now validates
+name/identifier inner keys → a located `DatasetError` instead of an opaque downstream `KeyError`. **Deferred (recorded, not lost):** the **synthetic corruption generator** (volume +
+recall curves, same format); the **compound-blocking-keys** + **weight-learning** slices themselves (this harness *measures*
+them); a **veto-aware / end-to-end scorer mode**. **The §5.2 matcher eval harness (B3 keystone) is now BUILT.**
 
-**Prior session (2026-06-29):** built the **§5.2 advisory matcher pipeline — piece B2** (the veto-gated pairwise
-pipeline + advisory proposal worklist), via **brainstorm→spec→plan→subagent-SDD** (7 TDD tasks; spec+plan under
-`docs/superpowers/`). A new IO-bearing sub-package **`cairn_matcher/pipeline/`** beside B1's untouched pure core:
-**`adapter.py`** (pure — `patient_*` projection rows → B1 `CandidateRecord`: precision-gated **ISO** DOB extraction
-that *parses no locale date strings* — non-ISO degrades to `None`; untagged whitespace token-bag names canonicalised
-via `sorted()` so order-permuted names dedupe; identifier sets keyed on `match_key`, skipping `unknown`; safe-degrade
-on absence, `MatcherTypeError` on wrong type); **`banding.py`** (pure — `MatchScore` + db/016 veto findings → a band:
-`auto_candidate` iff `score ≥ T_auto` **and no veto**, else `review`, else `None`; **any** veto, hard *or*
-degrade_hold, caps at `review` — never auto-link, never auto-reject; below `T_review` persists nothing; conservative
-shipped thresholds, B3 learns; `matcher_version` = pkg version + weights digest, ADR-0014 pinning); **`db.py`**
-(the only psycopg module — load projections, call the in-DB `cairn_match_veto`, upsert a proposal; **commit owned by
-the runner, not here**); **`runner.py`** (`propose` = load→score→veto→band→[if not None] upsert→commit, one txn,
-pair stored canonical `(low,high)`). New **`db/017_match_proposal.sql`** (SCHEMA array 15→16): an **advisory**
-worklist table (PK `(patient_low,patient_high)`, `CHECK(low<high)`, `veto_findings`/`evidence` JSONB, `matcher_version`,
-human `status` preserved on re-run via `ON CONFLICT DO UPDATE` excluding `status`) — *not a safety gate, no validation
-door*. **psycopg** is the only new dep and is **optional** (`[project.optional-dependencies] pipeline`; LGPL→AGPL-ok),
-so B1's pure zero-dep core is unchanged. Tests: **92 with DB** (5 gated integration: seed `patient_*` directly →
-`propose` → assert the proposal; strong→`review`/pending, verified-DOB clash→hard_veto capped at `review` never auto,
-weak→no row, re-run preserves human `status`), **87 + 5 skipped** without (`uv run pytest`; integration skips cleanly
-without `CAIRN_TEST_PG`); `cargo build`+`clippy -p cairn-node` clean. **No new ADR, no spec bump** (implements settled
-§5.2/§5.13/ADR-0014). Final opus whole-branch review: **MERGE-READY, 0 Critical/0 Important** (all 6 safety behaviours
-verified from code). One **Important fixed in-branch**: the proposal `commit` was moved out of `upsert_proposal` into
-`runner.propose` (explicit txn boundary — a future batch caller wrapping `propose()` is no longer silently committed).
-**Deferred (recorded, not lost):** **B2b** — blocking/candidate-pair generation across the whole patient set (this
-slice is *pairwise* only — it scores a given pair; an external driver must currently supply the pairs) + optionally
-projecting structured role-tagged name tokens; **B3** — locale comparator packs (phonetic/nickname + content-addressed
-profiles), weight-learning, eval harness, hub duplicate-sweep (the false-split backstop + proposal retraction), full
-§7.5 matcher actor registration/signing; **piece C** — the proposal→`link` apply seam (needs the §5.7 identity event
-algebra, unbuilt); a `compare_address` comparator; a clutch of non-blocking Minors → **[issue #79](https://github.com/cairn-ehr/cairn-ehr/issues/79)** (Thresholds
-`review<auto` guard, `band` CHECK, `updated_at` UPDATE trigger, conftest env read-at-import).
-**Post-review fixes (in-branch, this session):** pair-order now compares `uuid` values not text
-(`runner.canonical_pair`, closes the #79 M1); `propose` rolls back the read txn on the sub-threshold
-(no-proposal) path so a batch driver can't pin the xmin horizon; `parse_dob` range-checks month/day
-(out-of-range → safe `None`). **The §5.2 veto-gated pairwise pipeline (B2) is now BUILT.**
+**Prior session (2026-06-30):** built the **§5.2 advisory matcher — piece B2b** (blocking / candidate-pair generation +
+batch sweep): read-only `db.generate_candidate_pairs(conn, *, max_block_size=100)` — a 3-pass blocking disjunction
+(shared identifier excl. `unknown` · exact-DOB · shared name token), group CTEs deduped to canonical `(low,high)` by uuid
+VALUE order, oversized-block guard → `skipped_blocks` (never a silent cap) — + `pipeline/sweep.py` (`sweep()` two-phase
+batch driver: generate→`rollback` xmin-guard, then loop `runner.propose()` per pair with skip-and-report errors). Advisory;
+no `db/` floor, no SCHEMA bump. 113 with DB / 93+20 skipped without. Opus review READY-TO-MERGE 0C/0I. Merged **[PR #81](https://github.com/cairn-ehr/cairn-ehr/pull/81)**. **B2b BUILT.**
+
+**Prior session (2026-06-29):** built the **§5.2 advisory matcher pipeline — piece B2** (veto-gated **pairwise**
+pipeline + advisory proposal worklist) in a new IO-bearing sub-package **`cairn_matcher/pipeline/`** beside B1's pure
+core: pure `adapter.py` (`patient_*` rows → `CandidateRecord`; ISO DOB, `sorted()` token-bag names, `match_key`
+identifiers, safe-degrade) + pure `banding.py` (`MatchScore`+veto → `auto_candidate` iff `≥T_auto` **and no veto**,
+else `review`, else `None`; any veto caps at `review`, never auto-link/auto-reject) + `db.py`/`runner.py` (the only
+psycopg modules; `propose` = load→score→veto→band→upsert→commit, commit owned by runner). New **`db/017_match_proposal.sql`**
+(SCHEMA 15→16): an **advisory** worklist table (human `status` preserved on re-run) — *not a safety gate*. **psycopg**
+optional (`pipeline` extra). 92 with DB / 87+5 skipped without. Opus review MERGE-READY 0C/0I. Non-blocking Minors →
+**[issue #79](https://github.com/cairn-ehr/cairn-ehr/issues/79)**. **B2 BUILT.**
 
 **Prior sessions (2026-06-28/29) — §5.2 matcher pieces A + B1 (condensed; full detail in ROADMAP slices 6–7 + git):**
 **piece A** = the **§4.4/§5.2 in-DB hard-veto floor** (`db/016_match_veto.sql`, SCHEMA 14→15; `cairn_match_veto` returns
@@ -371,16 +353,18 @@ Medium-style write-up. **Remaining non-load-bearing gaps:** from-source PG build
 - **Demographics build — next slices** (the live build front; reuse the spine in `db/010`/`db/011`/`db/013`/`db/014` +
   `cairn-event::demographics`). Slices 1–5 are done (§4.4 identifiers, §4.2 DOB + sex-at-birth, §4.2 names,
   §4.2 administrative-sex + gender-identity, §4.3 address). **Karyotype** is resolved as a distinct field ([ADR-0037](spec/decisions/0037-demographic-administrative-sex-and-per-field-winner-policy.md)) — no code yet.
-  **§5.2 matcher:** piece A (in-DB hard-veto floor, `db/016`), piece B1 (advisory **Python** scoring core), piece B2
-  (the veto-gated **pairwise** pipeline + `db/017` advisory proposal worklist), **and piece B2b** (blocking /
-  candidate-pair generation + the `sweep()` batch driver, `cairn_matcher/pipeline/{db.generate_candidate_pairs,sweep}`)
-  are now BUILT. **Next:** **piece B3** — compound blocking keys (token+birth-year, to shrink blocks — measurement-driven)
-  + locale comparator packs / weight-learning / eval harness / hub-tier aggressive duplicate-sweep + proposal retraction
-  / full §7.5 matcher actor registration; **piece C** — the §5.7 identity-event link-apply seam (the destination for
-  match proposals; needs the `link`/`unlink`/… algebra, unbuilt). Deferred: deceased-status veto (no projection yet;
-  stub in db/016); a `compare_address` comparator; a **CLI** sweep entry; a `SweepResult` dropped-*pair* estimate
-  (Σ`C(size,2)`) for B3 miss-rate telemetry; B2 follow-up Minors (Thresholds `review<auto` guard, `band` CHECK,
-  `updated_at` trigger, conftest env read-at-import) → [issue #79](https://github.com/cairn-ehr/cairn-ehr/issues/79).
+  **§5.2 matcher:** piece A (in-DB hard-veto floor, `db/016`), B1 (advisory **Python** scoring core), B2 (veto-gated
+  **pairwise** pipeline + `db/017` proposal worklist), B2b (blocking / candidate-pair generation + `sweep()` driver,
+  `cairn_matcher/pipeline/{db,sweep}`), **and the B3 eval harness** (`cairn_matcher/eval/` — scorer metrics +
+  DB-gated blocking-recall measurement + culture-plural `gold_v1.json` + `python -m cairn_matcher.eval` CLI) are now
+  BUILT. **Next (B3 measurement-driven, now unblocked by the harness):** **compound blocking keys** (token+birth-year,
+  to shrink blocks) + **weight-learning** (sweep `evaluate_scorer`'s `weights`/`thresholds` against the gold set) +
+  locale comparator packs / hub-tier aggressive duplicate-sweep + proposal retraction / full §7.5 matcher actor
+  registration; **piece C** — the §5.7 identity-event link-apply seam (the destination for match proposals; needs the
+  `link`/`unlink`/… algebra, unbuilt). Deferred: a **synthetic corruption generator** (volume + recall curves, same
+  dataset format) + a **veto-aware / end-to-end scorer mode**; deceased-status veto (stub in db/016); a `compare_address`
+  comparator; a **CLI** sweep entry; B2 follow-up Minors (Thresholds `review<auto` guard, `band` CHECK, `updated_at`
+  trigger, conftest env read-at-import) → [issue #79](https://github.com/cairn-ehr/cairn-ehr/issues/79).
   Rust DB-gated tests + the matcher integration tests need `CAIRN_TEST_PG="host=127.0.0.1 port=5532 user=hherb
   dbname=cairn_test"` (PG18+cairn_pgx); matcher integration: `cd matcher && CAIRN_TEST_PG=… uv run --extra pipeline
   pytest`. The pure matcher suite is dependency-free: `cd matcher && uv run pytest` (uv, never venv/pip).

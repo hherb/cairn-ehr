@@ -50,6 +50,29 @@ whole patient set, so an O(n²) all-pairs comparison is avoided:
 - Integration (gated): needs PostgreSQL ≥ 18 + `cairn_pgx`; skips when `CAIRN_TEST_PG` is unset:
   `CAIRN_TEST_PG="host=127.0.0.1 port=5532 user=<your-pg-user> dbname=cairn_test" uv run --extra pipeline pytest`
 
+## Eval harness (B3)
+
+Measure the matcher against a labelled dataset (entity clusters = ground truth):
+
+```bash
+# scorer/banding metrics over the bundled gold set (pure, no DB):
+uv run python -m cairn_matcher.eval
+
+# a named dataset:
+uv run python -m cairn_matcher.eval path/to/dataset.json
+
+# also run blocking-recall metrics (needs a DB + the pipeline extra):
+CAIRN_TEST_PG="host=127.0.0.1 port=5532 user=<your-pg-user> dbname=cairn_test" \
+  uv run --extra pipeline python -m cairn_matcher.eval
+```
+
+Scorer metrics (precision/recall/F1 at strict and lenient bands, auto-false-link rate,
+missed-match rate, score separation) are the lever for **weight-learning**; blocking
+metrics (pair-completeness, reduction-ratio, dropped-true-matches) are the lever for
+**compound blocking keys**. On a small hand-authored set these are a regression/tuning
+instrument, not a statistical accuracy claim. Dataset format: see
+`src/cairn_matcher/eval/fixtures/gold_v1.json`.
+
 ## Develop
 
 ```bash
