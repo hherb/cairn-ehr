@@ -30,3 +30,16 @@ def test_oversized_block_is_skipped_and_estimated(pg_conn):
     m = evaluate_blocking(pg_conn, ds, max_block_size=2)
     assert any(pn == "dob" and sz == 3 for pn, _key, sz in m.skipped_blocks)
     assert m.dropped_pair_estimate == 3
+
+
+def test_blocking_eval_is_idempotent_and_leaves_no_rows(pg_conn):
+    # Seeding must be ephemeral: the eval rolls back its own seed, so a second run on the
+    # same connection (deterministic uuid5 labels) must not hit the patient_demographic
+    # PK (patient_id, field), and no synthetic rows may persist afterwards.
+    gold = load_bundled_gold()
+    first = evaluate_blocking(pg_conn, gold)
+    second = evaluate_blocking(pg_conn, gold)  # would raise UniqueViolation if seed committed
+    assert first.pair_completeness == second.pair_completeness == 1.0
+    with pg_conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM patient_demographic")
+        assert cur.fetchone()[0] == 0

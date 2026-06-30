@@ -102,8 +102,9 @@ missed-match-rate + score separation; zero-denominator→0.0, never NaN), `score
 (`python -m cairn_matcher.eval`; psycopg lazy so the pure path never imports it), `blocking_eval.py` (DB-gated, `pipeline`
 extra: seeds `patient_*` label→uuid5, calls the **real** `generate_candidate_pairs`, `rollback` xmin-guard → pair-completeness
 / reduction-ratio / dropped-true-matches / Σ`C(size,2)` estimate) + a culture-plural `gold_v1.json` fixture. No new dep
-(pure core stdlib-only). 143 with DB / 121 + 22 skipped without; opus whole-branch review READY-TO-MERGE (0 Critical/0
-Important). **Remaining matcher pieces:** **B3** — compound blocking keys + weight-learning (both now measurable via the
+(pure core stdlib-only). 146 with DB / 123 + 23 skipped without; opus whole-branch review READY-TO-MERGE (0 Critical/0
+Important) + post-review fixes in PR #83 (ephemeral/idempotent blocking seed — no `conn.commit()`; dataset loader
+validates name/identifier keys). **Remaining matcher pieces:** **B3** — compound blocking keys + weight-learning (both now measurable via the
 harness) + locale comparator packs (phonetic/nickname + content-addressed profiles) + hub-tier aggressive duplicate-sweep
 + proposal retraction + full §7.5 matcher actor registration; **piece C** — the **§5.7 link-apply seam** (needs the
 identity event algebra). **Next:** compound blocking keys / weight-learning, or piece C; a synthetic corruption generator

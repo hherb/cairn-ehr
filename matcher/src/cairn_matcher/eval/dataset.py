@@ -64,17 +64,38 @@ class LabelledDataset:
         return tuple(r for e in self.entities for r in e.records)
 
 
+def _require_keys(items: Sequence, keys: tuple[str, ...], *, what: str, record_id: str) -> None:
+    """Raise a located DatasetError if any item is missing a key its consumers dereference.
+
+    record_to_candidate (and blocking_eval seeding) index these keys directly, so a missing
+    one would otherwise surface as an opaque KeyError deep in the pipeline rather than a
+    loud, located error at load time (house rule #5).
+    """
+    for item in items:
+        missing = [k for k in keys if k not in item]
+        if missing:
+            raise DatasetError(
+                f"record {record_id!r}: each {what} needs {keys}, missing {missing} in {item!r}"
+            )
+
+
 def _record_from(obj: Mapping) -> DatasetRecord:
     """Shape one record dict into a DatasetRecord; require a non-empty record_id."""
     record_id = obj.get("record_id")
     if not isinstance(record_id, str) or not record_id:
         raise DatasetError(f"each record needs a non-empty string record_id, got {obj!r}")
+    names = tuple(obj.get("names", ()))
+    identifiers = tuple(obj.get("identifiers", ()))
+    _require_keys(names, ("value",), what="name", record_id=record_id)
+    _require_keys(
+        identifiers, ("system", "match_key", "value"), what="identifier", record_id=record_id
+    )
     return DatasetRecord(
         record_id=record_id,
         dob=obj.get("dob"),
         sex_at_birth=obj.get("sex_at_birth"),
-        names=tuple(obj.get("names", ())),
-        identifiers=tuple(obj.get("identifiers", ())),
+        names=names,
+        identifiers=identifiers,
     )
 
 

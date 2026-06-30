@@ -44,10 +44,17 @@ def record_uuid(label: str) -> str:
 
 
 def seed_dataset(conn, ds: LabelledDataset) -> dict[str, str]:
-    """Insert every dataset record into the patient_* projections; commit.
+    """Insert every dataset record into the patient_* projections (no commit).
 
     Mirrors tests/conftest.seed_patient but reads the dataset's dict fields. Returns the
     uuid->label reverse map the caller uses to translate generated pairs back to labels.
+
+    Deliberately does NOT commit: the rows live in the caller's open read transaction,
+    which generate_candidate_pairs reads (read-your-own-writes on one connection) and
+    evaluate_blocking's conn.rollback() then discards. Committing here would persist
+    synthetic 'seed' patients permanently — and because patient_demographic is
+    PRIMARY KEY (patient_id, field) with no ON CONFLICT below, the deterministic uuid5
+    labels would make a second run raise a unique violation. Eval seeding stays ephemeral.
     """
     reverse: dict[str, str] = {}
     with conn.cursor() as cur:
@@ -87,7 +94,6 @@ def seed_dataset(conn, ds: LabelledDataset) -> dict[str, str]:
                     "(%s,%s,%s,%s,%s,NULL,NULL,'seed',0,0,'seed') ON CONFLICT DO NOTHING",
                     (pid, i["system"], i["match_key"], i["value"], i["match_key"]),
                 )
-    conn.commit()
     return reverse
 
 
@@ -95,8 +101,9 @@ def evaluate_blocking(conn, ds: LabelledDataset, *, max_block_size: int = 100) -
     """Seed the dataset, run the real blocking, and measure recall/reduction.
 
     Calls generate_candidate_pairs (lazy import: keeps the module importable without the
-    function name leaking into the pure path) then rolls back the read snapshot, mirroring
-    the sweep's xmin-horizon discipline.
+    function name leaking into the pure path) then rolls back — discarding the uncommitted
+    seed (so the eval leaves no synthetic patients behind) and releasing the read snapshot,
+    mirroring the sweep's xmin-horizon discipline.
     """
     from cairn_matcher.pipeline.db import generate_candidate_pairs
 

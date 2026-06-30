@@ -23,10 +23,14 @@ label→uuid5, calls the *real* `generate_candidate_pairs`, `conn.rollback()` xm
 reduction-ratio / dropped-true-matches / Σ`C(size,2)` dropped-pair estimate), + a hand-authored **culture-plural gold
 fixture** (`eval/fixtures/gold_v1.json`: mononym / patronymic+diacritic / multi-token). **Advisory only — no `db/` floor
 file, no SCHEMA bump, no spec/ADR change** (implements settled §5.2/§5.13/ADR-0014). **No new dep** (pure core stdlib-only;
-blocking under existing `pipeline`/psycopg extra). Tests: **143 with DB** / **121 + 22 skipped** without (`uv run pytest`);
+blocking under existing `pipeline`/psycopg extra). Tests: **146 with DB** / **123 + 23 skipped** without (`uv run pytest`);
 purity probe confirms the pure surface (incl. `__main__`) imports no psycopg. Final **opus whole-branch review:
 READY-TO-MERGE, 0 Critical / 0 Important** (real-path reuse/no-drift, purity, advisory-only, metric math all verified;
-two cosmetic Minors applied in-branch). **Deferred (recorded, not lost):** the **synthetic corruption generator** (volume +
+two cosmetic Minors applied in-branch). **Post-review fixes (in-branch, PR #83):** `blocking_eval.seed_dataset` no longer
+`conn.commit()`s — the seed now lives in the read txn that `evaluate_blocking`'s `rollback()` discards, so the DB-gated
+eval is **idempotent + leaves no synthetic patients** (a committed seed would re-hit `patient_demographic`'s
+`PK(patient_id, field)` on a second run, since `uuid5` labels are deterministic); the dataset loader now validates
+name/identifier inner keys → a located `DatasetError` instead of an opaque downstream `KeyError`. **Deferred (recorded, not lost):** the **synthetic corruption generator** (volume +
 recall curves, same format); the **compound-blocking-keys** + **weight-learning** slices themselves (this harness *measures*
 them); a **veto-aware / end-to-end scorer mode**. **The §5.2 matcher eval harness (B3 keystone) is now BUILT.**
 

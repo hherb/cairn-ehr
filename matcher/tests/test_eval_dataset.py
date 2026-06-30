@@ -56,3 +56,19 @@ def test_duplicate_record_id_raises():
 def test_missing_entities_key_raises():
     with pytest.raises(DatasetError):
         load_dataset({"name": "x"})
+
+
+def test_name_without_value_raises_located_dataset_error():
+    # A name dict missing "value" must fail loudly at load time (record_to_candidate /
+    # the seeder index it directly) rather than as an opaque KeyError downstream.
+    bad = {"name": "x", "entities": [{"entity_id": "e", "records": [
+        {"record_id": "r1", "names": [{"provenance_rank": 30}]}]}]}
+    with pytest.raises(DatasetError, match="r1"):
+        load_dataset(bad)
+
+
+def test_identifier_without_required_keys_raises():
+    bad = {"name": "x", "entities": [{"entity_id": "e", "records": [
+        {"record_id": "r1", "identifiers": [{"system": "mrn"}]}]}]}
+    with pytest.raises(DatasetError, match="identifier"):
+        load_dataset(bad)
