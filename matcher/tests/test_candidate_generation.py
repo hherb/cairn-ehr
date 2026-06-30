@@ -123,3 +123,35 @@ def test_name_year_rescues_pair_from_oversized_name_block(pg_conn):
     # The different-year patient (PC, 1991) is alone in its sub-block -> no pair with it.
     assert canonical_pair(PA, PC) not in pairs
     assert canonical_pair(PB, PC) not in pairs
+
+
+def test_name_year_honest_degrade_no_recall_regression(pg_conn):
+    # PB has no DOB, so it cannot join the 'name+year' pass. The shared "jones" token must
+    # still group PA-PB via the single-token 'name' pass -> coverage never regresses for a
+    # record with a missing (or non-ISO) DOB. (A non-ISO value like "07/15/80" fails the
+    # `^[0-9]{4}` guard identically.)
+    seed_patient(pg_conn, PA, dob=("1985-03-03", 20), names=[("Jones", 20)])
+    seed_patient(pg_conn, PB, names=[("Jones", 20)], identifiers=[("mrn:a", "2", "2")])
+    assert canonical_pair(PA, PB) in _pairs(pg_conn)
+
+
+def test_name_year_rescues_precision_mismatched_dob(pg_conn):
+    # Year-precision "1990" vs day-precision "1990-05-12": left(value,4) = "1990" for both,
+    # so they share the 'name|1990' sub-block -- though the exact-DOB pass never groups them.
+    # A different-year decoy (PC) oversizes the single "garcia" token block at cap=2, so only
+    # the compound pass can produce PA-PB.
+    seed_patient(pg_conn, PA, dob=("1990", 20, "year"), names=[("Garcia", 20)])
+    seed_patient(pg_conn, PB, dob=("1990-05-12", 20, "day"), names=[("Garcia", 20)])
+    seed_patient(pg_conn, PC, dob=("2000-01-01", 20), names=[("Garcia", 20)])
+    pairs, skipped = _gen(pg_conn, max_block_size=2)
+    assert any(pn == "name" and sz == 3 for pn, _key, sz in skipped)
+    assert canonical_pair(PA, PB) in pairs
+
+
+def test_name_and_name_year_pair_is_emitted_once(pg_conn):
+    # PA and PB share BOTH a name token and a birth-year, so the 'name' and 'name+year'
+    # passes both surface the pair. After canonical-pair dedup it appears exactly once.
+    seed_patient(pg_conn, PA, dob=("1975-08-08", 20), names=[("Patel", 20)])
+    seed_patient(pg_conn, PB, dob=("1975-08-08", 20), names=[("Patel", 20)])
+    pairs = _pairs(pg_conn)
+    assert pairs.count(canonical_pair(PA, PB)) == 1
