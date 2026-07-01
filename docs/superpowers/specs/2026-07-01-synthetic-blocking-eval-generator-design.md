@@ -30,6 +30,11 @@ engineered collisions.
   before/after today; a real `passes=[...]` selector is its own future slice (touches `pipeline/`,
   not `eval/`).
 - Deliberately-*unrecoverable* duplicate pairs (modelling the hub-sweep floor) — a deferred knob.
+- **Variable cluster size (>2 records/entity)** — this slice fixes each entity at exactly
+  *seed + one clone*, so the only within-cluster pair is `seed↔clone` and the recoverability
+  invariant below is exactly the all-pairs invariant. With 3+ records, two clones can each be
+  recoverable-to-seed yet share no blocking key with *each other*, reintroducing unrecoverable
+  pairs; supporting that cleanly is a later knob.
 - Volume/perf tuning.
 
 ## Approach
@@ -100,15 +105,19 @@ pure noise, and the metric no longer measures blocking-key coverage.
 
 The generator therefore guarantees: the corruptions applied to a clone never simultaneously destroy
 **all** of the surviving blocking keys shared with its seed. Concretely, after corrupting a clone, a
-pure predicate checks that at least one of
+pure predicate checks that at least one of the **three base blocking keys** still holds between
+clone and seed:
 
 - shared identifier (`(system, match_key)` still equal to the seed's, non-`unknown`),
 - exact DOB (`value` string still equal),
-- shared name token (token-bag intersection non-empty),
-- name+birth-year (a shared name token **and** an equal first-4-digit-run birth-year),
+- shared name token (token-bag intersection non-empty).
 
-still holds between clone and seed. If none holds, the generator re-rolls that clone's corruption
-set (bounded retries) or leaves one anchor key uncorrupted. This is a **pure, testable** property.
+(The fourth pass, `name+year`, is *subsumed* by shared-name-token — it requires a shared token, on
+which the plain `name` pass already groups — so it adds nothing to *recoverability*; it adds recall
+only under the block-size cap, which is exactly what the volume eval measures.) If none of the three
+holds, the generator **repairs** the clone by appending the seed's primary name (verbatim) to its
+retained name set, guaranteeing a shared name token. Since every seed carries ≥ 1 name, the repair
+always restores recoverability. This is a **pure, testable** property.
 
 A deliberately-unrecoverable fraction (to model the residual the hub duplicate-sweep exists to
 catch) is explicitly a **deferred knob**, not this slice — including it now would make the headline
@@ -119,9 +128,9 @@ catch) is explicitly a **deferred knob**, not this slice — including it now wo
 A frozen dataclass:
 
 - `seed: int` — PRNG seed (reproducibility).
-- `n_entities: int` — number of distinct synthetic people.
-- `records_per_entity: tuple[int, int]` — inclusive min/max clones per person.
-- per-family corruption probabilities + an intensity knob.
+- `n_entities: int` — number of distinct synthetic people (each yields one `seed↔clone` true pair).
+- per-family corruption probabilities (`p_dob_format`, `p_dob_typo`, `p_name`, `p_identifier`).
+- (cluster size is fixed at 2 this slice — see non-goals.)
 
 Defaults are tuned to produce a **mission-relevant mix**, notably a healthy share of cross-format
 DOB duplicates so the merged name+year key is exercised at volume.
