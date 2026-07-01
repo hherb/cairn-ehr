@@ -357,3 +357,22 @@ async fn oversize_component_guard_rejects() {
     let err = submit_link(&c, &sk, &kid, cc, d, 120, true).await.unwrap_err(); // size 4 — refuse
     assert!(db_msg(&err).contains("exceeds max size"), "oversize component must be refused: {}", db_msg(&err));
 }
+
+#[tokio::test]
+async fn component_at_exactly_cap_is_accepted() {
+    // The guard is strictly-greater (`> cap`), so a component of exactly `cap` members
+    // is accepted. This pins the boundary against a future `>=` regression that would
+    // wrongly reject a legitimate at-cap component.
+    let Some(base) = cs() else { return };
+    let _guard = db::test_serial_guard(&base).await.unwrap();
+    let c = db::connect_and_load_schema(&base).await.unwrap();
+    let (sk, kid) = setup(&c).await;
+    c.batch_execute("SET cairn.max_component_size = 3").await.unwrap();
+    let (a, b, cc) = (Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
+    submit_link(&c, &sk, &kid, a, b, 100, true).await.unwrap();  // {A,B} size 2
+    submit_link(&c, &sk, &kid, b, cc, 110, true).await.unwrap(); // {A,B,C} size 3 == cap — accepted
+    let expected = a.min(b).min(cc);
+    assert_eq!(person_of(&c, a).await, Some(expected));
+    assert_eq!(person_of(&c, b).await, Some(expected));
+    assert_eq!(person_of(&c, cc).await, Some(expected), "a component of exactly cap members is accepted");
+}
