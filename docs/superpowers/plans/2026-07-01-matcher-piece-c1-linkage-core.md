@@ -827,8 +827,10 @@ BEGIN
             p_seed, cairn_max_component_size();
     END IF;
 
-    -- The canonical representative is the minimum UUID in the component.
-    v_person := (SELECT min(m) FROM unnest(v_members) AS m);
+    -- The canonical representative is the minimum UUID in the component. Postgres has
+    -- no min()/max() aggregate for the uuid type, so order by the uuid `<` operator
+    -- (which uuid does provide) and take the first — semantically identical to min().
+    v_person := (SELECT m FROM unnest(v_members) AS m ORDER BY m LIMIT 1);
 
     INSERT INTO person_member (patient_id, person_id, updated_at)
     SELECT m, v_person, clock_timestamp() FROM unnest(v_members) AS m
