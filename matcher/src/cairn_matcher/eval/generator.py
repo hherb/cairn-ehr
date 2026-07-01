@@ -9,8 +9,10 @@ The disk/CLI edge lives in generate.py (the dataset.py <-> loader.py split).
 """
 
 import copy
+import random
 import unicodedata
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 
 def name_tokens(record: Mapping) -> set[str]:
@@ -201,3 +203,72 @@ def synth_seed(rng, index):
         rec["sex_at_birth"] = {"value": rng.choice(("male", "female")),
                                "provenance_rank": 40}
     return rec
+
+
+@dataclass(frozen=True)
+class GenSpec:
+    """Knobs for one synthetic dataset. Deterministic: (seed, fields) reproduce byte-for-byte.
+
+    Cluster size is fixed at 2 (seed + one clone) this slice, so each entity yields exactly
+    one seed<->clone true pair and the recoverability invariant is exactly the all-pairs one.
+    """
+    seed: int = 0
+    n_entities: int = 100
+    p_dob_format: float = 0.45
+    p_dob_typo: float = 0.2
+    p_name: float = 0.5
+    p_identifier: float = 0.5
+
+
+_OPERATORS = (
+    ("p_dob_format", corrupt_dob_format),
+    ("p_dob_typo", corrupt_dob_typo),
+    ("p_name", corrupt_name),
+    ("p_identifier", corrupt_identifier),
+)
+
+
+def _repair(seed, clone):
+    """Guarantee the seed<->clone pair stays blockable: if corruptions destroyed every base
+    key, append the seed's primary name (verbatim) to the clone's retained names, restoring a
+    shared name token. Every seed has >=1 name, so this always succeeds. Pure (returns new)."""
+    if shares_blocking_key(seed, clone):
+        return clone
+    out = _clone(clone)
+    out.setdefault("names", [])
+    out["names"].append(dict(seed["names"][0]))
+    return out
+
+
+def _make_clone(seed, spec, rng, index):
+    """One corrupted near-duplicate of `seed`: apply each enabled operator with its
+    probability, then repair to satisfy the recoverability invariant."""
+    clone = _clone(seed)
+    clone["record_id"] = f"e{index}-dup"
+    for prob_field, op in _OPERATORS:
+        if rng.random() < getattr(spec, prob_field):
+            clone = op(clone, rng)
+    return _repair(seed, clone)
+
+
+def generate_dataset(spec):
+    """Build the full dataset dict: n_entities clusters, each a seed + one corrupted clone.
+
+    Returns a JSON-shaped mapping that round-trips through eval.dataset.load_dataset. Ground
+    truth is the entity grouping; truth_pairs derives the one true pair per cluster for free.
+    """
+    rng = random.Random(spec.seed)
+    entities = []
+    for i in range(spec.n_entities):
+        seed = synth_seed(rng, i)
+        clone = _make_clone(seed, spec, rng, i)
+        entities.append({"entity_id": f"e{i}", "records": [seed, clone]})
+    return {
+        "name": f"synthetic_s{spec.seed}_n{spec.n_entities}",
+        "description": (
+            "Synthetic blocking-eval set: seed + one corrupted clone per entity. "
+            "Every true pair is recoverable by >=1 base blocking key (by construction); "
+            "a regression/tuning instrument, not a statistical accuracy claim."
+        ),
+        "entities": entities,
+    }

@@ -1,9 +1,12 @@
 """Tests for the synthetic blocking-eval dataset generator (pure, stdlib-only)."""
 
 import copy
+import itertools
 import random
 
+from cairn_matcher.eval.dataset import load_dataset, truth_pairs
 from cairn_matcher.eval.generator import (
+    GenSpec, generate_dataset,
     name_tokens, shares_blocking_key,
     corrupt_dob_format, corrupt_dob_typo, corrupt_name, corrupt_identifier,
     synth_seed,
@@ -110,3 +113,30 @@ def test_synth_seed_spans_multiple_name_shapes_across_indices():
               for i in range(40)}
     assert 1 in shapes            # at least one mononym
     assert any(s >= 2 for s in shapes)   # and multi-token names
+
+
+def test_generate_is_deterministic_for_same_seed():
+    spec = GenSpec(seed=42, n_entities=25)
+    assert generate_dataset(spec) == generate_dataset(spec)
+
+
+def test_generate_differs_for_different_seed():
+    assert generate_dataset(GenSpec(seed=1, n_entities=25)) != \
+           generate_dataset(GenSpec(seed=2, n_entities=25))
+
+
+def test_output_round_trips_through_real_loader():
+    ds = load_dataset(generate_dataset(GenSpec(seed=3, n_entities=30)))
+    assert len(ds.entities) == 30
+    assert all(len(e.records) == 2 for e in ds.entities)   # seed + one clone
+    ids = [r.record_id for e in ds.entities for r in e.records]
+    assert len(ids) == len(set(ids))                       # unique record_ids
+    assert len(truth_pairs(ds)) == 30                      # one true pair per entity
+
+
+def test_every_true_pair_shares_a_blocking_key():
+    # The recoverability invariant: every within-cluster (seed, clone) pair is blockable.
+    ds_dict = generate_dataset(GenSpec(seed=4, n_entities=50))
+    for ent in ds_dict["entities"]:
+        for a, b in itertools.combinations(ent["records"], 2):
+            assert shares_blocking_key(a, b), f"unrecoverable pair in {ent['entity_id']}"
