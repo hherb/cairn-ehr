@@ -214,6 +214,14 @@ use uuid::Uuid;
 
 fn cs() -> Option<String> { std::env::var("CAIRN_TEST_PG").ok() }
 
+/// The Postgres error message text for a failed statement. `tokio_postgres::Error`'s
+/// Display renders only as the literal "db error" — the actual `RAISE EXCEPTION`
+/// message lives in the DbError payload — so every floor-rejection assertion must go
+/// through here (project convention: see `twin_globalise.rs`, `admission.rs`).
+fn db_msg(e: &tokio_postgres::Error) -> String {
+    e.as_db_error().map(|d| d.message().to_string()).unwrap_or_else(|| e.to_string())
+}
+
 /// Truncate the clinical + linkage tables and enroll one agent signer. Returns (sk, kid).
 /// `patient_link` / `person_member` are created by LATER sections of db/018 (Tasks 3–4),
 /// so they are truncated behind a `to_regclass` guard — this keeps the single `setup()`
@@ -295,7 +303,7 @@ async fn self_link_is_rejected() {
     let (sk, kid) = setup(&c).await;
     let a = Uuid::now_v7();
     let err = submit_link(&c, &sk, &kid, a, a, 100, true).await.unwrap_err();
-    assert!(format!("{err}").contains("self-link"), "self-link must be refused: {err}");
+    assert!(db_msg(&err).contains("self-link"), "self-link must be refused: {}", db_msg(&err));
 }
 
 #[tokio::test]
@@ -306,7 +314,7 @@ async fn empty_provenance_is_rejected() {
     let (sk, kid) = setup(&c).await;
     let (a, b) = (Uuid::now_v7(), Uuid::now_v7());
     let err = submit_link_prov(&c, &sk, &kid, a, b, 100, true, "   ").await.unwrap_err();
-    assert!(format!("{err}").contains("provenance"), "empty provenance must be refused: {err}");
+    assert!(db_msg(&err).contains("provenance"), "empty provenance must be refused: {}", db_msg(&err));
 }
 
 #[tokio::test]
@@ -334,7 +342,7 @@ async fn missing_twin_is_rejected() {
     };
     let signed = sign(&body, &sk).unwrap();
     let err = c.execute("SELECT submit_event($1)", &[&signed.signed_bytes]).await.unwrap_err();
-    assert!(format!("{err}").contains("authored twin"), "twin-less identity event must be refused: {err}");
+    assert!(db_msg(&err).contains("authored twin"), "twin-less identity event must be refused: {}", db_msg(&err));
 }
 ```
 
@@ -749,7 +757,7 @@ async fn oversize_component_guard_rejects() {
     submit_link(&c, &sk, &kid, a, b, 100, true).await.unwrap();  // {A,B} size 2 — ok
     submit_link(&c, &sk, &kid, b, cc, 110, true).await.unwrap(); // {A,B,C} size 3 — ok
     let err = submit_link(&c, &sk, &kid, cc, d, 120, true).await.unwrap_err(); // size 4 — refuse
-    assert!(format!("{err}").contains("exceeds max size"), "oversize component must be refused: {err}");
+    assert!(db_msg(&err).contains("exceeds max size"), "oversize component must be refused: {}", db_msg(&err));
 }
 ```
 
