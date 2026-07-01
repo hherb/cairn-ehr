@@ -9,6 +9,7 @@ The disk/CLI edge lives in generate.py (the dataset.py <-> loader.py split).
 """
 
 import copy
+import random
 import unicodedata
 from collections.abc import Mapping
 
@@ -152,3 +153,52 @@ def corrupt_identifier(record, rng):
         mistyped = _perturb_digit(str(ids[idx]["match_key"]), rng)
         ids[idx] = {**ids[idx], "match_key": mistyped, "value": mistyped}
     return out
+
+
+# Curated, culture-plural pools. Deliberately small and hand-written (no faker: a dep
+# and Western bias would both violate the mission). Blocking keys on tokens/years, not
+# name rarity, so a small pool is sufficient and makes tokens recur (realistic collisions).
+_MONONYMS = ("Suharto", "Sukarno", "Madonna", "Ronaldinho", "Teresa")
+_GIVEN = ("Alex", "Sam", "Mira", "Jon", "Ana", "Wei", "Omar", "Fatima", "Ivan", "Lena")
+_FAMILY = ("Nguyen", "Einarsson", "Garcia", "Okafor", "Kowalski", "Haddad", "Silva", "Ali")
+_PATRONYMIC = (("Jón", "Einarsson"), ("Ólafur", "Bjarnason"), ("Freyr", "Þórsson"))
+_ID_SYSTEMS = ("au-medicare", "national-id", "kennitala", "mrn-local")
+
+
+def _synth_name(rng):
+    """Draw one display name across three culture shapes: mononym, patronymic+diacritic,
+    or multi-token given+family. Returns the display string."""
+    shape = rng.choice(("mono", "patronymic", "given_family"))
+    if shape == "mono":
+        return rng.choice(_MONONYMS)
+    if shape == "patronymic":
+        g, p = rng.choice(_PATRONYMIC)
+        return f"{g} {p}"
+    return f"{rng.choice(_GIVEN)} {rng.choice(_FAMILY)}"
+
+
+def _synth_dob(rng):
+    """A plausible ISO 'YYYY-MM-DD' at day precision."""
+    year = rng.randint(1935, 2015)
+    month = rng.randint(1, 12)
+    day = rng.randint(1, 28)   # 28 avoids month-length edge cases (not needed for blocking)
+    return {"value": f"{year:04d}-{month:02d}-{day:02d}", "precision": "day",
+            "provenance_rank": rng.choice((20, 30, 40))}
+
+
+def synth_seed(rng, index):
+    """Build one clean seed record for entity `index`. Always has a name and an ISO dob;
+    ~70% carry an identifier, ~50% a sex_at_birth (both inert for blocking but realistic)."""
+    rec = {
+        "record_id": f"e{index}-seed",
+        "dob": _synth_dob(rng),
+        "names": [{"value": _synth_name(rng), "provenance_rank": rng.choice((20, 30))}],
+    }
+    if rng.random() < 0.7:
+        key = f"{rng.randint(10000, 99999)}"
+        rec["identifiers"] = [{"system": rng.choice(_ID_SYSTEMS),
+                               "match_key": key, "value": key}]
+    if rng.random() < 0.5:
+        rec["sex_at_birth"] = {"value": rng.choice(("male", "female")),
+                               "provenance_rank": 40}
+    return rec

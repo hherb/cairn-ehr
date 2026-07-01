@@ -6,6 +6,7 @@ import random
 from cairn_matcher.eval.generator import (
     name_tokens, shares_blocking_key,
     corrupt_dob_format, corrupt_dob_typo, corrupt_name, corrupt_identifier,
+    synth_seed,
 )
 
 
@@ -88,3 +89,24 @@ def test_operators_are_noops_when_field_absent():
     assert corrupt_dob_format(bare, r) == bare
     assert corrupt_dob_typo(bare, r) == bare
     assert corrupt_identifier(bare, r) == bare
+
+
+def test_synth_seed_is_deterministic_for_same_rng_stream():
+    a = synth_seed(random.Random(7), 0)
+    b = synth_seed(random.Random(7), 0)
+    assert a == b
+
+
+def test_synth_seed_has_required_shape():
+    rec = synth_seed(random.Random(8), 3)
+    assert rec["record_id"] == "e3-seed"
+    assert rec["names"] and rec["names"][0]["value"].strip()
+    assert rec["dob"]["value"].count("-") == 2          # full ISO
+    assert rec["dob"]["precision"] == "day"
+
+
+def test_synth_seed_spans_multiple_name_shapes_across_indices():
+    shapes = {len(synth_seed(random.Random(i), i)["names"][0]["value"].split())
+              for i in range(40)}
+    assert 1 in shapes            # at least one mononym
+    assert any(s >= 2 for s in shapes)   # and multi-token names
