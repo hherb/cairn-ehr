@@ -215,10 +215,19 @@ use uuid::Uuid;
 fn cs() -> Option<String> { std::env::var("CAIRN_TEST_PG").ok() }
 
 /// Truncate the clinical + linkage tables and enroll one agent signer. Returns (sk, kid).
+/// `patient_link` / `person_member` are created by LATER sections of db/018 (Tasks 3–4),
+/// so they are truncated behind a `to_regclass` guard — this keeps the single `setup()`
+/// helper correct at every stage as the migration grows, with no cross-task edits.
 async fn setup(c: &Client) -> (SigningKey, String) {
     c.batch_execute(
         "TRUNCATE event_log, actor_event, patient_chart, patient_identifier, \
-         patient_demographic, patient_link, person_member CASCADE")
+         patient_demographic CASCADE")
+        .await.unwrap();
+    c.batch_execute(
+        "DO $$ BEGIN \
+           IF to_regclass('public.patient_link')  IS NOT NULL THEN TRUNCATE patient_link;  END IF; \
+           IF to_regclass('public.person_member') IS NOT NULL THEN TRUNCATE person_member; END IF; \
+         END $$;")
         .await.unwrap();
     let (sk, kid) = generate_key().unwrap();
     c.execute(
