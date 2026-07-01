@@ -92,6 +92,8 @@ def test_operators_are_noops_when_field_absent():
     assert corrupt_dob_format(bare, r) == bare
     assert corrupt_dob_typo(bare, r) == bare
     assert corrupt_identifier(bare, r) == bare
+    no_names = {"record_id": "y", "dob": {"value": "1990-01-01", "precision": "day", "provenance_rank": 30}}
+    assert corrupt_name(no_names, r) == no_names
 
 
 def test_synth_seed_is_deterministic_for_same_rng_stream():

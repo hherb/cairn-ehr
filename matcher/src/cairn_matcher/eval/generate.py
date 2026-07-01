@@ -14,10 +14,14 @@ import sys
 from cairn_matcher.eval.generator import GenSpec, generate_dataset
 
 
+# Shared json.dump flags across file-write and stdout output paths to preserve determinism
+_DUMP_KWARGS = {"ensure_ascii": False, "indent": 2, "sort_keys": True}
+
+
 def write_dataset(path, mapping):
     """Write a dataset mapping to `path` as UTF-8 JSON (non-ASCII preserved for legibility)."""
     with open(path, "w", encoding="utf-8") as fh:
-        json.dump(mapping, fh, ensure_ascii=False, indent=2, sort_keys=True)
+        json.dump(mapping, fh, **_DUMP_KWARGS)
 
 
 def main(argv=None):
@@ -32,7 +36,7 @@ def main(argv=None):
     if args.out:
         write_dataset(args.out, dataset)
     else:
-        json.dump(dataset, sys.stdout, ensure_ascii=False, indent=2, sort_keys=True)
+        json.dump(dataset, sys.stdout, **_DUMP_KWARGS)
         sys.stdout.write("\n")
     return 0
 
