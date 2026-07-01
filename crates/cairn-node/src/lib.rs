@@ -1,3 +1,4 @@
+pub mod apply_proposal;
 pub mod backup;
 pub mod db;
 pub mod fsio;
