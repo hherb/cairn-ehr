@@ -125,8 +125,9 @@ curated name pools; `GenSpec` + `generate_dataset` build seed+one-corrupted-clon
 with a `_repair` step that **guarantees** every seed↔clone pair stays recoverable by >=1 base blocking key — a regression/
 volume instrument, not a statistical accuracy claim (recoverable by construction, not by real-world resemblance). `generate.py`
 is the disk/CLI edge (`python -m cairn_matcher.eval.generate --entities N --seed S --out path`), byte-deterministic JSON,
-feeding the existing `python -m cairn_matcher.eval` CLI unchanged. No new dep. 144 with DB / 144 + 29 skipped without
-(pure suite; DB suite 173). DB-gated volume test on a generated 200-entity set at `max_block_size=10_000`:
+feeding the existing `python -m cairn_matcher.eval` CLI unchanged. No new dep. A drift canary
+(`test_eval_generator_sync.py`) pins `shares_blocking_key` to `_GROUPS_SQL` so narrowing a base pass fails the fast
+suite. 147 + 29 skipped without DB (pure suite; DB suite 173). DB-gated volume test on a generated 200-entity set at `max_block_size=10_000`:
 `pair_completeness==1.0`, 0 dropped true matches, `reduction_ratio≈0.919` (6,467/79,800 pairs) — confirms the recoverability
 invariant end-to-end through the real blocking SQL.
 **Remaining matcher pieces:** **B3** — weight-learning (measurable via the harness) + further compound keys

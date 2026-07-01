@@ -19,7 +19,10 @@ if corruptions destroyed all keys). Deterministic (seeded PRNG). **`eval/generat
 `write_dataset` + `python -m cairn_matcher.eval.generate --entities N --seed S [--out path]`, byte-deterministic JSON
 (`sort_keys=True`), feeding the existing `python -m cairn_matcher.eval <file>` unchanged. **Advisory tooling — no
 `db/` floor, no SCHEMA bump, no spec/ADR change** (implements settled §5.2/§5.13/ADR-0014); no new dep. Tests: pure
-suite **144 passed / 29 skipped** (`uv run pytest`); DB suite **173 passed**. New DB-gated volume test: on a generated
+suite **147 passed / 29 skipped** (`uv run pytest`); DB suite **173 passed**. A **drift canary**
+(`test_eval_generator_sync.py`) pins `shares_blocking_key`'s mirrored assumptions to `pipeline/db.py`'s `_GROUPS_SQL`,
+so narrowing a base blocking pass trips the fast suite instead of silently voiding the recoverability guarantee
+(review-fix on PR #88). New DB-gated volume test: on a generated
 200-entity set at `max_block_size=10_000`, `pair_completeness==1.0`, 0 dropped true matches, `reduction_ratio≈0.919`
 (6,467/79,800 pairs) — the recoverability invariant confirmed end-to-end through the real blocking SQL. This is a
 regression/volume instrument, not a statistical accuracy claim: the generated set is recoverable **by construction**,
