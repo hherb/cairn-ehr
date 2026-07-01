@@ -108,4 +108,62 @@ BEGIN
 END;
 $$;
 
+-- 4. patient_link: the standing-edge overlay (same shape as patient_identifier). One
+--    row per canonical (low, high) pair; the latest-HLC link/unlink assertion wins the
+--    `state`. Never merge, always overlay — link then a later unlink ⇒ edge gone.
+CREATE TABLE IF NOT EXISTS patient_link (
+    low         UUID    NOT NULL,
+    high        UUID    NOT NULL,
+    state       TEXT    NOT NULL CHECK (state IN ('link', 'unlink')),
+    hlc_wall    BIGINT  NOT NULL,
+    hlc_counter INTEGER NOT NULL,
+    origin      TEXT    NOT NULL,
+    provenance  TEXT    NOT NULL,
+    confidence  TEXT,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    PRIMARY KEY (low, high),
+    CHECK (low < high)
+);
+GRANT SELECT ON patient_link TO cairn_agent;
+
+-- Incremental maintenance: fold exactly the one new link/unlink event into the edge
+-- overlay. The whole row overlays atomically only when the incoming HLC is strictly
+-- greater than the stored one (ON CONFLICT ... WHERE) — so out-of-order arrival
+-- converges to the highest-HLC assertion. (Component recompute is added in the next
+-- task; this version maintains the edge only.)
+CREATE OR REPLACE FUNCTION patient_link_apply()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+    p       jsonb := NEW.body;
+    a       uuid  := (p ->> 'subject_a')::uuid;
+    b       uuid  := (p ->> 'subject_b')::uuid;
+    lo      uuid  := LEAST(a, b);
+    hi      uuid  := GREATEST(a, b);
+    v_state text  := CASE WHEN NEW.event_type = 'identity.link.asserted' THEN 'link' ELSE 'unlink' END;
+BEGIN
+    INSERT INTO patient_link
+        (low, high, state, hlc_wall, hlc_counter, origin, provenance, confidence)
+    VALUES
+        (lo, hi, v_state, NEW.hlc_wall, NEW.hlc_counter, NEW.node_origin,
+         p ->> 'provenance', p ->> 'confidence')
+    ON CONFLICT (low, high) DO UPDATE SET
+        state       = EXCLUDED.state,
+        hlc_wall    = EXCLUDED.hlc_wall,
+        hlc_counter = EXCLUDED.hlc_counter,
+        origin      = EXCLUDED.origin,
+        provenance  = EXCLUDED.provenance,
+        confidence  = EXCLUDED.confidence,
+        updated_at  = clock_timestamp()
+    WHERE (EXCLUDED.hlc_wall, EXCLUDED.hlc_counter, EXCLUDED.origin)
+        > (patient_link.hlc_wall, patient_link.hlc_counter, patient_link.origin);
+    RETURN NULL;  -- AFTER trigger
+END;
+$$;
+
+DROP TRIGGER IF EXISTS patient_link_apply_trg ON event_log;
+CREATE TRIGGER patient_link_apply_trg
+    AFTER INSERT ON event_log
+    FOR EACH ROW WHEN (NEW.event_type IN ('identity.link.asserted', 'identity.unlink.asserted'))
+    EXECUTE FUNCTION patient_link_apply();
+
 COMMIT;

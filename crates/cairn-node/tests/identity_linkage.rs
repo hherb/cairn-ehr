@@ -117,6 +117,57 @@ async fn empty_provenance_is_rejected() {
     assert!(db_msg(&err).contains("provenance"), "empty provenance must be refused: {}", db_msg(&err));
 }
 
+/// Read the standing edge state for a pair, or None if no edge row exists.
+/// Uses `$1::text::uuid` (project convention, see `match_veto.rs`) since
+/// tokio-postgres in this project has no uuid `ToSql` feature enabled.
+async fn edge_state(c: &Client, a: Uuid, b: Uuid) -> Option<String> {
+    let (lo, hi) = if a < b { (a, b) } else { (b, a) };
+    let (lo_s, hi_s) = (lo.to_string(), hi.to_string());
+    let row = c.query_opt(
+        "SELECT state FROM patient_link WHERE low = $1::text::uuid AND high = $2::text::uuid",
+        &[&lo_s, &hi_s],
+    ).await.unwrap();
+    row.map(|r| r.get::<_, String>(0))
+}
+
+#[tokio::test]
+async fn link_creates_a_standing_edge() {
+    let Some(base) = cs() else { return };
+    let _guard = db::test_serial_guard(&base).await.unwrap();
+    let c = db::connect_and_load_schema(&base).await.unwrap();
+    let (sk, kid) = setup(&c).await;
+    let (a, b) = (Uuid::now_v7(), Uuid::now_v7());
+    submit_link(&c, &sk, &kid, a, b, 100, true).await.unwrap();
+    assert_eq!(edge_state(&c, a, b).await.as_deref(), Some("link"));
+}
+
+#[tokio::test]
+async fn newer_unlink_overlays_older_link() {
+    let Some(base) = cs() else { return };
+    let _guard = db::test_serial_guard(&base).await.unwrap();
+    let c = db::connect_and_load_schema(&base).await.unwrap();
+    let (sk, kid) = setup(&c).await;
+    let (a, b) = (Uuid::now_v7(), Uuid::now_v7());
+    submit_link(&c, &sk, &kid, a, b, 100, true).await.unwrap();   // link @100
+    submit_link(&c, &sk, &kid, a, b, 200, false).await.unwrap();  // unlink @200 (newer)
+    assert_eq!(edge_state(&c, a, b).await.as_deref(), Some("unlink"));
+}
+
+#[tokio::test]
+async fn older_link_does_not_overlay_newer_unlink() {
+    // Out-of-order arrival must converge: the highest-HLC assertion wins regardless
+    // of the order events land (offline-first set-union).
+    let Some(base) = cs() else { return };
+    let _guard = db::test_serial_guard(&base).await.unwrap();
+    let c = db::connect_and_load_schema(&base).await.unwrap();
+    let (sk, kid) = setup(&c).await;
+    let (a, b) = (Uuid::now_v7(), Uuid::now_v7());
+    submit_link(&c, &sk, &kid, a, b, 200, false).await.unwrap();  // unlink @200 lands first
+    submit_link(&c, &sk, &kid, a, b, 100, true).await.unwrap();   // link @100 lands later (older)
+    assert_eq!(edge_state(&c, a, b).await.as_deref(), Some("unlink"),
+               "older link must not overlay a newer unlink");
+}
+
 #[tokio::test]
 async fn missing_twin_is_rejected() {
     let Some(base) = cs() else { return };
