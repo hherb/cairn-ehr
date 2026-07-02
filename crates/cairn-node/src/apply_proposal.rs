@@ -10,6 +10,7 @@
 //! proposal, signs, attests, submits, and marks the proposal applied in one transaction.
 
 use cairn_event::identity::{link_assertion_body, render_link_twin, LinkAssertion};
+use cairn_event::{event_address, sign, sign_attestation, SigningKey};
 use cairn_event::{EventBody, Hlc};
 use uuid::Uuid;
 
@@ -57,6 +58,85 @@ pub fn build_attested_link_body(
         attachments: vec![],
         plaintext_twin: Some(render_link_twin(&la)),
     }
+}
+
+/// Apply one human-ACCEPTED match_proposal: read it, build + sign + attest the link
+/// event with the accepting human's key, submit it through the existing 3-arg
+/// submit_event door, and mark the proposal applied — all in ONE transaction.
+///
+/// Atomicity is the idempotency guarantee: if submit_event rejects (e.g. a non-human
+/// attester) or any step fails, the whole transaction rolls back, so no link event is
+/// written and the proposal stays 'accepted' to be retried. On success the event and
+/// the 'applied' transition commit together, and a re-run finds no 'accepted' row.
+///
+/// Errors (Err, transaction rolled back) if the proposal is absent or its status is not
+/// 'accepted' (only a human's acceptance applies), or if the in-DB floor refuses.
+pub async fn apply_accepted_proposal(
+    client: &mut tokio_postgres::Client,
+    low: Uuid,
+    high: Uuid,
+    human_sk: &SigningKey,
+    human_kid: &str,
+    hlc: Hlc,
+) -> anyhow::Result<Uuid> {
+    let tx = client.transaction().await?;
+
+    // Text-cast the UUIDs at the binding boundary: this crate's `uuid` dependency has no
+    // `postgres`/`with-uuid-1` feature enabled, so `Uuid` does not implement `ToSql` here.
+    // `.to_string()` + `$N::text::uuid` in the SQL is the established convention already
+    // used throughout this crate (see e.g. `tests/identity_linkage.rs::person_of`).
+    let (low_s, high_s) = (low.to_string(), high.to_string());
+
+    // 1. Read the proposal and require status='accepted'.
+    let row = tx
+        .query_opt(
+            "SELECT score_total, matcher_version, status FROM match_proposal \
+             WHERE patient_low=$1::text::uuid AND patient_high=$2::text::uuid",
+            &[&low_s, &high_s],
+        )
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("no match_proposal for pair ({low}, {high})"))?;
+    let score: f64 = row.get(0);
+    let matcher_version: String = row.get(1);
+    let status: String = row.get(2);
+    if status != "accepted" {
+        // Rolls back on drop; nothing was written.
+        anyhow::bail!("match_proposal ({low}, {high}) is '{status}', not 'accepted' — refusing to apply");
+    }
+
+    // 2. Compose provenance + confidence and build the attested link body.
+    let provenance = compose_provenance(&matcher_version, human_kid);
+    let confidence = format!("{score:.3}");
+    let event_id = Uuid::now_v7();
+    let body = build_attested_link_body(
+        event_id, low, high, &provenance, Some(&confidence), human_kid, hlc,
+    );
+
+    // 3. Sign (human authors) + mint an attestation token (human vouches).
+    let signed = sign(&body, human_sk)?;
+    let ca = event_address(&signed.signed_bytes);
+    let token = sign_attestation(&ca, human_kid, "attested", human_sk)?;
+    let attester_vk = human_sk.verifying_key().to_bytes().to_vec();
+
+    // 4. Submit through the existing 3-arg door: db/005 attestation gate + db/018
+    //    identity floor + the patient_link_apply trigger all run here.
+    tx.execute(
+        "SELECT submit_event($1,$2,$3)",
+        &[&signed.signed_bytes, &token, &attester_vk],
+    )
+    .await?;
+
+    // 5. Mark the proposal applied, pointing at the emitted link event.
+    let event_id_s = event_id.to_string();
+    tx.execute(
+        "UPDATE match_proposal SET status='applied', applied_event_id=$3::text::uuid, updated_at=clock_timestamp() \
+         WHERE patient_low=$1::text::uuid AND patient_high=$2::text::uuid",
+        &[&low_s, &high_s, &event_id_s],
+    )
+    .await?;
+
+    tx.commit().await?;
+    Ok(event_id)
 }
 
 #[cfg(test)]
