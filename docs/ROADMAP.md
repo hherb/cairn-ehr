@@ -148,14 +148,35 @@ diamond-unlink-stays-merged/chain-unlink-splits/idempotent/oversize-guard compon
 unlinked-defaults-to-self); full cairn-node suite green, clippy `--tests` clean. **Additive, no `db/` floor bypass, no
 SCHEMA/ADR/spec change** (implements settled §5.1/§5.7/ADR-0014). Deferred: C2 (below), C3+ (below), an
 accept-at-cap boundary test for the oversize guard.
+
+**Slice 14 — §5.2/§5.7 match_proposal→apply seam (piece C2)** (`db/019_apply_proposal.sql` wired into `db.rs`
+SCHEMA array 17→18; `crates/cairn-node/src/apply_proposal.rs`): a **human-accepted** advisory proposal becomes a
+real **human-attested** `identity.link.asserted` event through the C1 door. **Human-accepted only** (auto-apply of
+the `auto_candidate` band deferred to C2b) and the accepting reviewer is a **responsibility-bearing (attested)
+contributor** — a human vouching for a patient merge bears responsibility. **Key property: no floor change** — the
+link is additive, but placing a responsibility-bearing contributor trips the existing db/005 attestation gate
+(valid human token, bound to the event), so C2 composes settled §5.7 (C1) + ADR-0030 (attestation) + ADR-0014
+verbatim; `submit_event` untouched, no new event type. Additive `applied_event_id UUID` column on `match_proposal`.
+Pure `compose_provenance` + `build_attested_link_body` (event_id caller-supplied → deterministic) + IO
+`apply_accepted_proposal` (read accepted proposal → sign+attest with the human key → 3-arg `submit_event` →
+mark `status='applied'`+`applied_event_id`, all in **one transaction** ⇒ atomicity is the idempotency guarantee).
+The accepted-proposal read is `SELECT … FOR UPDATE` (concurrent applies of one pair serialize; the loser bails on
+the `'applied'` status rather than both appending a link event) and the `(low, high)` args are canonicalized (a
+reverse-order pair still finds the proposal) — both PR-review hardening applied in-branch.
+6 tests (3 pure unit + happy-path projection + idempotency/non-human-attester-refused/pending-not-applied/reverse-order-pair);
+full cairn-node suite green, clippy `--tests` clean. **Additive, no ADR/spec change** (implements settled
+§5.2/§5.7/ADR-0030/ADR-0014). Deferred: **C2b** auto-apply of `auto_candidate`; matcher as a compositional
+contributor (needs §7.5 matcher-actor registration — lives in provenance string for now); a CLI subcommand +
+production human-key custody (ADR-0011).
+
 **Remaining matcher pieces:** **B3** — weight-learning (measurable via the harness) + further compound keys
 (`dob+first-initial`, `name+sex`) + locale comparator packs (phonetic/nickname + content-addressed profiles) + hub-tier
 aggressive duplicate-sweep + proposal retraction + full §7.5 matcher actor registration; an A/B pass-toggle in
-`generate_candidate_pairs` for one-command compound-key before/after (today it's git-revert). **Identity: piece C1
-(the §5.1/§5.7 linkage core — `db/018`, `patient_link`/`person_member`/`person_chart`) is now BUILT** (slice 13,
-above). Remaining: **C2** — the `match_proposal`→apply seam (`db/017` proposals become link events, the destination
-for match proposals); **C3+** — the rest of the §5.7 algebra (identify/repudiate/dispute/reattribute). **Next:**
-weight-learning, or C2; the A/B pass-toggle (would unblock quantitative compound-key before/after) + veto-aware
+`generate_candidate_pairs` for one-command compound-key before/after (today it's git-revert). **Identity: pieces C1
+(the §5.1/§5.7 linkage core — `db/018`) and C2 (the `match_proposal`→apply seam — `db/019`, `apply_proposal.rs`)
+are now BUILT** (slices 13–14, above). Remaining: **C2b** — auto-apply of the `auto_candidate` band (matcher-authored,
+un-attested, recallable link); **C3+** — the rest of the §5.7 algebra (identify/repudiate/dispute/reattribute). **Next:**
+weight-learning, C2b, or C3+; the A/B pass-toggle (would unblock quantitative compound-key before/after) + veto-aware
 scorer mode; variable cluster size / an unrecoverable fraction / hard negatives in the volume generator; a
 `compare_address` comparator; a CLI sweep entry; B2 follow-up Minors → [issue #79](https://github.com/cairn-ehr/cairn-ehr/issues/79).
 ([Issue #69](https://github.com/cairn-ehr/cairn-ehr/issues/69): codebase-wide projection-tiebreak collation canonicalization, deferred.)

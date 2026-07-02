@@ -4,9 +4,10 @@
 surface under construction** — demographics on `cairn-node` (slices 1–5 done) + the §5.2 matcher (piece A in-DB veto
 floor · B1 advisory scoring core · B2 veto-gated pairwise pipeline + proposal worklist · B2b blocking / candidate-pair
 generation + batch sweep · B3 eval harness — scorer + blocking-recall measurement · B3 compound blocking key
-(name-token+birth-year) · B3 synthetic volume generator) + the **§5.1/§5.7 identity linkage core (piece C1) — done
-this session**; remaining B3 weight-learning / locale packs / A-B pass-toggle + identity pieces C2 (proposal→apply
-seam) + C3+ (rest of the §5.7 algebra) next. Viability proven by spikes (walking skeleton, advisory-actor contract,
+(name-token+birth-year) · B3 synthetic volume generator) + the **§5.1/§5.7 identity linkage core (piece C1)** + the **§5.2/§5.7
+match_proposal→apply seam (piece C2) — done this session**; remaining B3 weight-learning / locale packs / A-B
+pass-toggle + identity pieces C2b (auto-apply of the `auto_candidate` band) + C3+ (rest of the §5.7 algebra) next.
+Viability proven by spikes (walking skeleton, advisory-actor contract,
 a first federating node, Postgres-on-Android).
 
 **This session (2026-07-02) — comprehensive review + hardening pass:** an adversarial full-repo review (7 parallel
@@ -34,31 +35,45 @@ owner-gate + recall epoch (#99), matcher recall-key (#100), sync pagination + bl
 batch (#102), clinical-safety prose batch (#103). Matcher minors already tracked by #79/#84. No spec/ADR bump, no
 SCHEMA-floor version bump (all additive DDL + additive Rust).
 
-**Earlier the same day (2026-07-02):** built matcher piece **C1 — the §5.1/§5.7 identity linkage core** (the first slice of
-the §5.7 identity-event algebra; brainstorm→spec→plan→subagent-SDD, spec+plan under `docs/superpowers/`). All
-**additive, advisory-independent, matcher-independent**. Rust `crates/cairn-event/src/identity.rs`: a pure
-`LinkAssertion` builder (`link_assertion_body`/`unlink_assertion_body` + `render_link_twin`/`render_unlink_twin`;
-confidence omit-when-absent). **`db/018_identity_linkage.sql`** (wired into `cairn-node` `db.rs` SCHEMA array, length
-16→17; **no SCHEMA-floor version bump**, additive DDL only): registers two additive event types
-`identity.link.asserted`/`identity.unlink.asserted` through the **reused** `submit_event` door (never re-declared);
-`cairn_check_link_assertion` culture-neutral structural floor (distinct valid UUID subjects + non-empty provenance;
-self-link rejected); extends the `cairn_event_twin` hook (preserves the demographic + honest-degrade branches, adds
-an identity branch with a HARD authored-twin requirement). `patient_link` HLC-overlay edge table (canonical
-`(low,high)`, latest-HLC-wins state via `ON CONFLICT … WHERE` strict-greater — out-of-order convergent).
-`person_member` golden-identity projection: `person_id` = min-UUID of the connected component, maintained by
-`cairn_recompute_component` (a bounded recursive-CTE walk over standing link edges from **both** touched endpoints —
-correct on merge **and** unmerge/split) with a fail-loud oversize guard (`cairn_max_component_size()` GUC, default
-10000; rejects the offending event, never a silent cap). `person_chart` thin demonstrated unified-read VIEW
-(`COALESCE` to self for UUIDs unknown to the link graph). **Tests:** `crates/cairn-node/tests/identity_linkage.rs` —
-15 DB-gated integration tests (accept/reject floor; edge overlay + out-of-order convergence; pair/transitive/
-diamond-unlink-stays-merged/chain-unlink-splits/idempotent/oversize-guard component cases; VIEW union +
-unlinked-defaults-to-self); full cairn-node suite green; clippy `--tests` clean. **Principle 2 made real:** never
-merge/always link; unmerge is always clean (component recompute splits correctly). **This is C1 only** — deferred
-(recorded, next): **C2** = the `match_proposal`→apply seam (`db/017` → link event); **C3+** = the rest of the §5.7
-algebra (identify/repudiate/dispute/reattribute). Also deferred (Minor): an accept-at-cap boundary test for the
-oversize guard. Test command: `cd crates/cairn-node && CAIRN_TEST_PG="host=127.0.0.1 port=5532 user=hherb
-dbname=cairn_test" cargo test --test identity_linkage` (PG18 + `cairn_pgx`). No new ADR, no spec bump (implements
-settled §5.1/§5.7/ADR-0014). **The §5.1/§5.7 identity linkage core (piece C1) is now BUILT.**
+**Earlier the same day (2026-07-02):** built matcher/identity piece **C2 — the §5.2/§5.7 match_proposal→apply seam**
+(brainstorm→spec→plan→subagent-SDD, 5 tasks; spec+plan under `docs/superpowers/`). A **human-accepted** advisory
+`match_proposal` (B2 output, `db/017`) becomes a real **human-attested** `identity.link.asserted` event through the
+C1 door, projecting into `patient_link`/`person_member`. **Human-accepted only** (auto-apply of the `auto_candidate`
+band deferred to C2b); the accepting reviewer is a **responsibility-bearing (attested) contributor**. **Key property:
+no floor change** — the link is additive, but placing a responsibility-bearing contributor trips the **existing**
+db/005 attestation gate (valid human token, bound to the event, enrolled-human attester), so C2 composes settled §5.7
+(C1) + ADR-0030 (attestation) + ADR-0014 **verbatim**; `submit_event` untouched, no new event type, no spec/ADR bump.
+**`db/019_apply_proposal.sql`** (additive `applied_event_id UUID` column on `match_proposal`; wired into `db.rs`
+SCHEMA array 17→18, no floor version bump). **`crates/cairn-node/src/apply_proposal.rs`**: pure `compose_provenance`
++ `build_attested_link_body` (event_id caller-supplied ⇒ deterministic/testable; responsibility-bearing contributor;
+authored twin) + IO `apply_accepted_proposal` — read accepted proposal → `sign`+`sign_attestation` with the human key
+→ 3-arg `submit_event` → mark `status='applied'`+`applied_event_id`, all in **one `client.transaction()`** so
+**atomicity is the idempotency guarantee** (any rejection rolls back ⇒ no event, proposal stays `'accepted'` for
+retry). Provenance = `matcher:{version} accepted-by:{kid}`; confidence = `{score:.3}`. **Tests:**
+`crates/cairn-node/tests/apply_proposal.rs` — 6 (3 pure unit + DB-gated happy-path [link event appended · edge ·
+both patients project to min-UUID person · proposal applied→event_id] + idempotency [one event on re-apply] +
+**non-human-attester refused** [floor rejects `not an enrolled human actor`, nothing leaks, stays accepted] +
+pending-not-applied + reverse-order-pair-still-applies); full cairn-node suite green; clippy `--tests` clean.
+**PR-review hardening (applied in-branch):** the accepted-proposal read is now `SELECT … FOR UPDATE` so concurrent
+applies of the same pair serialize (the loser sees `'applied'` and bails, instead of both appending a link event
+under READ COMMITTED); and `apply_accepted_proposal` canonicalizes its `(low, high)` args to `(least, greatest)`, so
+a caller supplying the pair reversed still finds the accepted proposal rather than silently missing it. **Deferred
+(recorded, next): C2b** = auto-apply of the `auto_candidate` band; the **matcher as a compositional contributor**
+(principle 10 — needs the §7.5 matcher-actor registration; lives in the provenance string for now); a **CLI
+subcommand** + production human-key custody (ADR-0011); **C3+** = the rest of the §5.7 algebra
+(identify/repudiate/dispute/reattribute). Test command: `cd crates/cairn-node && CAIRN_TEST_PG="host=127.0.0.1 port=5532 user=hherb
+dbname=cairn_test" cargo test --test apply_proposal` (PG18 + `cairn_pgx`). **The §5.2/§5.7 C2 apply seam is now BUILT.**
+
+**Earlier this session (2026-07-02):** built matcher piece **C1 — the §5.1/§5.7 identity linkage core** (the C2 seam's
+destination; full detail in **ROADMAP slice 13** + git). Pure `cairn-event::identity` `LinkAssertion` builder; additive
+**`db/018_identity_linkage.sql`** (SCHEMA 16→17, no floor bump): two additive `identity.link/unlink.asserted` types
+through the **reused** `submit_event` door, `cairn_check_link_assertion` culture-neutral structural floor + HARD
+authored-twin, `patient_link` HLC-overlay edge table (latest-HLC-wins, out-of-order convergent), `person_member`
+golden-identity projection (`person_id` = min-UUID of the connected component via `cairn_recompute_component` — correct
+on merge **and** unmerge/split, fail-loud oversize guard), `person_chart` thin union VIEW. 15 DB-gated tests; suite +
+clippy green. **Principle 2 made real:** never merge/always link; unmerge is always clean. No ADR/spec bump (settled
+§5.1/§5.7/ADR-0014). Deferred (Minor): an accept-at-cap boundary test for the oversize guard.
+**The §5.1/§5.7 identity linkage core (piece C1) is now BUILT.**
 
 **Prior session (2026-07-01):** built the **§5.2 matcher B3 synthetic blocking-eval volume generator**
 (brainstorm→spec→plan→subagent-SDD, 6 TDD tasks; spec+plan under `docs/superpowers/`) in `matcher/`. Pure,
@@ -366,10 +381,11 @@ Medium-style write-up. **Remaining non-load-bearing gaps:** from-source PG build
   compound-key change, which needs the still-deferred A/B pass-toggle below. **Next (B3 measurement-driven):**
   **weight-learning** (sweep `evaluate_scorer`'s `weights`/`thresholds` against the gold set) + **further compound
   keys** (`dob+first-initial`, `name+sex`) + locale comparator packs / hub-tier aggressive duplicate-sweep +
-  proposal retraction / full §7.5 matcher actor registration. **Identity: piece C1 — the §5.1/§5.7 identity linkage
-  core (`db/018_identity_linkage.sql`, `cairn-event::identity`, `patient_link`/`person_member`/`person_chart`) is now
-  BUILT** (this session) — the `link`/`unlink` algebra exists end-to-end. **Next identity slices: C2** — the
-  `match_proposal`→apply seam (`db/017` proposals become link events) and **C3+** — the rest of the §5.7 algebra
+  proposal retraction / full §7.5 matcher actor registration. **Identity: pieces C1** (§5.1/§5.7 linkage core —
+  `db/018`, `cairn-event::identity`, `patient_link`/`person_member`/`person_chart`) **and C2** (the
+  `match_proposal`→apply seam — `db/019`, `cairn-node::apply_proposal`; human-accepted proposal → human-attested link
+  event) **are now BUILT** (this session). **Next identity slices: C2b** — auto-apply of the `auto_candidate` band
+  (matcher-authored, un-attested, recallable link) — and **C3+** — the rest of the §5.7 algebra
   (identify/repudiate/dispute/reattribute). Deferred: an **A/B pass-toggle**
   in `generate_candidate_pairs` (one command instead of git-revert for compound-key before/after — the piece that
   would make the volume generator's numbers a quantitative comparison); variable cluster size / an unrecoverable
