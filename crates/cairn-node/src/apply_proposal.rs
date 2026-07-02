@@ -69,6 +69,15 @@ pub fn build_attested_link_body(
 /// written and the proposal stays 'accepted' to be retried. On success the event and
 /// the 'applied' transition commit together, and a re-run finds no 'accepted' row.
 ///
+/// Concurrency: the proposal row is read `FOR UPDATE`, so two callers racing on the same
+/// pair serialize — the second blocks on the row lock, then re-reads the now-'applied'
+/// status and bails. Without the lock both would read 'accepted' under READ COMMITTED and
+/// each append its own link event.
+///
+/// The pair may be passed in either order: it is canonicalized to `(least, greatest)` to
+/// match match_proposal's `CHECK (patient_low < patient_high)` storage, so a caller passing
+/// `(high, low)` still finds the accepted proposal rather than silently missing it.
+///
 /// Errors (Err, transaction rolled back) if the proposal is absent or its status is not
 /// 'accepted' (only a human's acceptance applies), or if the in-DB floor refuses.
 pub async fn apply_accepted_proposal(
@@ -81,17 +90,26 @@ pub async fn apply_accepted_proposal(
 ) -> anyhow::Result<Uuid> {
     let tx = client.transaction().await?;
 
+    // Canonicalize to (least, greatest) so the pair matches match_proposal's
+    // `CHECK (patient_low < patient_high)` storage regardless of the order the caller
+    // supplied. `build_attested_link_body` then also receives the canonical pair
+    // (subject_a := low), matching the C1 edge overlay's canonical (low, high) key.
+    let (low, high) = if low <= high { (low, high) } else { (high, low) };
+
     // Text-cast the UUIDs at the binding boundary: this crate's `uuid` dependency has no
     // `postgres`/`with-uuid-1` feature enabled, so `Uuid` does not implement `ToSql` here.
     // `.to_string()` + `$N::text::uuid` in the SQL is the established convention already
     // used throughout this crate (see e.g. `tests/identity_linkage.rs::person_of`).
     let (low_s, high_s) = (low.to_string(), high.to_string());
 
-    // 1. Read the proposal and require status='accepted'.
+    // 1. Read the proposal and require status='accepted'. `FOR UPDATE` locks the row so a
+    //    concurrent apply of the same pair blocks here and then sees the 'applied' status
+    //    instead of racing to append a second link event (see the doc's Concurrency note).
     let row = tx
         .query_opt(
             "SELECT score_total, matcher_version, status FROM match_proposal \
-             WHERE patient_low=$1::text::uuid AND patient_high=$2::text::uuid",
+             WHERE patient_low=$1::text::uuid AND patient_high=$2::text::uuid \
+             FOR UPDATE",
             &[&low_s, &high_s],
         )
         .await?

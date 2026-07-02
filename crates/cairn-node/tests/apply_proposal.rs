@@ -114,6 +114,34 @@ async fn accepted_proposal_becomes_attested_link_and_projects_person() {
 }
 
 #[tokio::test]
+async fn pair_passed_in_reverse_order_still_applies() {
+    // The proposal is stored canonically (CHECK patient_low < patient_high). A caller
+    // that supplies the pair the other way round (high, low) must still find and apply
+    // it, not silently miss the accepted proposal. apply_accepted_proposal canonicalizes.
+    let Some(base) = cs() else { return };
+    let _guard = db::test_serial_guard(&base).await.unwrap();
+    let mut c: Client = db::connect_and_load_schema(&base).await.unwrap();
+    let (sk_h, kid_h) = setup(&c).await;
+    let (low, high) = canonical(Uuid::now_v7(), Uuid::now_v7());
+    seed_accepted_proposal(&c, low, high, "accepted").await;
+
+    // Call with the arguments deliberately reversed.
+    apply_accepted_proposal(&mut c, high, low, &sk_h, &kid_h,
+        Hlc { wall: 100, counter: 0, node_origin: "n".into() })
+        .await.expect("a reverse-order pair must still apply");
+
+    let n_ev: i64 = c.query_one(
+        "SELECT count(*) FROM event_log WHERE event_type='identity.link.asserted'", &[])
+        .await.unwrap().get(0);
+    assert_eq!(n_ev, 1, "reverse-order apply appends exactly one link event");
+    let (low_s, high_s) = (low.to_string(), high.to_string());
+    let status: String = c.query_one(
+        "SELECT status FROM match_proposal WHERE patient_low=$1::text::uuid AND patient_high=$2::text::uuid",
+        &[&low_s, &high_s]).await.unwrap().get(0);
+    assert_eq!(status, "applied", "the canonical proposal row is the one marked applied");
+}
+
+#[tokio::test]
 async fn re_applying_is_idempotent_no_second_link_event() {
     let Some(base) = cs() else { return };
     let _guard = db::test_serial_guard(&base).await.unwrap();

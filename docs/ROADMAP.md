@@ -160,7 +160,10 @@ verbatim; `submit_event` untouched, no new event type. Additive `applied_event_i
 Pure `compose_provenance` + `build_attested_link_body` (event_id caller-supplied → deterministic) + IO
 `apply_accepted_proposal` (read accepted proposal → sign+attest with the human key → 3-arg `submit_event` →
 mark `status='applied'`+`applied_event_id`, all in **one transaction** ⇒ atomicity is the idempotency guarantee).
-5 tests (3 pure unit + happy-path projection + idempotency/non-human-attester-refused/pending-not-applied);
+The accepted-proposal read is `SELECT … FOR UPDATE` (concurrent applies of one pair serialize; the loser bails on
+the `'applied'` status rather than both appending a link event) and the `(low, high)` args are canonicalized (a
+reverse-order pair still finds the proposal) — both PR-review hardening applied in-branch.
+6 tests (3 pure unit + happy-path projection + idempotency/non-human-attester-refused/pending-not-applied/reverse-order-pair);
 full cairn-node suite green, clippy `--tests` clean. **Additive, no ADR/spec change** (implements settled
 §5.2/§5.7/ADR-0030/ADR-0014). Deferred: **C2b** auto-apply of `auto_candidate`; matcher as a compositional
 contributor (needs §7.5 matcher-actor registration — lives in provenance string for now); a CLI subcommand +

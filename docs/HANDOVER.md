@@ -25,15 +25,18 @@ authored twin) + IO `apply_accepted_proposal` — read accepted proposal → `si
 → 3-arg `submit_event` → mark `status='applied'`+`applied_event_id`, all in **one `client.transaction()`** so
 **atomicity is the idempotency guarantee** (any rejection rolls back ⇒ no event, proposal stays `'accepted'` for
 retry). Provenance = `matcher:{version} accepted-by:{kid}`; confidence = `{score:.3}`. **Tests:**
-`crates/cairn-node/tests/apply_proposal.rs` — 5 (3 pure unit + DB-gated happy-path [link event appended · edge ·
+`crates/cairn-node/tests/apply_proposal.rs` — 6 (3 pure unit + DB-gated happy-path [link event appended · edge ·
 both patients project to min-UUID person · proposal applied→event_id] + idempotency [one event on re-apply] +
 **non-human-attester refused** [floor rejects `not an enrolled human actor`, nothing leaks, stays accepted] +
-pending-not-applied); full cairn-node suite green; clippy `--tests` clean. **Deferred (recorded, next): C2b** =
-auto-apply of the `auto_candidate` band; the **matcher as a compositional contributor** (principle 10 — needs the
-§7.5 matcher-actor registration; lives in the provenance string for now); a **CLI subcommand** + production
-human-key custody (ADR-0011); **C3+** = the rest of the §5.7 algebra (identify/repudiate/dispute/reattribute). One
-Minor for review-triage: the `apply_accepted_proposal` UPDATE binds `$3,$1,$2` — a `params:` comment would aid
-readers. Test command: `cd crates/cairn-node && CAIRN_TEST_PG="host=127.0.0.1 port=5532 user=hherb
+pending-not-applied + reverse-order-pair-still-applies); full cairn-node suite green; clippy `--tests` clean.
+**PR-review hardening (applied in-branch):** the accepted-proposal read is now `SELECT … FOR UPDATE` so concurrent
+applies of the same pair serialize (the loser sees `'applied'` and bails, instead of both appending a link event
+under READ COMMITTED); and `apply_accepted_proposal` canonicalizes its `(low, high)` args to `(least, greatest)`, so
+a caller supplying the pair reversed still finds the accepted proposal rather than silently missing it. **Deferred
+(recorded, next): C2b** = auto-apply of the `auto_candidate` band; the **matcher as a compositional contributor**
+(principle 10 — needs the §7.5 matcher-actor registration; lives in the provenance string for now); a **CLI
+subcommand** + production human-key custody (ADR-0011); **C3+** = the rest of the §5.7 algebra
+(identify/repudiate/dispute/reattribute). Test command: `cd crates/cairn-node && CAIRN_TEST_PG="host=127.0.0.1 port=5532 user=hherb
 dbname=cairn_test" cargo test --test apply_proposal` (PG18 + `cairn_pgx`). **The §5.2/§5.7 C2 apply seam is now BUILT.**
 
 **Earlier this session (2026-07-02):** built matcher piece **C1 — the §5.1/§5.7 identity linkage core** (the C2 seam's
