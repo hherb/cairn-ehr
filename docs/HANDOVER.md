@@ -10,7 +10,32 @@ pass-toggle + identity pieces C2b (auto-apply of the `auto_candidate` band) + C3
 Viability proven by spikes (walking skeleton, advisory-actor contract,
 a first federating node, Postgres-on-Android).
 
-**This session (2026-07-02):** built matcher/identity piece **C2 — the §5.2/§5.7 match_proposal→apply seam**
+**This session (2026-07-02) — comprehensive review + hardening pass:** an adversarial full-repo review (7 parallel
+agents over the SQL floor, the Rust crates, the Python matcher, and all 39 ADRs; findings cross-checked and re-verified
+against the code). Report + full disposition table: **`docs/code_reviews/2026-07-02-comprehensive-review.md`**. The
+foundations held up well (crypto, grant floor, sign-the-bytes canonicalization, ADR honesty); trouble clustered in the
+clinical sync door, a few settled-ADR promises the code didn't keep, and cheap-now/expensive-later wire decisions.
+**Fixed this session (all with tests where a harness exists; full workspace + 186 matcher tests + clippy green):**
+*floor* — `t_effective ≤ t_recorded` ceiling now enforced in `submit_event` (A3); `patient_identifier` made
+HLC-convergent (was first-apply-wins → cross-node divergence feeding the veto, A4); explicit REVOKEs on
+`actor_event`/`enroll_actor` + negative test (A6); linkage-recompute advisory lock (A5a); a shared
+`cairn_max_event_bytes()` ceiling at every admission door (A7a); total-order winner tiebreaks on
+names/address/demographic (A10; text-collation caveat tracked in #69); attestation `attester_key_id` binding (M7).
+*daemon* — cairn-sync watermark now advances only over the contiguous applied prefix so a transient failure can no
+longer silently drop a clinical event (A1); event_id-substitution guard on the sync apply path (H3); pull/serve I/O
+timeouts + serve session cap so a stalled peer can't freeze trust refresh (A7b); `LocalState` `deny_unknown_fields` +
+version gate so a newer bundle fails loud instead of dropping content (A7c); SPKI Ed25519 OID pin; 0600 signing-key
+perms (L12). *matcher* — subset-name → PARTIAL (the ADR-0014 cultural-bias footgun, A9a); veto+shared-identifier now
+forces REVIEW instead of silent burial (A9b); NFC normalization (A9c); 4-digit-year DOB gate (A9e); `unknown`
+sentinel → absence (A9f). *tests* — cairn_pgx `#[pg_test]` fixtures compile again (A8; `cargo check --features pg_test`
+clean). **Filed as issues (design / large-refactor), #91–#103:** clinical sync in-DB apply door (#91), erasure-ladder
+composition (#92), revocation-clock backdating (#93), human key custody (#94), COSE domain separation (#95), closed
+role-enum wire encoding (#96), demographic recency time-axis (#97), essential-tier vs ADR-0001 (#98), suppression
+owner-gate + recall epoch (#99), matcher recall-key (#100), sync pagination + blob wedge (#101), operational-hardening
+batch (#102), clinical-safety prose batch (#103). Matcher minors already tracked by #79/#84. No spec/ADR bump, no
+SCHEMA-floor version bump (all additive DDL + additive Rust).
+
+**Earlier the same day (2026-07-02):** built matcher/identity piece **C2 — the §5.2/§5.7 match_proposal→apply seam**
 (brainstorm→spec→plan→subagent-SDD, 5 tasks; spec+plan under `docs/superpowers/`). A **human-accepted** advisory
 `match_proposal` (B2 output, `db/017`) becomes a real **human-attested** `identity.link.asserted` event through the
 C1 door, projecting into `patient_link`/`person_member`. **Human-accepted only** (auto-apply of the `auto_candidate`
