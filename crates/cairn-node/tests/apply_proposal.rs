@@ -112,3 +112,79 @@ async fn accepted_proposal_becomes_attested_link_and_projects_person() {
     let applied: Option<Uuid> = applied.map(|s| s.parse().unwrap());
     assert_eq!(applied, Some(eid), "applied_event_id points at the emitted link event");
 }
+
+#[tokio::test]
+async fn re_applying_is_idempotent_no_second_link_event() {
+    let Some(base) = cs() else { return };
+    let _guard = db::test_serial_guard(&base).await.unwrap();
+    let mut c: Client = db::connect_and_load_schema(&base).await.unwrap();
+    let (sk_h, kid_h) = setup(&c).await;
+    let (low, high) = canonical(Uuid::now_v7(), Uuid::now_v7());
+    seed_accepted_proposal(&c, low, high, "accepted").await;
+
+    // First apply succeeds.
+    apply_accepted_proposal(&mut c, low, high, &sk_h, &kid_h,
+        Hlc { wall: 100, counter: 0, node_origin: "n".into() }).await.unwrap();
+
+    // Second apply must refuse: the proposal is now 'applied', not 'accepted'.
+    let again = apply_accepted_proposal(&mut c, low, high, &sk_h, &kid_h,
+        Hlc { wall: 101, counter: 0, node_origin: "n".into() }).await;
+    assert!(again.is_err(), "re-applying an 'applied' proposal must be refused");
+
+    let n_ev: i64 = c.query_one(
+        "SELECT count(*) FROM event_log WHERE event_type='identity.link.asserted'", &[])
+        .await.unwrap().get(0);
+    assert_eq!(n_ev, 1, "exactly one link event exists after a repeated apply");
+}
+
+#[tokio::test]
+async fn non_human_attester_is_refused_and_nothing_leaks() {
+    let Some(base) = cs() else { return };
+    let _guard = db::test_serial_guard(&base).await.unwrap();
+    let mut c: Client = db::connect_and_load_schema(&base).await.unwrap();
+    let (_sk_h, _kid_h) = setup(&c).await;
+    // Enroll an AGENT (non-human) and try to apply with its key: the db/005 gate must
+    // refuse the identity link (identity links cannot be forged without a human vouch).
+    let (sk_a, kid_a) = generate_key().unwrap();
+    c.execute(
+        "SELECT enroll_actor('agent', '{\"model\":\"m\",\"version\":\"1\",\"skill_epoch\":\"e\"}', $1)",
+        &[&kid_a],
+    ).await.unwrap();
+    let (low, high) = canonical(Uuid::now_v7(), Uuid::now_v7());
+    seed_accepted_proposal(&c, low, high, "accepted").await;
+
+    let r = apply_accepted_proposal(&mut c, low, high, &sk_a, &kid_a,
+        Hlc { wall: 100, counter: 0, node_origin: "n".into() }).await;
+    assert!(r.is_err(), "a non-human attester must be refused by the floor");
+    assert!(format!("{:?}", r.unwrap_err()).contains("not an enrolled human actor"));
+
+    // Nothing appended; the proposal stays 'accepted' for a later human to apply.
+    let n_ev: i64 = c.query_one(
+        "SELECT count(*) FROM event_log WHERE event_type='identity.link.asserted'", &[])
+        .await.unwrap().get(0);
+    assert_eq!(n_ev, 0, "no link event leaked through the refused apply");
+    let (low_s, high_s) = (low.to_string(), high.to_string());
+    let status: String = c.query_one(
+        "SELECT status FROM match_proposal WHERE patient_low=$1::text::uuid AND patient_high=$2::text::uuid",
+        &[&low_s, &high_s]).await.unwrap().get(0);
+    assert_eq!(status, "accepted", "a refused apply leaves the proposal accepted");
+}
+
+#[tokio::test]
+async fn pending_proposal_is_not_applied() {
+    let Some(base) = cs() else { return };
+    let _guard = db::test_serial_guard(&base).await.unwrap();
+    let mut c: Client = db::connect_and_load_schema(&base).await.unwrap();
+    let (sk_h, kid_h) = setup(&c).await;
+    let (low, high) = canonical(Uuid::now_v7(), Uuid::now_v7());
+    seed_accepted_proposal(&c, low, high, "pending").await;
+
+    let r = apply_accepted_proposal(&mut c, low, high, &sk_h, &kid_h,
+        Hlc { wall: 100, counter: 0, node_origin: "n".into() }).await;
+    assert!(r.is_err(), "only status='accepted' applies; 'pending' must be refused");
+
+    let n_ev: i64 = c.query_one(
+        "SELECT count(*) FROM event_log WHERE event_type='identity.link.asserted'", &[])
+        .await.unwrap().get(0);
+    assert_eq!(n_ev, 0, "a pending proposal produces no link event");
+}
